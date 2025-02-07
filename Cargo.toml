@@ -1,0 +1,11 @@
+[package]
+name = "robot_behavior"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive", "alloc"] }
+serde_with = "*"
+serde_json = "*"
+thiserror = "*"
+nalgebra = { version = "*", features = ["serde-serialize"] }
