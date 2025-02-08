@@ -14,6 +14,10 @@ pub enum RobotException {
     /// Conflicting instruction error
     #[error("Conflicting instruction error: {0}")]
     ConflictingInstruction(String),
+
+    /// Invalid instruction error
+    #[error("Invalid instruction error: {0}")]
+    InvalidInstruction(String),
 }
 
 pub type RobotResult<T> = Result<T, RobotException>;
