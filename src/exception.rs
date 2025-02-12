@@ -1,4 +1,4 @@
-use std::io;
+use std::{any::type_name, io};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -18,6 +18,10 @@ pub enum RobotException {
     /// Invalid instruction error
     #[error("Invalid instruction error: {0}")]
     InvalidInstruction(String),
+
+    /// Deserialize error
+    #[error("Deserialize error: {0}")]
+    DeserializeError(String),
 }
 
 pub type RobotResult<T> = Result<T, RobotException>;
@@ -25,5 +29,11 @@ pub type RobotResult<T> = Result<T, RobotException>;
 impl From<io::Error> for RobotException {
     fn from(e: io::Error) -> Self {
         RobotException::NetworkError(e.to_string())
+    }
+}
+
+pub fn deserialize_error<T, E>(data: &str) -> impl FnOnce(E) -> RobotException {
+    move |_| {
+        RobotException::DeserializeError(format!("exception {}, find {}", type_name::<T>(), data))
     }
 }
