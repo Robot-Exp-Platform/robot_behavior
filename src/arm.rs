@@ -8,6 +8,8 @@ use crate::{ControlType, MotionType, RobotBehavior, RobotResult, realtime::Realt
 pub trait ArmBehavior<const N: usize>: RobotBehavior {
     fn move_to(&mut self, target: MotionType<N>) -> RobotResult<()>;
     fn move_to_async(&mut self, target: MotionType<N>) -> RobotResult<()>;
+    fn move_rel(&mut self, rel: MotionType<N>) -> RobotResult<()>;
+    fn move_rel_async(&mut self, rel: MotionType<N>) -> RobotResult<()>;
     fn move_path(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
     fn move_path_from_file(&mut self, path: &str) -> RobotResult<()> {
         let file = File::open(path)?;

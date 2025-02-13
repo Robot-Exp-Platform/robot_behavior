@@ -22,6 +22,10 @@ pub enum RobotException {
     /// Deserialize error
     #[error("Deserialize error: {0}")]
     DeserializeError(String),
+
+    /// unwarp error
+    #[error("UnWarp error: {0}")]
+    UnWarpError(String),
 }
 
 pub type RobotResult<T> = Result<T, RobotException>;
