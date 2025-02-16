@@ -1,5 +1,6 @@
 mod arm;
 mod exception;
+pub mod ffi;
 mod realtime;
 mod robot;
 mod types;

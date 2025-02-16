@@ -3,6 +3,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum RobotException {
+    #[error("none")]
+    NoException,
+
     /// NetworkException is thrown if a connection to the robot cannot be established, or when a timeout occurs.
     #[error("Network exception: {0}")]
     NetworkError(String),
