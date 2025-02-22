@@ -18,6 +18,7 @@ pub trait ArmBehavior<const N: usize>: RobotBehavior {
         self.move_path(path)
     }
     fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
+    fn read_state(&mut self, state_type: ArmStateType) -> RobotResult<ArmState<N>>;
 }
 
 pub struct ArmRealtimeConfig {
@@ -26,11 +27,33 @@ pub struct ArmRealtimeConfig {
     pub realtime_mode: bool,
 }
 
-pub trait ArmState<const N: usize> {
-    fn joint(&self) -> [f64; N];
-    fn joint_vel(&self) -> [f64; N];
-    fn cartisian(&self) -> na::Isometry3<f64>;
-    fn cartisian_vel(&self) -> [f64; 6];
+// pub trait ArmState<const N: usize> {
+//     fn joint(&self) -> [f64; N];
+//     fn joint_vel(&self) -> [f64; N];
+//     fn cartisian(&self) -> na::Isometry3<f64>;
+//     fn cartisian_vel(&self) -> [f64; 6];
+// }
+
+pub enum ArmStateType {
+    Both(Box<ArmStateType>, Box<ArmStateType>),
+    Vec(Vec<ArmStateType>),
+
+    Joint,
+    JointVel,
+    CartesianQuat,
+    CartesianEuler,
+    CartesianVel,
+}
+
+pub enum ArmState<const N: usize> {
+    Both(Box<ArmState<N>>, Box<ArmState<N>>),
+    Vec(Vec<ArmState<N>>),
+
+    Joint([f64; N]),
+    JointVel([f64; N]),
+    CartesianQuat(na::Isometry3<f64>),
+    CartesianEuler([f64; 6]),
+    CartesianVel([f64; 6]),
 }
 
 pub trait ArmRealtimeHandle<const N: usize> {
@@ -38,10 +61,9 @@ pub trait ArmRealtimeHandle<const N: usize> {
     fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
 }
 
-pub trait ArmRealtimeBehavior<const N: usize, S, H>:
-    ArmBehavior<N> + RealtimeBehavior<ArmRealtimeConfig, S, H>
+pub trait ArmRealtimeBehavior<const N: usize, H>:
+    ArmBehavior<N> + RealtimeBehavior<ArmRealtimeConfig, H>
 where
-    S: ArmState<N>,
     H: ArmRealtimeHandle<N>,
 {
 }

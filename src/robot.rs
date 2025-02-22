@@ -31,9 +31,13 @@ pub trait RobotBehavior {
     /// 检查机器人是否在运动
     fn is_moving(&mut self) -> bool;
 
-    /// Pause the current action
-    /// 暂停当前动作
+    /// stop the current action
+    /// 停止当前动作，不可恢复
     fn stop(&mut self) -> RobotResult<()>;
+
+    /// pause the current action
+    /// 暂停当前动作
+    fn pause(&mut self) -> RobotResult<()>;
 
     /// Resume the current action
     /// 恢复当前动作
