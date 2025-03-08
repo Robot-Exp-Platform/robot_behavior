@@ -6,9 +6,26 @@ pub enum RobotException {
     #[error("none")]
     NoException,
 
+    /// ModelException is thrown if an error occurs when loading the model library.
+    #[error("Model exception: {0}")]
+    ModelException(String),
+
     /// NetworkException is thrown if a connection to the robot cannot be established, or when a timeout occurs.
     #[error("Network exception: {0}")]
     NetworkError(String),
+
+    /// IncompatibleVersionException is thrown if the robot does not support this version.
+    #[error(
+        "Incompatible version: server version {server_version}, client version {client_version}"
+    )]
+    IncompatibleVersionException {
+        server_version: u64,
+        client_version: u64,
+    },
+
+    /// RealtimeException is thrown if realtime priority cannot be set.
+    #[error("Realtime exception: {0}")]
+    RealtimeException(String),
 
     /// Unprocessable instruction error
     #[error("Unprocessable instruction error: {0}")]
