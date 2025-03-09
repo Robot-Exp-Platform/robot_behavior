@@ -35,6 +35,10 @@ pub enum RobotException {
     #[error("Conflicting instruction error: {0}")]
     ConflictingInstruction(String),
 
+    /// CommandException is thrown if an error occurs during command execution.
+    #[error("Command exception: {0}")]
+    CommandException(String),
+
     /// Invalid instruction error
     #[error("Invalid instruction error: {0}")]
     InvalidInstruction(String),
