@@ -11,14 +11,45 @@ pub trait ArmBehavior<const N: usize>: RobotBehavior {
     fn move_rel(&mut self, rel: MotionType<N>) -> RobotResult<()>;
     fn move_rel_async(&mut self, rel: MotionType<N>) -> RobotResult<()>;
     fn move_path(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
+    fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
+    fn read_state(&mut self, state_type: ArmStateType) -> RobotResult<ArmState<N>>;
+}
+
+pub trait ArmBehaviorExt<const N: usize>: ArmBehavior<N> {
+    fn move_joint(&mut self, joint: [f64; N]) -> RobotResult<()> {
+        self.move_to(MotionType::Joint(joint))
+    }
+    fn move_joint_async(&mut self, joint: [f64; N]) -> RobotResult<()> {
+        self.move_to_async(MotionType::Joint(joint))
+    }
+    fn move_joint_rel(&mut self, joint: [f64; N]) -> RobotResult<()> {
+        self.move_rel(MotionType::Joint(joint))
+    }
+    fn move_joint_rel_async(&mut self, joint: [f64; N]) -> RobotResult<()> {
+        self.move_rel_async(MotionType::Joint(joint))
+    }
+    fn move_linear_with_quat(&mut self, pose: na::Isometry3<f64>) -> RobotResult<()> {
+        self.move_to(MotionType::CartesianQuat(pose))
+    }
+    fn move_linear_with_quat_async(&mut self, pose: na::Isometry3<f64>) -> RobotResult<()> {
+        self.move_to_async(MotionType::CartesianQuat(pose))
+    }
+    fn move_linear_with_euler(&mut self, pose: [f64; 6]) -> RobotResult<()> {
+        self.move_to(MotionType::CartesianEuler(pose))
+    }
+    fn move_linear_with_euler_async(&mut self, pose: [f64; 6]) -> RobotResult<()> {
+        self.move_to_async(MotionType::CartesianEuler(pose))
+    }
+
+    fn move_path_prepare(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
+    fn move_path_start(&mut self) -> RobotResult<()>;
+    fn move_path_prepare_from_file(&mut self, path: &str) -> RobotResult<()>;
     fn move_path_from_file(&mut self, path: &str) -> RobotResult<()> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
         let path: Vec<MotionType<N>> = from_reader(reader).unwrap();
         self.move_path(path)
     }
-    fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
-    fn read_state(&mut self, state_type: ArmStateType) -> RobotResult<ArmState<N>>;
 }
 
 pub struct ArmRealtimeConfig {
