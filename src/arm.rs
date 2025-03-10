@@ -76,15 +76,15 @@ pub enum ArmStateType {
     CartesianVel,
 }
 
-pub enum ArmState<const N: usize> {
-    Both(Box<ArmState<N>>, Box<ArmState<N>>),
-    Vec(Vec<ArmState<N>>),
-
-    Joint([f64; N]),
-    JointVel([f64; N]),
-    CartesianQuat(na::Isometry3<f64>),
-    CartesianEuler([f64; 6]),
-    CartesianVel([f64; 6]),
+pub struct ArmState<const N: usize> {
+    pub joint: Option<[f64; N]>,
+    pub joint_vel: Option<[f64; N]>,
+    pub joint_acc: Option<[f64; N]>,
+    pub tau: Option<[f64; N]>,
+    pub cartisian_euler: Option<[f64; 6]>,
+    pub cartisian_quat: Option<na::UnitQuaternion<f64>>,
+    pub cartisian_homo: Option<[f64; 16]>,
+    pub cartisian_vel: Option<[f64; 6]>,
 }
 
 pub trait ArmRealtimeHandle<const N: usize> {
