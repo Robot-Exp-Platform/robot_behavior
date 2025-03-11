@@ -1,9 +1,10 @@
 use nalgebra as na;
 use serde_json::from_reader;
-use std::fs::File;
 use std::io::BufReader;
+use std::sync::{Arc, Mutex};
+use std::{fs::File, time::Duration};
 
-use crate::{ControlType, MotionType, RobotBehavior, RobotResult, realtime::RealtimeBehavior};
+use crate::{ControlType, MotionType, RobotBehavior, RobotResult};
 
 pub trait ArmBehavior<const N: usize>: RobotBehavior {
     fn move_to(&mut self, target: MotionType<N>) -> RobotResult<()>;
@@ -12,7 +13,7 @@ pub trait ArmBehavior<const N: usize>: RobotBehavior {
     fn move_rel_async(&mut self, rel: MotionType<N>) -> RobotResult<()>;
     fn move_path(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
     fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
-    fn read_state(&mut self, state_type: ArmStateType) -> RobotResult<ArmState<N>>;
+    fn read_state(&mut self) -> RobotResult<ArmState<N>>;
 }
 
 pub trait ArmBehaviorExt<const N: usize>: ArmBehavior<N> {
@@ -58,24 +59,6 @@ pub struct ArmRealtimeConfig {
     pub realtime_mode: bool,
 }
 
-// pub trait ArmState<const N: usize> {
-//     fn joint(&self) -> [f64; N];
-//     fn joint_vel(&self) -> [f64; N];
-//     fn cartisian(&self) -> na::Isometry3<f64>;
-//     fn cartisian_vel(&self) -> [f64; 6];
-// }
-
-pub enum ArmStateType {
-    Both(Box<ArmStateType>, Box<ArmStateType>),
-    Vec(Vec<ArmStateType>),
-
-    Joint,
-    JointVel,
-    CartesianQuat,
-    CartesianEuler,
-    CartesianVel,
-}
-
 pub struct ArmState<const N: usize> {
     pub joint: Option<[f64; N]>,
     pub joint_vel: Option<[f64; N]>,
@@ -92,9 +75,26 @@ pub trait ArmRealtimeHandle<const N: usize> {
     fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
 }
 
-pub trait ArmRealtimeBehavior<const N: usize, H>:
-    ArmBehavior<N> + RealtimeBehavior<ArmRealtimeConfig, H>
-where
-    H: ArmRealtimeHandle<N>,
-{
+pub trait ArmRealtimeBehavior<const N: usize>: ArmBehavior<N> {
+    fn move_with_closure<FM: Fn(ArmState<N>, Duration) -> MotionType<N> + Send + 'static>(
+        &mut self,
+        closure: FM,
+    ) -> RobotResult<()>;
+    fn control_with_closure<FC: Fn(ArmState<N>, Duration) -> ControlType<N> + Send + 'static>(
+        &mut self,
+        closure: FC,
+    ) -> RobotResult<()>;
+    fn move_to_target(&mut self) -> Arc<Mutex<Option<MotionType<N>>>>;
+    fn control_to_target(&mut self) -> Arc<Mutex<Option<ControlType<N>>>>;
+}
+
+pub trait ArmRealtimeBehaviorExt<const N: usize> {
+    fn move_joint_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
+    fn move_joint_vel_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
+    fn move_joint_acc_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
+    fn move_cartisian_euler_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
+    fn move_cartisian_quat_target(&mut self) -> Arc<Mutex<Option<na::Isometry3<f64>>>>;
+    fn move_cartisian_homo_target(&mut self) -> Arc<Mutex<Option<[f64; 16]>>>;
+    fn move_cartisian_vel_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
+    fn control_tau_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
 }

@@ -14,6 +14,7 @@ pub enum MotionType<const N: usize> {
     JointVel(#[serde_as(as = "[_; N]")] [f64; N]),
     CartesianQuat(na::Isometry3<f64>),
     CartesianEuler([f64; 6]),
+    CartesianHomo([f64; 16]),
     CartesianVel([f64; 6]),
     Position([f64; 3]),
     PositionVel([f64; 3]),

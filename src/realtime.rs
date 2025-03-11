@@ -1,19 +1,84 @@
 use std::path::Path;
 
-use crate::RobotResult;
+use crate::{RobotException, RobotResult};
 
 pub trait RealtimeBehavior<C, H> {
     fn enter_realtime(&mut self, realtime_config: C) -> RobotResult<H>;
     fn exit_realtime(&mut self) -> RobotResult<()>;
     fn quality_of_service(&self) -> f64;
-    fn is_hardware_realtime(&self) -> bool {
-        if cfg!(target_os = "linux") {
-            Path::new("/sys/kernel/realtime").exists()
-        } else if cfg!(target_os = "windows") {
-            true
-        } else {
-            println!("Unknown OS, assuming realtime kernel.");
-            true
+}
+
+pub fn is_hardware_realtime() -> bool {
+    if cfg!(target_os = "linux") {
+        Path::new("/sys/kernel/realtime").exists()
+    } else if cfg!(target_os = "windows") {
+        true
+    } else {
+        println!("Unknown OS, assuming realtime kernel.");
+        true
+    }
+}
+
+/// Sets the current thread to the highest possible scheduler priority.
+///
+/// # Errors
+/// * RealtimeException if realtime priority cannot be set for the current thread.
+///
+/// ## Linux
+/// If the method returns an Error please check your /etc/security/limits.conf file
+/// There should be a line like this:
+/// ```text
+///marco            -       rtprio          99
+/// ```
+///
+/// ##
+pub fn set_realtime_priority() -> RobotResult<()> {
+    #[cfg(target_os = "windows")]
+    {
+        use winapi::um::processthreadsapi::SetThreadPriority;
+        use winapi::um::winbase::THREAD_PRIORITY_TIME_CRITICAL;
+
+        let priority_level = THREAD_PRIORITY_TIME_CRITICAL as i32;
+
+        let result = unsafe {
+            SetThreadPriority(
+                winapi::um::processthreadsapi::GetCurrentThread(),
+                priority_level,
+            )
+        };
+
+        if result == -1 {
+            let err = std::io::Error::last_os_error();
+            return Err(RobotException::RealtimeException(err.to_string()));
         }
     }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    unsafe {
+        let max_priority = libc::sched_get_priority_max(libc::SCHED_FIFO);
+        if max_priority == -1 {
+            return Err(FrankaException::RealTimeException {
+                message: "libfranka-rs: unable to get maximum possible thread priority".to_string(),
+            });
+        }
+        let thread_param = libc::sched_param {
+            // In the original libfranka the priority is set to the maximum priority (99 in this
+            // case). However, we will set the priority 1 lower as
+            // https://rt.wiki.kernel.org/index.php/HOWTO:_Build_an_RT-application recommends
+            sched_priority: max_priority - 1,
+        };
+        if libc::pthread_setschedparam(libc::pthread_self(), libc::SCHED_FIFO, &thread_param) != 0 {
+            return Err(FrankaException::RealTimeException {
+                message: "libfranka-rs: unable to set realtime scheduling".to_string(),
+            });
+        }
+        // The original libfranka does not use mlock. However, we use it to prevent our memory from
+        // being swapped.
+        if libc::mlockall(libc::MCL_CURRENT | libc::MCL_FUTURE) != 0 {
+            return Err(FrankaException::RealTimeException {
+                message: "libfranka-rs: unable to lock memory".to_string(),
+            });
+        }
+    }
+
+    Ok(())
 }
