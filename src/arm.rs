@@ -64,10 +64,10 @@ pub struct ArmState<const N: usize> {
     pub joint_vel: Option<[f64; N]>,
     pub joint_acc: Option<[f64; N]>,
     pub tau: Option<[f64; N]>,
-    pub cartisian_euler: Option<[f64; 6]>,
-    pub cartisian_quat: Option<na::UnitQuaternion<f64>>,
-    pub cartisian_homo: Option<[f64; 16]>,
-    pub cartisian_vel: Option<[f64; 6]>,
+    pub cartesian_euler: Option<[f64; 6]>,
+    pub cartesian_quat: Option<na::Isometry3<f64>>,
+    pub cartesian_homo: Option<[f64; 16]>,
+    pub cartesian_vel: Option<[f64; 6]>,
 }
 
 pub trait ArmRealtimeHandle<const N: usize> {
@@ -92,9 +92,51 @@ pub trait ArmRealtimeBehaviorExt<const N: usize> {
     fn move_joint_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
     fn move_joint_vel_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
     fn move_joint_acc_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
-    fn move_cartisian_euler_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
-    fn move_cartisian_quat_target(&mut self) -> Arc<Mutex<Option<na::Isometry3<f64>>>>;
-    fn move_cartisian_homo_target(&mut self) -> Arc<Mutex<Option<[f64; 16]>>>;
-    fn move_cartisian_vel_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
+    fn move_cartesian_euler_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
+    fn move_cartesian_quat_target(&mut self) -> Arc<Mutex<Option<na::Isometry3<f64>>>>;
+    fn move_cartesian_homo_target(&mut self) -> Arc<Mutex<Option<[f64; 16]>>>;
+    fn move_cartesian_vel_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
     fn control_tau_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
+}
+
+impl<const N: usize> PartialEq<MotionType<N>> for ArmState<N> {
+    fn eq(&self, other: &MotionType<N>) -> bool {
+        if let (MotionType::Joint(joint_target), Some(joint_state)) = (other, self.joint) {
+            return joint_state == *joint_target;
+        }
+        if let (MotionType::JointVel(vel_target), Some(vel_state)) = (other, self.joint_vel) {
+            return vel_state == *vel_target;
+        }
+        if let (MotionType::CartesianEuler(pose_target), Some(pose_state)) =
+            (other, self.cartesian_euler)
+        {
+            return pose_state == *pose_target;
+        }
+        if let (MotionType::CartesianQuat(pose_target), Some(pose_state)) =
+            (other, self.cartesian_quat)
+        {
+            return pose_state == *pose_target;
+        }
+        if let (MotionType::CartesianHomo(pose_target), Some(pose_state)) =
+            (other, self.cartesian_homo)
+        {
+            return pose_state == *pose_target;
+        }
+        if let (MotionType::CartesianVel(vel_target), Some(vel_state)) = (other, self.cartesian_vel)
+        {
+            return vel_state == *vel_target;
+        }
+
+        false
+    }
+}
+
+impl<const N: usize> PartialEq<ControlType<N>> for ArmState<N> {
+    fn eq(&self, other: &ControlType<N>) -> bool {
+        if let (ControlType::Force(force_target), Some(force_state)) = (other, self.tau) {
+            return force_state == *force_target;
+        }
+
+        false
+    }
 }
