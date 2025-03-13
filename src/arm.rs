@@ -63,6 +63,7 @@ pub struct ArmRealtimeConfig {
     pub realtime_mode: bool,
 }
 
+#[derive(Debug, Clone)]
 pub struct ArmState<const N: usize> {
     pub joint: Option<[f64; N]>,
     pub joint_vel: Option<[f64; N]>,
@@ -101,6 +102,21 @@ pub trait ArmRealtimeBehaviorExt<const N: usize> {
     fn move_cartesian_homo_target(&mut self) -> Arc<Mutex<Option<[f64; 16]>>>;
     fn move_cartesian_vel_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
     fn control_tau_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
+}
+
+impl<const N: usize> Default for ArmState<N> {
+    fn default() -> Self {
+        ArmState {
+            joint: Some([0.; N]),
+            joint_vel: Some([0.; N]),
+            joint_acc: Some([0.; N]),
+            tau: Some([0.; N]),
+            cartesian_euler: Some([0.; 6]),
+            cartesian_quat: Some(na::Isometry3::default()),
+            cartesian_homo: Some([0.; 16]),
+            cartesian_vel: Some([0.; 6]),
+        }
+    }
 }
 
 impl<const N: usize> PartialEq<MotionType<N>> for ArmState<N> {
