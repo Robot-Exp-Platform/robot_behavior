@@ -17,33 +17,37 @@ pub trait ArmBehavior<const N: usize>: RobotBehavior {
 }
 
 pub trait ArmBehaviorExt<const N: usize>: ArmBehavior<N> {
-    fn move_joint(&mut self, joint: [f64; N], speed: f64) -> RobotResult<()> {
-        self.move_to(MotionType::Joint(joint), speed)
+    fn move_joint(&mut self, target: &[f64; N], speed: f64) -> RobotResult<()> {
+        self.move_to(MotionType::Joint(*target), speed)
     }
-    fn move_joint_async(&mut self, joint: [f64; N], speed: f64) -> RobotResult<()> {
-        self.move_to_async(MotionType::Joint(joint), speed)
+    fn move_joint_async(&mut self, target: &[f64; N], speed: f64) -> RobotResult<()> {
+        self.move_to_async(MotionType::Joint(*target), speed)
     }
-    fn move_joint_rel(&mut self, joint: [f64; N]) -> RobotResult<()> {
-        self.move_rel(MotionType::Joint(joint))
+    fn move_joint_rel(&mut self, target: &[f64; N]) -> RobotResult<()> {
+        self.move_rel(MotionType::Joint(*target))
     }
-    fn move_joint_rel_async(&mut self, joint: [f64; N]) -> RobotResult<()> {
-        self.move_rel_async(MotionType::Joint(joint))
+    fn move_joint_rel_async(&mut self, target: &[f64; N]) -> RobotResult<()> {
+        self.move_rel_async(MotionType::Joint(*target))
     }
-    fn move_linear_with_quat(&mut self, pose: na::Isometry3<f64>, speed: f64) -> RobotResult<()> {
-        self.move_to(MotionType::CartesianQuat(pose), speed)
+    fn move_linear_with_quat(
+        &mut self,
+        target: &na::Isometry3<f64>,
+        speed: f64,
+    ) -> RobotResult<()> {
+        self.move_to(MotionType::CartesianQuat(*target), speed)
     }
     fn move_linear_with_quat_async(
         &mut self,
-        pose: na::Isometry3<f64>,
+        target: &na::Isometry3<f64>,
         speed: f64,
     ) -> RobotResult<()> {
-        self.move_to_async(MotionType::CartesianQuat(pose), speed)
+        self.move_to_async(MotionType::CartesianQuat(*target), speed)
     }
-    fn move_linear_with_euler(&mut self, pose: [f64; 6], speed: f64) -> RobotResult<()> {
-        self.move_to(MotionType::CartesianEuler(pose), speed)
+    fn move_linear_with_euler(&mut self, target: &[f64; 6], speed: f64) -> RobotResult<()> {
+        self.move_to(MotionType::CartesianEuler(*target), speed)
     }
-    fn move_linear_with_euler_async(&mut self, pose: [f64; 6], speed: f64) -> RobotResult<()> {
-        self.move_to_async(MotionType::CartesianEuler(pose), speed)
+    fn move_linear_with_euler_async(&mut self, target: &[f64; 6], speed: f64) -> RobotResult<()> {
+        self.move_to_async(MotionType::CartesianEuler(*target), speed)
     }
 
     fn move_path_prepare(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
