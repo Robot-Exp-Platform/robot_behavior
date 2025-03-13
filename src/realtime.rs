@@ -35,21 +35,28 @@ pub fn is_hardware_realtime() -> bool {
 pub fn set_realtime_priority() -> RobotResult<()> {
     #[cfg(target_os = "windows")]
     {
-        use winapi::um::processthreadsapi::SetThreadPriority;
-        use winapi::um::winbase::THREAD_PRIORITY_TIME_CRITICAL;
-
-        let priority_level = THREAD_PRIORITY_TIME_CRITICAL as i32;
-
-        let result = unsafe {
-            SetThreadPriority(
-                winapi::um::processthreadsapi::GetCurrentThread(),
-                priority_level,
-            )
+        use winapi::um::{
+            processthreadsapi::{
+                GetCurrentProcess, GetCurrentThread, SetPriorityClass, SetThreadPriority,
+            },
+            winbase::{REALTIME_PRIORITY_CLASS, THREAD_PRIORITY_TIME_CRITICAL},
         };
 
-        if result == -1 {
-            let err = std::io::Error::last_os_error();
-            return Err(RobotException::RealtimeException(err.to_string()));
+        unsafe {
+            let process_handle = GetCurrentProcess();
+            if SetPriorityClass(process_handle, REALTIME_PRIORITY_CLASS) == 0 {
+                return Err(RobotException::RealtimeException(
+                    "unable to set realtime priority, try run as an adminstrator!".to_string(),
+                ));
+            }
+
+            // 设置当前线程优先级为最高
+            let thread_handle = GetCurrentThread();
+            if SetThreadPriority(thread_handle, THREAD_PRIORITY_TIME_CRITICAL as i32) == 0 {
+                return Err(RobotException::RealtimeException(
+                    "unable to set max thread priority".to_string(),
+                ));
+            }
         }
     }
     #[cfg(any(target_os = "linux", target_os = "macos"))]

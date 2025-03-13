@@ -5,6 +5,7 @@ mod params;
 mod realtime;
 mod robot;
 mod types;
+pub mod utils;
 
 pub use arm::*;
 pub use exception::*;

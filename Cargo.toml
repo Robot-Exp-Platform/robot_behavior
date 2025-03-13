@@ -19,4 +19,4 @@ nalgebra = { version = "0.33", features = ["serde-serialize"] }
 libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winapi = "0.3"
+winapi = { version = "0.3", features = ["processthreadsapi", "winbase"] }
