@@ -64,7 +64,7 @@ pub fn set_realtime_priority() -> RobotResult<()> {
         let max_priority = libc::sched_get_priority_max(libc::SCHED_FIFO);
         if max_priority == -1 {
             return Err(RobotException::RealtimeException(
-                "libfranka-rs: unable to get maximum possible thread priority".to_string(),
+                "unable to get maximum possible thread priority".to_string(),
             ));
         }
         let thread_param = libc::sched_param {
@@ -75,14 +75,14 @@ pub fn set_realtime_priority() -> RobotResult<()> {
         };
         if libc::pthread_setschedparam(libc::pthread_self(), libc::SCHED_FIFO, &thread_param) != 0 {
             return Err(RobotException::RealtimeException(
-                "libfranka-rs: unable to set realtime scheduling".to_string(),
+                "unable to set realtime scheduling".to_string(),
             ));
         }
         // The original libfranka does not use mlock. However, we use it to prevent our memory from
         // being swapped.
         if libc::mlockall(libc::MCL_CURRENT | libc::MCL_FUTURE) != 0 {
             return Err(RobotException::RealtimeException(
-                "libfranka-rs: unable to lock memory".to_string(),
+                "unable to lock memory".to_string(),
             ));
         }
     }

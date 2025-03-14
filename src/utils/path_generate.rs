@@ -82,8 +82,6 @@ pub fn joint_trapezoid<const N: usize>(
     let t1_max = 1. - (1. - 4. * k1 / t_max.powi(2)).sqrt();
     let t2_min = 2. - 2. * k2 / t_max;
 
-    println!("t1_max: {} | t2_min: {}", t1_max, t2_min);
-
     let (t_max, t2) = if t1_max <= t2_min {
         (t_max, t2_min / 2.)
     } else {
