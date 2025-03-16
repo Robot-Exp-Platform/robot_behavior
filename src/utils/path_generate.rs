@@ -235,6 +235,67 @@ fn s_curve(delta: f64, v_max: f64, a_max: f64, j_max: f64) -> (f64, Box<dyn Fn(D
     }
 }
 
+pub fn joint_simple_4th_curve<const N: usize>(
+    start: &[f64; N],
+    end: &[f64; N],
+    v_max: &[f64; N],
+    a_max: &[f64; N],
+) -> Box<dyn Fn(Duration) -> [f64; N]> {
+    let start = na::SVector::<f64, N>::from_column_slice(start);
+    let end = na::SVector::<f64, N>::from_column_slice(end);
+    let delta = end - start;
+
+    let mut t_path = Vec::with_capacity(N);
+    let mut f_path = Vec::with_capacity(N);
+    for i in 0..N {
+        let (t, f) = simple_4th_curve(delta[i].abs(), v_max[i], a_max[i]);
+        t_path.push(t);
+        f_path.push(f);
+    }
+
+    let t_max = t_path.iter().cloned().fold(0.0, f64::max);
+
+    let f = move |t: Duration| {
+        let t = t.as_secs_f64();
+        let t = t / t_max;
+        let mut result = start.clone();
+        for i in 0..N {
+            result[i] += delta[i].signum() * f_path[i](Duration::from_secs_f64(t * t_path[i]));
+        }
+        result.into()
+    };
+
+    Box::new(f)
+}
+
+fn simple_4th_curve(delta: f64, v_max: f64, a_max: f64) -> (f64, Box<dyn Fn(Duration) -> f64>) {
+    if delta < 1e-6 {
+        return (0., Box::new(|_| 0.));
+    }
+    let mut v_max = v_max;
+    if delta < 1.5 * v_max.powi(2) / a_max {
+        v_max = (2. / 3. * delta * a_max).sqrt();
+    }
+
+    let t1 = 1.5 * v_max / a_max;
+    let t_min =  t1 + delta / v_max;
+
+    let f = move |t: Duration| {
+        let t = t.as_secs_f64();
+        if t < t1 {
+            (t / t1).powi(3) * (t1 - 0.5 * t) * v_max
+        } else if t < t_min - t1 {
+            t1 * v_max / 2. + (t - t1) * v_max
+        } else if t < t_min {
+            delta - ((t_min - t) / t1).powi(3) * (t1 - 0.5 * (t_min - t)) * v_max
+        } else {
+            delta
+        }
+    };
+
+    (t_min, Box::new(f))
+}
+
 #[cfg(test)]
 mod test {
     use std::f64::consts::PI;
@@ -298,7 +359,7 @@ mod test {
         let end = [0., -PI / 4., 0., -3. * PI / 4., 0., PI / 2., PI / 4.];
         let v_max = [2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100];
         let a_max = [15., 7.5, 10., 12.5, 15., 20., 20.];
-        let j_max = [7500., 3750., 5000., 6250., 7500., 10000., 10000.];
+        let j_max = [100., 100., 100., 100., 100., 100., 100.];
         let f = joint_s_curve(&start, &end, &v_max, &a_max, &j_max);
         let f_dot = |t: Duration| {
             let dt: Duration = Duration::from_secs_f64(0.001);
@@ -342,7 +403,7 @@ mod test {
             .margin(5)
             .x_label_area_size(30)
             .y_label_area_size(30)
-            .build_cartesian_2d(0.0..1.0, -3.0..3.0)
+            .build_cartesian_2d(0.0..1.0, -5.0..5.0)
             .unwrap();
 
         chart.configure_mesh().draw().unwrap();
@@ -375,24 +436,30 @@ mod test {
                 let y = f_dddot(Duration::from_secs_f64(t));
                 data_dddot.push((t, y[j]));
             }
-            println!(
-                "max jeck: {:?}",
-                data_dddot.iter().map(|(_, y)| y.abs()).fold(0.0, f64::max)
-            );
 
-            // chart
-            //     .draw_series(plotters::prelude::LineSeries::new(
-            //         data,
-            //         &plotters::prelude::RED,
-            //     ))
-            //     .unwrap();
+            for i in 0..1000 {
+                println!(
+                    "time: {} | {}, {}, {}",
+                    i as f64 / 1000.,
+                    data[i].1,
+                    data_dot[i].1,
+                    data_ddot[i].1
+                );
+            }
 
             chart
                 .draw_series(plotters::prelude::LineSeries::new(
-                    data_dot,
-                    &plotters::prelude::GREEN,
+                    data,
+                    &plotters::prelude::RED,
                 ))
                 .unwrap();
+
+            // chart
+            //     .draw_series(plotters::prelude::LineSeries::new(
+            //         data_dot,
+            //         &plotters::prelude::GREEN,
+            //     ))
+            //     .unwrap();
 
             // chart
             //     .draw_series(plotters::prelude::LineSeries::new(
@@ -433,5 +500,107 @@ mod test {
         }
 
         chart.draw_series(LineSeries::new(data, &RED)).unwrap();
+    }
+
+    #[test]
+    fn test_joint_simple_4th_curve() {
+        let start = [-0.2, -0.77, -0.36, -2.42, 0.00, 2.57, 0.77];
+        let end = [0., -PI / 4., 0., -3. * PI / 4., 0., PI / 2., PI / 4.];
+        let v_max = [2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100];
+        let a_max = [15., 7.5, 10., 12.5, 15., 20., 20.];
+        let f = joint_simple_4th_curve(&start, &end, &v_max, &a_max);
+        let f_dot = |t: Duration| {
+            let dt: Duration = Duration::from_secs_f64(0.001);
+            let t_dot = t + dt;
+            let result = f(t_dot)
+                .iter()
+                .zip(f(t).iter())
+                .map(|(a, b)| (a - b) / dt.as_secs_f64())
+                .collect::<Vec<f64>>();
+            result
+        };
+        let f_ddot = |t: Duration| {
+            let dt = Duration::from_secs_f64(0.001);
+            let t_dot = t + dt;
+            let t_ddot = t_dot + dt;
+            let result = f_dot(t_ddot)
+                .iter()
+                .zip(f_dot(t_dot).iter())
+                .map(|(a, b)| (a - b) / dt.as_secs_f64())
+                .collect::<Vec<f64>>();
+            result
+        };
+
+        for i in 0..210 {
+            let t = Duration::from_secs_f64(i as f64 / 100.);
+            let result = f(t);
+            println!("time: {} | {:?}", i as f64 / 100., result);
+        }
+
+        let root = plotters::prelude::SVGBackend::new("plot.svg", (640, 480)).into_drawing_area();
+        root.fill(&plotters::prelude::WHITE).unwrap();
+
+        let mut chart = plotters::prelude::ChartBuilder::on(&root)
+            .caption("Simple 4th Curve", ("sans-serif", 50).into_font())
+            .margin(5)
+            .x_label_area_size(30)
+            .y_label_area_size(30)
+            .build_cartesian_2d(0.0..1.0, -10.0..10.0)
+            .unwrap();
+
+        chart.configure_mesh().draw().unwrap();
+
+        for j in 0..7 {
+            let mut data = Vec::new();
+            for i in 0..2000 {
+                let t = i as f64 / 1000.0;
+                let y = f(Duration::from_secs_f64(t));
+                data.push((t, y[j]));
+            }
+
+            let mut data_dot = Vec::new();
+            for i in 0..2000 {
+                let t = i as f64 / 1000.0;
+                let y = f_dot(Duration::from_secs_f64(t));
+                data_dot.push((t, y[j]));
+            }
+
+            let mut data_ddot = Vec::new();
+            for i in 0..2000 {
+                let t = i as f64 / 1000.0;
+                let y = f_ddot(Duration::from_secs_f64(t));
+                data_ddot.push((t, y[j]));
+            }
+
+            // for i in 0..1000 {
+            //     println!(
+            //         "time: {} | {}, {}",
+            //         i as f64 / 1000.,
+            //         data[i].1,
+            //         data_dot[i].1
+            //     );
+            // }
+
+            // chart
+            //     .draw_series(plotters::prelude::LineSeries::new(
+            //         data,
+            //         &plotters::prelude::RED,
+            //     ))
+            //     .unwrap();
+
+            // chart
+            //     .draw_series(plotters::prelude::LineSeries::new(
+            //         data_dot,
+            //         &plotters::prelude::GREEN,
+            //     ))
+            //     .unwrap();
+
+            chart
+                .draw_series(plotters::prelude::LineSeries::new(
+                    data_ddot,
+                    &plotters::prelude::BLUE,
+                ))
+                .unwrap();
+        }
     }
 }
