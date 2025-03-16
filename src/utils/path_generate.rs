@@ -117,8 +117,8 @@ pub fn joint_s_curve<const N: usize>(
     start: &[f64; N],
     end: &[f64; N],
     v_max: &[f64; N],
-    a_max: &[f64; N], // 最大加速度（加速阶段）
-    j_max: &[f64; N], // 最大减速度（减速阶段）
+    a_max: &[f64; N],
+    j_max: &[f64; N],
 ) -> Box<dyn Fn(Duration) -> [f64; N]> {
     let start = na::SVector::<f64, N>::from_column_slice(start);
     let end = na::SVector::<f64, N>::from_column_slice(end);
@@ -127,7 +127,7 @@ pub fn joint_s_curve<const N: usize>(
     let mut t_path = Vec::with_capacity(N);
     let mut f_path = Vec::with_capacity(N);
     for i in 0..N {
-        let (t, f) = s_curve(delta[i], v_max[i], a_max[i], j_max[i]);
+        let (t, f) = s_curve(delta[i].abs(), v_max[i], a_max[i], j_max[i]);
         t_path.push(t);
         f_path.push(f);
     }
@@ -135,11 +135,11 @@ pub fn joint_s_curve<const N: usize>(
     let t_max = t_path.iter().cloned().fold(0.0, f64::max);
 
     let f = move |t: Duration| {
-        let t = t.as_secs_f64().min(t_max);
+        let t = t.as_secs_f64();
         let t = t / t_max;
         let mut result = start.clone();
         for i in 0..N {
-            result[i] = f_path[i](Duration::from_secs_f64(t * t_path[i]));
+            result[i] += delta[i].signum() * f_path[i](Duration::from_secs_f64(t * t_path[i]));
         }
         result.into()
     };
@@ -149,7 +149,7 @@ pub fn joint_s_curve<const N: usize>(
 
 fn s_curve(delta: f64, v_max: f64, a_max: f64, j_max: f64) -> (f64, Box<dyn Fn(Duration) -> f64>) {
     let d2 = 2. * a_max.powi(3) / j_max.powi(2);
-    let d1 = v_max * (a_max / j_max + v_max / j_max);
+    let d1 = v_max * (a_max / j_max + v_max / a_max);
 
     let path_1 = move |t: f64| j_max * t.powi(3) / 6.;
     let path_2 = move |t: f64, v_s: f64, a: f64| a * t.powi(2) / 2. + v_s * t;
@@ -237,6 +237,8 @@ fn s_curve(delta: f64, v_max: f64, a_max: f64, j_max: f64) -> (f64, Box<dyn Fn(D
 
 #[cfg(test)]
 mod test {
+    use std::f64::consts::PI;
+
     use super::*;
 
     #[test]
@@ -259,7 +261,12 @@ mod test {
             na::UnitQuaternion::from_euler_angles(0.1, 0.2, 0.3),
         );
         let v_max = 1.0;
-        let f = cartesian_quat_linear(start, end, v_max);
+        let f: Box<
+            dyn Fn(
+                Duration,
+            )
+                -> nalgebra::Isometry<f64, nalgebra::Unit<nalgebra::Quaternion<f64>>, 3>,
+        > = cartesian_quat_linear(start, end, v_max);
 
         for i in 0..210 {
             let t = Duration::from_secs_f64(i as f64 / 100.);
@@ -283,30 +290,125 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_joint_s_curve() {
-        let start = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let end = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
-        let v_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
-        let a_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
-        let j_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
-        let f = joint_s_curve(&start, &end, &v_max, &a_max, &j_max);
-
-        for i in 0..210 {
-            let t = Duration::from_secs_f64(i as f64 / 100.);
-            let result = f(t);
-            println!("time: {} | {:?}", i as f64 / 100., result);
-        }
-    }
-
     use plotters::prelude::*;
 
     #[test]
+    fn test_joint_s_curve() {
+        let start = [-0.2, -0.77, -0.36, -2.42, 0.00, 2.57, 0.77];
+        let end = [0., -PI / 4., 0., -3. * PI / 4., 0., PI / 2., PI / 4.];
+        let v_max = [2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100];
+        let a_max = [15., 7.5, 10., 12.5, 15., 20., 20.];
+        let j_max = [7500., 3750., 5000., 6250., 7500., 10000., 10000.];
+        let f = joint_s_curve(&start, &end, &v_max, &a_max, &j_max);
+        let f_dot = |t: Duration| {
+            let dt: Duration = Duration::from_secs_f64(0.001);
+            let t_dot = t + dt;
+            let result = f(t_dot)
+                .iter()
+                .zip(f(t).iter())
+                .map(|(a, b)| (a - b) / dt.as_secs_f64())
+                .collect::<Vec<f64>>();
+            result
+        };
+        let f_ddot = |t: Duration| {
+            let dt = Duration::from_secs_f64(0.001);
+            let t_dot = t + dt;
+            let t_ddot = t_dot + dt;
+            let result = f_dot(t_ddot)
+                .iter()
+                .zip(f_dot(t_dot).iter())
+                .map(|(a, b)| (a - b) / dt.as_secs_f64())
+                .collect::<Vec<f64>>();
+            result
+        };
+        let f_dddot = |t: Duration| {
+            let dt = Duration::from_secs_f64(0.001);
+            let t_dot = t + dt;
+            let t_ddot = t_dot + dt;
+            let t_dddot = t_ddot + dt;
+            let result = f_ddot(t_dddot)
+                .iter()
+                .zip(f_ddot(t_ddot).iter())
+                .map(|(a, b)| (a - b) / dt.as_secs_f64())
+                .collect::<Vec<f64>>();
+            result
+        };
+
+        let root = plotters::prelude::SVGBackend::new("plot.svg", (640, 480)).into_drawing_area();
+        root.fill(&plotters::prelude::WHITE).unwrap();
+
+        let mut chart = plotters::prelude::ChartBuilder::on(&root)
+            .caption("S-Curve", ("sans-serif", 50).into_font())
+            .margin(5)
+            .x_label_area_size(30)
+            .y_label_area_size(30)
+            .build_cartesian_2d(0.0..1.0, -3.0..3.0)
+            .unwrap();
+
+        chart.configure_mesh().draw().unwrap();
+
+        for j in 0..7 {
+            let mut data = Vec::new();
+            for i in 0..1000 {
+                let t = i as f64 / 1000.0;
+                let y = f(Duration::from_secs_f64(t));
+                data.push((t, y[j]));
+            }
+
+            let mut data_dot = Vec::new();
+            for i in 0..1000 {
+                let t = i as f64 / 1000.0;
+                let y = f_dot(Duration::from_secs_f64(t));
+                data_dot.push((t, y[j]));
+            }
+
+            let mut data_ddot = Vec::new();
+            for i in 0..1000 {
+                let t = i as f64 / 1000.0;
+                let y = f_ddot(Duration::from_secs_f64(t));
+                data_ddot.push((t, y[j]));
+            }
+
+            let mut data_dddot = Vec::new();
+            for i in 0..1000 {
+                let t = i as f64 / 1000.0;
+                let y = f_dddot(Duration::from_secs_f64(t));
+                data_dddot.push((t, y[j]));
+            }
+            println!(
+                "max jeck: {:?}",
+                data_dddot.iter().map(|(_, y)| y.abs()).fold(0.0, f64::max)
+            );
+
+            // chart
+            //     .draw_series(plotters::prelude::LineSeries::new(
+            //         data,
+            //         &plotters::prelude::RED,
+            //     ))
+            //     .unwrap();
+
+            chart
+                .draw_series(plotters::prelude::LineSeries::new(
+                    data_dot,
+                    &plotters::prelude::GREEN,
+                ))
+                .unwrap();
+
+            // chart
+            //     .draw_series(plotters::prelude::LineSeries::new(
+            //         data_ddot,
+            //         &plotters::prelude::BLUE,
+            //     ))
+            //     .unwrap();
+        }
+    }
+
+    #[test]
     fn test_s_curve() {
-        let delta = 2.0;
-        let v_max = 1.0;
-        let a_max = 1.0;
-        let j_max = 1.0;
+        let delta = 2.57 - PI / 2.;
+        let v_max = 2.6100;
+        let a_max = 20.;
+        let j_max = 10000.;
         let (t, f) = s_curve(delta, v_max, a_max, j_max);
         println!("t: {}", t);
 
@@ -318,7 +420,7 @@ mod test {
             .margin(5)
             .x_label_area_size(30)
             .y_label_area_size(30)
-            .build_cartesian_2d(0.0..10.0, 0.0..5.2)
+            .build_cartesian_2d(0.0..1.0, 0.0..2.)
             .unwrap();
 
         chart.configure_mesh().draw().unwrap();
