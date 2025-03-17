@@ -257,7 +257,7 @@ pub fn joint_simple_4th_curve<const N: usize>(
 
     let f = move |t: Duration| {
         let t = t.as_secs_f64();
-        let t = t / t_max;
+        let t = if t_max > 0.0 { t / t_max } else { 0.0 };
         let mut result = start.clone();
         for i in 0..N {
             result[i] += delta[i].signum() * f_path[i](Duration::from_secs_f64(t * t_path[i]));
@@ -278,7 +278,7 @@ fn simple_4th_curve(delta: f64, v_max: f64, a_max: f64) -> (f64, Box<dyn Fn(Dura
     }
 
     let t1 = 1.5 * v_max / a_max;
-    let t_min =  t1 + delta / v_max;
+    let t_min = t1 + delta / v_max;
 
     let f = move |t: Duration| {
         let t = t.as_secs_f64();
