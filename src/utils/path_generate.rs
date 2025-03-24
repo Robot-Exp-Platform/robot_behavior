@@ -1,12 +1,12 @@
 use nalgebra as na;
-use std::{time::Duration, usize};
+use std::{sync::Arc, time::Duration, usize};
 
 /// Generate a linear path for joint space
 pub fn joint_linear<const N: usize>(
     start: &[f64; N],
     end: &[f64; N],
     v_max: &[f64; N],
-) -> Box<dyn Fn(Duration) -> [f64; N]> {
+) -> Arc<dyn Fn(Duration) -> [f64; N] + Send + Sync> {
     let start = na::SVector::<f64, N>::from_row_slice(start);
     let end = na::SVector::<f64, N>::from_row_slice(end);
     let v_max = na::SVector::<f64, N>::from_row_slice(v_max);
@@ -24,7 +24,7 @@ pub fn joint_linear<const N: usize>(
         if t >= 1. { end } else { start + delta * t }.into()
     };
 
-    Box::new(f)
+    Arc::new(f)
 }
 
 /// Generate a linear path for cartesian space
@@ -32,7 +32,7 @@ pub fn cartesian_quat_linear(
     start: na::Isometry3<f64>,
     end: na::Isometry3<f64>,
     v_max: f64,
-) -> Box<dyn Fn(Duration) -> na::Isometry3<f64>> {
+) -> Arc<dyn Fn(Duration) -> na::Isometry3<f64> + Send + Sync> {
     let start_trans = start.translation.vector;
     let end_trans = end.translation.vector;
     let delta = end_trans - start_trans;
@@ -49,7 +49,7 @@ pub fn cartesian_quat_linear(
         .into()
     };
 
-    Box::new(f)
+    Arc::new(f)
 }
 
 pub fn joint_trapezoid<const N: usize>(
@@ -57,7 +57,7 @@ pub fn joint_trapezoid<const N: usize>(
     end: &[f64; N],
     v_max: &[f64; N],
     a_max: &[f64; N],
-) -> Box<dyn Fn(Duration) -> [f64; N]> {
+) -> Arc<dyn Fn(Duration) -> [f64; N] + Send + Sync> {
     let start = na::SVector::<f64, N>::from_column_slice(start);
     let end = na::SVector::<f64, N>::from_column_slice(end);
     let delta = end - start;
@@ -101,7 +101,7 @@ pub fn joint_trapezoid<const N: usize>(
         .into()
     };
 
-    Box::new(f)
+    Arc::new(f)
 }
 
 fn trapezoid_min_time(para: ((&f64, &f64), &f64)) -> f64 {
@@ -119,7 +119,7 @@ pub fn joint_s_curve<const N: usize>(
     v_max: &[f64; N],
     a_max: &[f64; N],
     j_max: &[f64; N],
-) -> Box<dyn Fn(Duration) -> [f64; N]> {
+) -> Arc<dyn Fn(Duration) -> [f64; N] + Send + Sync> {
     let start = na::SVector::<f64, N>::from_column_slice(start);
     let end = na::SVector::<f64, N>::from_column_slice(end);
     let delta = end - start;
@@ -144,10 +144,15 @@ pub fn joint_s_curve<const N: usize>(
         result.into()
     };
 
-    Box::new(f)
+    Arc::new(f)
 }
 
-fn s_curve(delta: f64, v_max: f64, a_max: f64, j_max: f64) -> (f64, Box<dyn Fn(Duration) -> f64>) {
+fn s_curve(
+    delta: f64,
+    v_max: f64,
+    a_max: f64,
+    j_max: f64,
+) -> (f64, Arc<dyn Fn(Duration) -> f64 + Send + Sync>) {
     let d2 = 2. * a_max.powi(3) / j_max.powi(2);
     let d1 = v_max * (a_max / j_max + v_max / a_max);
 
@@ -163,7 +168,7 @@ fn s_curve(delta: f64, v_max: f64, a_max: f64, j_max: f64) -> (f64, Box<dyn Fn(D
         let t1 = t_min / 4.;
         (
             t_min,
-            Box::new(move |t: Duration| {
+            Arc::new(move |t: Duration| {
                 let t = t.as_secs_f64();
                 if t < t1 {
                     path_1(t)
@@ -183,7 +188,7 @@ fn s_curve(delta: f64, v_max: f64, a_max: f64, j_max: f64) -> (f64, Box<dyn Fn(D
         let t34 = (delta - d1) / v_max;
         (
             t_min,
-            Box::new(move |t: Duration| {
+            Arc::new(move |t: Duration| {
                 let t = t.as_secs_f64();
                 if t < t1 {
                     path_1(t)
@@ -213,7 +218,7 @@ fn s_curve(delta: f64, v_max: f64, a_max: f64, j_max: f64) -> (f64, Box<dyn Fn(D
         let t2 = t_min / 2. - a_max / j_max;
         (
             t_min,
-            Box::new(move |t: Duration| {
+            Arc::new(move |t: Duration| {
                 let t = t.as_secs_f64();
                 if t < t1 {
                     path_1(t)
@@ -240,7 +245,7 @@ pub fn joint_simple_4th_curve<const N: usize>(
     end: &[f64; N],
     v_max: &[f64; N],
     a_max: &[f64; N],
-) -> Box<dyn Fn(Duration) -> [f64; N]> {
+) -> Arc<dyn Fn(Duration) -> [f64; N] + Send + Sync> {
     let start = na::SVector::<f64, N>::from_column_slice(start);
     let end = na::SVector::<f64, N>::from_column_slice(end);
     let delta = end - start;
@@ -265,12 +270,16 @@ pub fn joint_simple_4th_curve<const N: usize>(
         result.into()
     };
 
-    Box::new(f)
+    Arc::new(f)
 }
 
-fn simple_4th_curve(delta: f64, v_max: f64, a_max: f64) -> (f64, Box<dyn Fn(Duration) -> f64>) {
+fn simple_4th_curve(
+    delta: f64,
+    v_max: f64,
+    a_max: f64,
+) -> (f64, Arc<dyn Fn(Duration) -> f64 + Send + Sync>) {
     if delta < 1e-6 {
-        return (0., Box::new(|_| 0.));
+        return (0., Arc::new(|_| 0.));
     }
     let mut v_max = v_max;
     if delta < 1.5 * v_max.powi(2) / a_max {
@@ -293,7 +302,7 @@ fn simple_4th_curve(delta: f64, v_max: f64, a_max: f64) -> (f64, Box<dyn Fn(Dura
         }
     };
 
-    (t_min, Box::new(f))
+    (t_min, Arc::new(f))
 }
 
 #[cfg(test)]
@@ -322,7 +331,7 @@ mod test {
             na::UnitQuaternion::from_euler_angles(0.1, 0.2, 0.3),
         );
         let v_max = 1.0;
-        let f: Box<
+        let f: Arc<
             dyn Fn(
                 Duration,
             )
