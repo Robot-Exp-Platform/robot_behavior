@@ -2,6 +2,14 @@ use nalgebra as na;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+#[derive(Debug, Clone)]
+pub enum Pose {
+    Euler([f64; 6]),
+    Quat(na::Isometry3<f64>),
+    Homo([f64; 16]),
+    Position([f64; 3]),
+}
+
 pub enum ControlType<const N: usize> {
     Zero,
     Force([f64; N]),
@@ -18,4 +26,10 @@ pub enum MotionType<const N: usize> {
     CartesianVel([f64; 6]),
     Position([f64; 3]),
     PositionVel([f64; 3]),
+}
+
+impl Default for Pose {
+    fn default() -> Self {
+        Pose::Quat(na::Isometry3::default())
+    }
 }

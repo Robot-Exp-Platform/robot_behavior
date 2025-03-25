@@ -4,7 +4,7 @@ use std::io::BufReader;
 use std::sync::{Arc, Mutex};
 use std::{fs::File, time::Duration};
 
-use crate::{ControlType, MotionType, RobotBehavior, RobotResult};
+use crate::{ControlType, LoadState, MotionType, Pose, RobotBehavior, RobotResult};
 
 pub trait ArmBehavior<const N: usize>: RobotBehavior {
     fn move_to(&mut self, target: MotionType<N>, speed: f64) -> RobotResult<()>;
@@ -73,10 +73,11 @@ pub struct ArmState<const N: usize> {
     pub joint_vel: Option<[f64; N]>,
     pub joint_acc: Option<[f64; N]>,
     pub tau: Option<[f64; N]>,
-    pub cartesian_euler: Option<[f64; 6]>,
-    pub cartesian_quat: Option<na::Isometry3<f64>>,
-    pub cartesian_homo: Option<[f64; 16]>,
+    pub pose_o_to_ee: Option<Pose>,
+    pub pose_f_to_ee: Option<Pose>,
+    pub pose_ee_to_k: Option<Pose>,
     pub cartesian_vel: Option<[f64; 6]>,
+    pub load: Option<LoadState>,
 }
 
 pub trait ArmRealtimeHandle<const N: usize> {
@@ -115,10 +116,15 @@ impl<const N: usize> Default for ArmState<N> {
             joint_vel: Some([0.; N]),
             joint_acc: Some([0.; N]),
             tau: Some([0.; N]),
-            cartesian_euler: Some([0.; 6]),
-            cartesian_quat: Some(na::Isometry3::default()),
-            cartesian_homo: Some([0.; 16]),
+            pose_o_to_ee: Some(Pose::default()),
+            pose_f_to_ee: Some(Pose::default()),
+            pose_ee_to_k: Some(Pose::default()),
             cartesian_vel: Some([0.; 6]),
+            load: Some(LoadState {
+                m: 0.,
+                x: [0.; 3],
+                i: [0.; 9],
+            }),
         }
     }
 }
@@ -131,20 +137,20 @@ impl<const N: usize> PartialEq<MotionType<N>> for ArmState<N> {
         if let (MotionType::JointVel(vel_target), Some(vel_state)) = (other, self.joint_vel) {
             return vel_state == *vel_target;
         }
-        if let (MotionType::CartesianEuler(pose_target), Some(pose_state)) =
-            (other, self.cartesian_euler)
+        if let (MotionType::CartesianEuler(pose_target), Some(Pose::Euler(pose_state))) =
+            (other, self.pose_o_to_ee.as_ref())
         {
-            return pose_state == *pose_target;
+            return pose_state == pose_target;
         }
-        if let (MotionType::CartesianQuat(pose_target), Some(pose_state)) =
-            (other, self.cartesian_quat)
+        if let (MotionType::CartesianQuat(pose_target), Some(Pose::Quat(pose_state))) =
+            (other, self.pose_o_to_ee.as_ref())
         {
-            return pose_state == *pose_target;
+            return pose_state == pose_target;
         }
-        if let (MotionType::CartesianHomo(pose_target), Some(pose_state)) =
-            (other, self.cartesian_homo)
+        if let (MotionType::CartesianHomo(pose_target), Some(Pose::Homo(pose_state))) =
+            (other, self.pose_o_to_ee.as_ref())
         {
-            return pose_state == *pose_target;
+            return pose_state == pose_target;
         }
         if let (MotionType::CartesianVel(vel_target), Some(vel_state)) = (other, self.cartesian_vel)
         {
