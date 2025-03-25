@@ -49,7 +49,12 @@ pub trait ArmBehaviorExt<const N: usize>: ArmBehavior<N> {
     fn move_linear_with_euler_async(&mut self, target: &[f64; 6], speed: f64) -> RobotResult<()> {
         self.move_to_async(MotionType::CartesianEuler(*target), speed)
     }
-
+    fn move_linear_with_homo(&mut self, target: &[f64; 16], speed: f64) -> RobotResult<()> {
+        self.move_to(MotionType::CartesianHomo(*target), speed)
+    }
+    fn move_linear_with_homo_async(&mut self, target: &[f64; 16], speed: f64) -> RobotResult<()> {
+        self.move_to_async(MotionType::CartesianHomo(*target), speed)
+    }
     fn move_path_prepare(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
     fn move_path_start(&mut self) -> RobotResult<()>;
     fn move_path_prepare_from_file(&mut self, path: &str) -> RobotResult<()>;

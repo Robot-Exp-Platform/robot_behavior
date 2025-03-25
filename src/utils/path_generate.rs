@@ -273,6 +273,25 @@ pub fn joint_simple_4th_curve<const N: usize>(
     Arc::new(f)
 }
 
+pub fn cartesian_quat_simple_4th_curve(
+    start: na::Isometry3<f64>,
+    end: na::Isometry3<f64>,
+    v_max: f64,
+    a_max: f64,
+) -> Arc<dyn Fn(Duration) -> na::Isometry3<f64> + Send + Sync> {
+    let delta = (end.translation.vector - start.translation.vector).norm();
+    let (t_min, f) = simple_4th_curve(1., v_max / delta, a_max / delta);
+    let f = move |t: Duration| {
+        let t = if t_min > 0.0 { f(t) } else { 0.0 };
+        if t >= 1. {
+            end
+        } else {
+            start.lerp_slerp(&end, t)
+        }
+    };
+    Arc::new(f)
+}
+
 fn simple_4th_curve(
     delta: f64,
     v_max: f64,
