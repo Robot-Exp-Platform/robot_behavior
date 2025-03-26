@@ -1,5 +1,6 @@
 use nalgebra as na;
 use serde_json::from_reader;
+use std::fmt::Display;
 use std::io::BufReader;
 use std::sync::{Arc, Mutex};
 use std::{fs::File, time::Duration};
@@ -173,5 +174,20 @@ impl<const N: usize> PartialEq<ControlType<N>> for ArmState<N> {
         }
 
         false
+    }
+}
+
+impl<const N: usize> Display for ArmState<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            r#"arm_state:
+    | q: {:?},
+    | dq: {:?},
+    | ddq: {:?},
+    | tau: {:?},
+    | pose_o_to_ee: {:?},"#,
+            self.joint, self.joint_vel, self.joint_acc, self.tau, self.pose_o_to_ee
+        )
     }
 }
