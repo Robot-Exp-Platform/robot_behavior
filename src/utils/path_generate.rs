@@ -324,6 +324,7 @@ fn simple_4th_curve(
     (t_min, Arc::new(f))
 }
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 #[cfg(test)]
 mod test {
     use std::f64::consts::PI;
