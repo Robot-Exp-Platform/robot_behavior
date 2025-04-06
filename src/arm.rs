@@ -58,7 +58,12 @@ pub trait ArmBehaviorExt<const N: usize>: ArmBehavior<N> {
     }
     fn move_path_prepare(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
     fn move_path_start(&mut self) -> RobotResult<()>;
-    fn move_path_prepare_from_file(&mut self, path: &str) -> RobotResult<()>;
+    fn move_path_prepare_from_file(&mut self, path: &str) -> RobotResult<()> {
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+        let path: Vec<MotionType<N>> = from_reader(reader).unwrap();
+        self.move_path_prepare(path)
+    }
     fn move_path_from_file(&mut self, path: &str, speed: f64) -> RobotResult<()> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
