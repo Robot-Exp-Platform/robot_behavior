@@ -29,7 +29,7 @@ pub struct ArmState<const N: usize> {
 pub trait ArmBehavior<const N: usize>: RobotBehavior {
     type State;
     fn read_state(&mut self) -> RobotResult<Self::State>;
-    fn state(&self) -> RobotResult<ArmState<N>>;
+    fn state(&mut self) -> RobotResult<ArmState<N>>;
     fn set_load(&mut self, load: LoadState) -> RobotResult<()>;
 }
 
