@@ -56,14 +56,14 @@ impl<const N: usize> Into<MotionType<N>> for (CMotionType, [f64; N]) {
 #[repr(C)]
 pub enum CControlType {
     Zero,
-    Force,
+    Torque,
 }
 
 impl<const N: usize> Into<ControlType<N>> for (CControlType, [f64; N]) {
     fn into(self) -> ControlType<N> {
         match self.0 {
             CControlType::Zero => ControlType::Zero,
-            CControlType::Force => ControlType::Force(self.1),
+            CControlType::Torque => ControlType::Torque(self.1),
         }
     }
 }

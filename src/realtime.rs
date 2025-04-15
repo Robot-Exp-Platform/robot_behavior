@@ -59,7 +59,7 @@ pub fn set_realtime_priority() -> RobotResult<()> {
             }
         }
     }
-    #[cfg(any(target_os = "linux"))]
+    #[cfg(target_os = "linux")]
     unsafe {
         let max_priority = libc::sched_get_priority_max(libc::SCHED_FIFO);
         if max_priority == -1 {

@@ -1,5 +1,6 @@
 mod arm;
 mod exception;
+#[cfg(feature = "ffi")]
 pub mod ffi;
 mod load;
 mod params;

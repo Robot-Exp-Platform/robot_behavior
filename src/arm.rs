@@ -7,17 +7,42 @@ use std::{fs::File, time::Duration};
 
 use crate::{ControlType, LoadState, MotionType, Pose, RobotBehavior, RobotResult};
 
+pub struct ArmRealtimeConfig {
+    pub period: f64,
+    pub timeout: f64,
+    pub realtime_mode: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArmState<const N: usize> {
+    pub joint: Option<[f64; N]>,
+    pub joint_vel: Option<[f64; N]>,
+    pub joint_acc: Option<[f64; N]>,
+    pub tau: Option<[f64; N]>,
+    pub pose_o_to_ee: Option<Pose>,
+    pub pose_f_to_ee: Option<Pose>,
+    pub pose_ee_to_k: Option<Pose>,
+    pub cartesian_vel: Option<[f64; 6]>,
+    pub load: Option<LoadState>,
+}
+
 pub trait ArmBehavior<const N: usize>: RobotBehavior {
+    type State;
+    fn read_state(&mut self) -> RobotResult<Self::State>;
+    fn state(&self) -> RobotResult<ArmState<N>>;
+    fn set_load(&mut self, load: LoadState) -> RobotResult<()>;
+}
+
+pub trait ArmPreplannedMotion<const N: usize>: ArmBehavior<N> {
     fn move_to(&mut self, target: MotionType<N>, speed: f64) -> RobotResult<()>;
     fn move_to_async(&mut self, target: MotionType<N>, speed: f64) -> RobotResult<()>;
     fn move_rel(&mut self, rel: MotionType<N>) -> RobotResult<()>;
     fn move_rel_async(&mut self, rel: MotionType<N>) -> RobotResult<()>;
     fn move_path(&mut self, path: Vec<MotionType<N>>, speed: f64) -> RobotResult<()>;
     fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
-    fn read_state(&mut self) -> RobotResult<ArmState<N>>;
 }
 
-pub trait ArmBehaviorExt<const N: usize>: ArmBehavior<N> {
+pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
     fn move_joint(&mut self, target: &[f64; N], speed: f64) -> RobotResult<()> {
         self.move_to(MotionType::Joint(*target), speed)
     }
@@ -56,7 +81,7 @@ pub trait ArmBehaviorExt<const N: usize>: ArmBehavior<N> {
     fn move_linear_with_homo_async(&mut self, target: &[f64; 16], speed: f64) -> RobotResult<()> {
         self.move_to_async(MotionType::CartesianHomo(*target), speed)
     }
-    fn move_path_prepare(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
+    fn move_path_prepare(&mut self, _path: Vec<MotionType<N>>) -> RobotResult<()>;
     fn move_path_start(&mut self) -> RobotResult<()>;
     fn move_path_prepare_from_file(&mut self, path: &str) -> RobotResult<()> {
         let file = File::open(path)?;
@@ -72,44 +97,24 @@ pub trait ArmBehaviorExt<const N: usize>: ArmBehavior<N> {
     }
 }
 
-pub struct ArmRealtimeConfig {
-    pub period: f64,
-    pub timeout: f64,
-    pub realtime_mode: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct ArmState<const N: usize> {
-    pub joint: Option<[f64; N]>,
-    pub joint_vel: Option<[f64; N]>,
-    pub joint_acc: Option<[f64; N]>,
-    pub tau: Option<[f64; N]>,
-    pub pose_o_to_ee: Option<Pose>,
-    pub pose_f_to_ee: Option<Pose>,
-    pub pose_ee_to_k: Option<Pose>,
-    pub cartesian_vel: Option<[f64; 6]>,
-    pub load: Option<LoadState>,
-}
-
-pub trait ArmRealtimeHandle<const N: usize> {
+pub trait ArmStreamingHandle<const N: usize> {
+    fn last_motion(&self) -> RobotResult<MotionType<N>>;
     fn move_to(&mut self, target: MotionType<N>) -> RobotResult<()>;
+
+    fn last_control(&self) -> RobotResult<ControlType<N>>;
     fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
 }
 
-pub trait ArmRealtimeBehavior<const N: usize>: ArmBehavior<N> {
-    fn move_with_closure<FM: Fn(ArmState<N>, Duration) -> MotionType<N> + Send + 'static>(
-        &mut self,
-        closure: FM,
-    ) -> RobotResult<()>;
-    fn control_with_closure<FC: Fn(ArmState<N>, Duration) -> ControlType<N> + Send + 'static>(
-        &mut self,
-        closure: FC,
-    ) -> RobotResult<()>;
+pub trait ArmStreamingMotion<const N: usize>: ArmBehavior<N> {
+    type Handle: ArmStreamingHandle<N>;
+    fn start_streaming(&mut self) -> RobotResult<Self::Handle>;
+    fn end_streaming(&mut self) -> RobotResult<()>;
+
     fn move_to_target(&mut self) -> Arc<Mutex<Option<MotionType<N>>>>;
     fn control_to_target(&mut self) -> Arc<Mutex<Option<ControlType<N>>>>;
 }
 
-pub trait ArmRealtimeBehaviorExt<const N: usize> {
+pub trait ArmStreamingMotionExt<const N: usize>: ArmStreamingMotion<N> {
     fn move_joint_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
     fn move_joint_vel_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
     fn move_joint_acc_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
@@ -118,6 +123,60 @@ pub trait ArmRealtimeBehaviorExt<const N: usize> {
     fn move_cartesian_homo_target(&mut self) -> Arc<Mutex<Option<[f64; 16]>>>;
     fn move_cartesian_vel_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
     fn control_tau_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
+}
+
+pub trait ArmRealtimeControl<const N: usize>: ArmBehavior<N> {
+    fn move_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    where
+        FM: Fn(ArmState<N>, Duration) -> MotionType<N> + Send + 'static;
+    fn control_with_closure<FC>(&mut self, closure: FC) -> RobotResult<()>
+    where
+        FC: Fn(ArmState<N>, Duration) -> ControlType<N> + Send + 'static;
+}
+
+pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
+    fn move_joint_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    where
+        FM: Fn(ArmState<N>, Duration) -> [f64; N] + Send + Sync + 'static,
+    {
+        self.move_with_closure(move |state, duration| MotionType::Joint(closure(state, duration)))
+    }
+
+    fn move_joint_vel_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    where
+        FM: Fn(ArmState<N>, Duration) -> [f64; N] + Send + Sync + 'static,
+    {
+        self.move_with_closure(move |state, duration| {
+            MotionType::JointVel(closure(state, duration))
+        })
+    }
+
+    fn move_cartesian_euler_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    where
+        FM: Fn(ArmState<N>, Duration) -> [f64; 6] + Send + Sync + 'static,
+    {
+        self.move_with_closure(move |state, duration| {
+            MotionType::CartesianEuler(closure(state, duration))
+        })
+    }
+
+    fn move_cartesian_quat_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    where
+        FM: Fn(ArmState<N>, Duration) -> na::Isometry3<f64> + Send + Sync + 'static,
+    {
+        self.move_with_closure(move |state, duration| {
+            MotionType::CartesianQuat(closure(state, duration))
+        })
+    }
+
+    fn move_cartesian_homo_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    where
+        FM: Fn(ArmState<N>, Duration) -> [f64; 16] + Send + Sync + 'static,
+    {
+        self.move_with_closure(move |state, duration| {
+            MotionType::CartesianHomo(closure(state, duration))
+        })
+    }
 }
 
 impl<const N: usize> Default for ArmState<N> {
@@ -174,10 +233,9 @@ impl<const N: usize> PartialEq<MotionType<N>> for ArmState<N> {
 
 impl<const N: usize> PartialEq<ControlType<N>> for ArmState<N> {
     fn eq(&self, other: &ControlType<N>) -> bool {
-        if let (ControlType::Force(force_target), Some(force_state)) = (other, self.tau) {
-            return force_state == *force_target;
+        if let (ControlType::Torque(torque_target), Some(force_state)) = (other, self.tau) {
+            return force_state == *torque_target;
         }
-
         false
     }
 }

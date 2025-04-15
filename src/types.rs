@@ -12,7 +12,7 @@ pub enum Pose {
 
 pub enum ControlType<const N: usize> {
     Zero,
-    Force([f64; N]),
+    Torque([f64; N]),
 }
 
 #[serde_as]

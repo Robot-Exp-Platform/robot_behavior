@@ -1,5 +1,5 @@
 use nalgebra as na;
-use std::{sync::Arc, time::Duration, usize};
+use std::{sync::Arc, time::Duration};
 
 /// Generate a linear path for joint space
 pub fn joint_linear<const N: usize>(
@@ -46,7 +46,6 @@ pub fn cartesian_quat_linear(
         } else {
             start.lerp_slerp(&end, t)
         }
-        .into()
     };
 
     Arc::new(f)
@@ -137,7 +136,7 @@ pub fn joint_s_curve<const N: usize>(
     let f = move |t: Duration| {
         let t = t.as_secs_f64();
         let t = t / t_max;
-        let mut result = start.clone();
+        let mut result = start;
         for i in 0..N {
             result[i] += delta[i].signum() * f_path[i](Duration::from_secs_f64(t * t_path[i]));
         }
@@ -263,7 +262,7 @@ pub fn joint_simple_4th_curve<const N: usize>(
     let f = move |t: Duration| {
         let t = t.as_secs_f64();
         let t = if t_max > 0.0 { t / t_max } else { 0.0 };
-        let mut result = start.clone();
+        let mut result = start;
         for i in 0..N {
             result[i] += delta[i].signum() * f_path[i](Duration::from_secs_f64(t * t_path[i]));
         }
