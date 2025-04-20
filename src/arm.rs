@@ -36,8 +36,8 @@ pub trait ArmBehavior<const N: usize>: RobotBehavior {
 pub trait ArmPreplannedMotion<const N: usize>: ArmBehavior<N> {
     fn move_to(&mut self, target: MotionType<N>, speed: f64) -> RobotResult<()>;
     fn move_to_async(&mut self, target: MotionType<N>, speed: f64) -> RobotResult<()>;
-    fn move_rel(&mut self, rel: MotionType<N>) -> RobotResult<()>;
-    fn move_rel_async(&mut self, rel: MotionType<N>) -> RobotResult<()>;
+    fn move_rel(&mut self, rel: MotionType<N>, speed: f64) -> RobotResult<()>;
+    fn move_rel_async(&mut self, rel: MotionType<N>, speed: f64) -> RobotResult<()>;
     fn move_path(&mut self, path: Vec<MotionType<N>>, speed: f64) -> RobotResult<()>;
     fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
 }
@@ -49,37 +49,51 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
     fn move_joint_async(&mut self, target: &[f64; N], speed: f64) -> RobotResult<()> {
         self.move_to_async(MotionType::Joint(*target), speed)
     }
-    fn move_joint_rel(&mut self, target: &[f64; N]) -> RobotResult<()> {
-        self.move_rel(MotionType::Joint(*target))
+    fn move_joint_rel(&mut self, target: &[f64; N], speed: f64) -> RobotResult<()> {
+        self.move_rel(MotionType::Joint(*target), speed)
     }
-    fn move_joint_rel_async(&mut self, target: &[f64; N]) -> RobotResult<()> {
-        self.move_rel_async(MotionType::Joint(*target))
+    fn move_joint_rel_async(&mut self, target: &[f64; N], speed: f64) -> RobotResult<()> {
+        self.move_rel_async(MotionType::Joint(*target), speed)
     }
+
+    fn move_cartesian(&mut self, target: &Pose, speed: f64) -> RobotResult<()> {
+        self.move_to(MotionType::Cartesian(*target), speed)
+    }
+    fn move_cartesian_async(&mut self, target: &Pose, speed: f64) -> RobotResult<()> {
+        self.move_to_async(MotionType::Cartesian(*target), speed)
+    }
+    fn move_cartesian_rel(&mut self, target: &Pose, speed: f64) -> RobotResult<()> {
+        self.move_rel(MotionType::Cartesian(*target), speed)
+    }
+    fn move_cartesian_rel_async(&mut self, target: &Pose, speed: f64) -> RobotResult<()> {
+        self.move_rel_async(MotionType::Cartesian(*target), speed)
+    }
+
     fn move_linear_with_quat(
         &mut self,
         target: &na::Isometry3<f64>,
         speed: f64,
     ) -> RobotResult<()> {
-        self.move_to(MotionType::CartesianQuat(*target), speed)
+        self.move_cartesian(&Pose::Quat(*target), speed)
     }
     fn move_linear_with_quat_async(
         &mut self,
         target: &na::Isometry3<f64>,
         speed: f64,
     ) -> RobotResult<()> {
-        self.move_to_async(MotionType::CartesianQuat(*target), speed)
+        self.move_cartesian_async(&Pose::Quat(*target), speed)
     }
     fn move_linear_with_euler(&mut self, target: &[f64; 6], speed: f64) -> RobotResult<()> {
-        self.move_to(MotionType::CartesianEuler(*target), speed)
+        self.move_cartesian(&Pose::Euler(*target), speed)
     }
     fn move_linear_with_euler_async(&mut self, target: &[f64; 6], speed: f64) -> RobotResult<()> {
-        self.move_to_async(MotionType::CartesianEuler(*target), speed)
+        self.move_cartesian_async(&Pose::Euler(*target), speed)
     }
     fn move_linear_with_homo(&mut self, target: &[f64; 16], speed: f64) -> RobotResult<()> {
-        self.move_to(MotionType::CartesianHomo(*target), speed)
+        self.move_cartesian(&Pose::Homo(*target), speed)
     }
     fn move_linear_with_homo_async(&mut self, target: &[f64; 16], speed: f64) -> RobotResult<()> {
-        self.move_to_async(MotionType::CartesianHomo(*target), speed)
+        self.move_cartesian_async(&Pose::Homo(*target), speed)
     }
     fn move_path_prepare(&mut self, _path: Vec<MotionType<N>>) -> RobotResult<()>;
     fn move_path_start(&mut self) -> RobotResult<()>;
@@ -118,10 +132,11 @@ pub trait ArmStreamingMotionExt<const N: usize>: ArmStreamingMotion<N> {
     fn move_joint_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
     fn move_joint_vel_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
     fn move_joint_acc_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
+    fn move_cartesian_target(&mut self) -> Arc<Mutex<Option<Pose>>>;
+    fn move_cartesian_vel_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
     fn move_cartesian_euler_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
     fn move_cartesian_quat_target(&mut self) -> Arc<Mutex<Option<na::Isometry3<f64>>>>;
     fn move_cartesian_homo_target(&mut self) -> Arc<Mutex<Option<[f64; 16]>>>;
-    fn move_cartesian_vel_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
     fn control_tau_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
 }
 
@@ -151,12 +166,30 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
         })
     }
 
-    fn move_cartesian_euler_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    fn move_cartesian_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    where
+        FM: Fn(ArmState<N>, Duration) -> Pose + Send + Sync + 'static,
+    {
+        self.move_with_closure(move |state, duration| {
+            MotionType::Cartesian(closure(state, duration))
+        })
+    }
+
+    fn move_cartesian_vel_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
     where
         FM: Fn(ArmState<N>, Duration) -> [f64; 6] + Send + Sync + 'static,
     {
         self.move_with_closure(move |state, duration| {
-            MotionType::CartesianEuler(closure(state, duration))
+            MotionType::CartesianVel(closure(state, duration))
+        })
+    }
+
+    fn move_cartesian_euler_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    where
+        FM: Fn(ArmState<N>, Duration) -> [f64; 6] + Send + Sync + 'static,
+    {
+        self.move_cartesian_with_closure(move |state, duration| {
+            Pose::Euler(closure(state, duration))
         })
     }
 
@@ -164,8 +197,8 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
     where
         FM: Fn(ArmState<N>, Duration) -> na::Isometry3<f64> + Send + Sync + 'static,
     {
-        self.move_with_closure(move |state, duration| {
-            MotionType::CartesianQuat(closure(state, duration))
+        self.move_cartesian_with_closure(move |state, duration| {
+            Pose::Quat(closure(state, duration))
         })
     }
 
@@ -173,8 +206,8 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
     where
         FM: Fn(ArmState<N>, Duration) -> [f64; 16] + Send + Sync + 'static,
     {
-        self.move_with_closure(move |state, duration| {
-            MotionType::CartesianHomo(closure(state, duration))
+        self.move_cartesian_with_closure(move |state, duration| {
+            Pose::Homo(closure(state, duration))
         })
     }
 }
@@ -207,26 +240,13 @@ impl<const N: usize> PartialEq<MotionType<N>> for ArmState<N> {
         if let (MotionType::JointVel(vel_target), Some(vel_state)) = (other, self.joint_vel) {
             return vel_state == *vel_target;
         }
-        if let (MotionType::CartesianEuler(pose_target), Some(Pose::Euler(pose_state))) =
-            (other, self.pose_o_to_ee.as_ref())
-        {
-            return pose_state == pose_target;
-        }
-        if let (MotionType::CartesianQuat(pose_target), Some(Pose::Quat(pose_state))) =
-            (other, self.pose_o_to_ee.as_ref())
-        {
-            return pose_state == pose_target;
-        }
-        if let (MotionType::CartesianHomo(pose_target), Some(Pose::Homo(pose_state))) =
-            (other, self.pose_o_to_ee.as_ref())
-        {
-            return pose_state == pose_target;
+        if let (MotionType::Cartesian(pose_target), Some(pose_state)) = (other, self.pose_o_to_ee) {
+            return pose_state == *pose_target;
         }
         if let (MotionType::CartesianVel(vel_target), Some(vel_state)) = (other, self.cartesian_vel)
         {
             return vel_state == *vel_target;
         }
-
         false
     }
 }
