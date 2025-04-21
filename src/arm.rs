@@ -83,11 +83,21 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
     ) -> RobotResult<()> {
         self.move_cartesian_async(&Pose::Quat(*target), speed)
     }
-    fn move_linear_with_euler(&mut self, target: &[f64; 6], speed: f64) -> RobotResult<()> {
-        self.move_cartesian(&Pose::Euler(*target), speed)
+    fn move_linear_with_euler(
+        &mut self,
+        tran: [f64; 3],
+        rot: [f64; 3],
+        speed: f64,
+    ) -> RobotResult<()> {
+        self.move_cartesian(&Pose::Euler(tran, rot), speed)
     }
-    fn move_linear_with_euler_async(&mut self, target: &[f64; 6], speed: f64) -> RobotResult<()> {
-        self.move_cartesian_async(&Pose::Euler(*target), speed)
+    fn move_linear_with_euler_async(
+        &mut self,
+        tran: [f64; 3],
+        rot: [f64; 3],
+        speed: f64,
+    ) -> RobotResult<()> {
+        self.move_cartesian_async(&Pose::Euler(tran, rot), speed)
     }
     fn move_linear_with_homo(&mut self, target: &[f64; 16], speed: f64) -> RobotResult<()> {
         self.move_cartesian(&Pose::Homo(*target), speed)
@@ -186,10 +196,11 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
 
     fn move_cartesian_euler_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> [f64; 6] + Send + Sync + 'static,
+        FM: Fn(ArmState<N>, Duration) -> ([f64; 3], [f64; 3]) + Send + Sync + 'static,
     {
         self.move_cartesian_with_closure(move |state, duration| {
-            Pose::Euler(closure(state, duration))
+            let (tran, rot) = closure(state, duration);
+            Pose::Euler(tran, rot)
         })
     }
 
