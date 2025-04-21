@@ -2,7 +2,7 @@ use nalgebra as na;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::utils::array_to_isometry;
+use crate::utils::homo_to_isometry;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
 pub enum Pose {
@@ -38,7 +38,7 @@ impl Pose {
                 pose.rotation.euler_angles().into(),
             ),
             Pose::Homo(pose) => {
-                let iso = array_to_isometry(pose);
+                let iso = homo_to_isometry(pose);
                 (
                     iso.translation.vector.into(),
                     iso.rotation.euler_angles().into(),
@@ -61,7 +61,7 @@ impl Pose {
                 na::Translation3::new(tran[0], tran[1], tran[2]),
                 na::UnitQuaternion::from_euler_angles(rot[0], rot[1], rot[2]),
             ),
-            Pose::Homo(pose) => array_to_isometry(pose),
+            Pose::Homo(pose) => homo_to_isometry(pose),
             Pose::Quat(pose) => *pose,
             Pose::AxisAngle(tran, axis, angle) => na::Isometry3::from_parts(
                 na::Translation3::new(tran[0], tran[1], tran[2]),
@@ -125,7 +125,7 @@ impl Pose {
                 )
             }
             Pose::Homo(pose) => {
-                let iso = array_to_isometry(pose);
+                let iso = homo_to_isometry(pose);
                 let (axis, angle) = iso.rotation.axis_angle().unwrap();
                 (
                     iso.translation.vector.into(),
