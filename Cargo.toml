@@ -25,7 +25,7 @@ winapi = { version = "0.3", features = ["processthreadsapi", "winbase"] }
 plotters = "0.3"
 
 [features]
-default = ["to_py"]
+default = []
 ffi = []
 to_c = ["ffi"]
 to_py = ["ffi", "pyo3"]
