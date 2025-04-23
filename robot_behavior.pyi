@@ -97,7 +97,7 @@ class Robot:
             str: the version of the robot 机器人版本号
         """
         ...
-
+ 
     def init(self) -> None:
         """initialize the robot 初始化机器人"""
         ...

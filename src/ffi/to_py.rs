@@ -1,78 +1,58 @@
 #[macro_export]
-macro_rules! py_mathods {
-    ($(fn $name: ident(&self $(, $arg: ident: $arg_type: ty)*) -> $ret: ty;)*) => {
-        $(
-            fn $name(&self $(, $arg: $arg_type)*) -> $ret {
-                let ret = self.0.$name($($arg),*);
-                Ok(ret)
-            }
-        )*
-    };
-    ($(fn $name: ident(&self $(, $arg: ident: $arg_type: ty)*) -> RobotResult<$ret: ty>;)*) => {
-        $(
-            fn $name(&self $(, $arg: $arg_type)*) -> RobotResult<$ret> {
-                let ret = self.0.$name($($arg),*);
-                Ok(ret)
-            }
-        )*
-    };
-    ($(fn $name: ident(&mut self $(, $arg: ident: $arg_type: ty)*) -> $ret: ty;)*) => {
-        $(
-            fn $name(&mut self $(, $arg: $arg_type)*) -> $ret {
-                let ret = self.0.$name($($arg),*);
-                Ok(ret)
-            }
-        )*
-    };
-    ($(fn $name: ident(&mut self $(, $arg: ident: $arg_type: ty)*) -> RobotResult<$ret: ty>;)*) => {
-        $(
-            fn $name(&mut self $(, $arg: $arg_type)*) -> RobotResult<$ret> {
-                let ret = self.0.$name($($arg),*);
-                Ok(ret)
-            }
-        )*
-    };
-}
-
-#[macro_export]
 macro_rules! py_robot_behavior {
     ($pyname: ident($name: ident)) => {
-        py_mathods! {
-            fn version(&self) -> String;
-        }
-        py_mathods! {
-            fn init(&mut self) -> RobotResult<()>;
-            fn shutdown(&mut self) -> RobotResult<()>;
-            fn enable(&mut self) -> RobotResult<()>;
-            fn disable(&mut self) -> RobotResult<()>;
-            fn reset(&mut self) -> RobotResult<()>;
-            fn is_moving(&mut self) -> bool;
-            fn stop(&mut self) -> RobotResult<()>;
-            fn pause(&mut self) -> RobotResult<()>;
-            fn resume(&mut self) -> RobotResult<()>;
-            fn emergency_stop(&mut self) -> RobotResult<()>;
-            fn clear_emergency_stop(&mut self) -> RobotResult<()>;
+        #[pymethods]
+        impl $pyname {
+            fn version(&self) -> String {
+                self.0.version()
+            }
+            fn init(&mut self) -> PyResult<()> {
+                self.0.init().map_err(Into::into)
+            }
+            fn shutdown(&mut self) -> PyResult<()> {
+                self.0.shutdown().map_err(Into::into)
+            }
+            fn enable(&mut self) -> PyResult<()> {
+                self.0.enable().map_err(Into::into)
+            }
+            fn disable(&mut self) -> PyResult<()> {
+                self.0.disable().map_err(Into::into)
+            }
+            fn reset(&mut self) -> PyResult<()> {
+                self.0.reset().map_err(Into::into)
+            }
+            fn is_moving(&mut self) -> bool {
+                self.0.is_moving()
+            }
+            fn stop(&mut self) -> PyResult<()> {
+                self.0.stop().map_err(Into::into)
+            }
+            fn pause(&mut self) -> PyResult<()> {
+                self.0.pause().map_err(Into::into)
+            }
+            fn resume(&mut self) -> PyResult<()> {
+                self.0.resume().map_err(Into::into)
+            }
+            fn emergency_stop(&mut self) -> PyResult<()> {
+                self.0.emergency_stop().map_err(Into::into)
+            }
+            fn clear_emergency_stop(&mut self) -> PyResult<()> {
+                self.0.clear_emergency_stop().map_err(Into::into)
+            }
         }
     };
 }
 
 #[macro_export]
 macro_rules! py_arm_behavior {
-    ($pyname: ident<{ $dof: expr }>($name: ident)$(,$macros:ident)*) => {
-        py_arm_behavior!($pyname<{ $dof }>($name)$(,$macros)*, {});
-    };
-    ($pyname: ident<{ $dof: expr }>($name: ident)$(,$macros:ident)*, $block:block) => {
-        #[pyclass(name = $name)]
-        pub struct $pyname($name);
-
+    ($pyname: ident<{$dof: expr}>($name: ident)) => {
         #[pymethods]
         impl $pyname {
-
-            py_robot_behavior!($pyname($name));
-            $($macros)*
-
-            py_mathods! {
-                fn set_load(&self, m: f64, x: [f64; 3], i: [f64; 9]) -> PyResult<()>;
+            fn state(&mut self) -> PyResult<PyArmState> {
+                self.0.state().map(Into::into).map_err(Into::into)
+            }
+            fn set_load(&mut self, load: LoadState) -> PyResult<()> {
+                self.0.set_load(load).map_err(Into::into)
             }
         }
     };
@@ -80,59 +60,146 @@ macro_rules! py_arm_behavior {
 
 #[macro_export]
 macro_rules! py_arm_preplanned_motion {
-    ($pyname: ident<{ $dof: expr }>($name: ident)) => {};
+    ($pyname: ident<{ $dof: expr }>($name: ident)) => {
+        #[pymethods]
+        impl $pyname {
+            // fn move_to(
+            //     &mut self,
+            //     target: py_motion_type!(MotionType<$dof>),
+            //     speed: f64,
+            // ) -> PyResult<()> {
+            //     self.0.move_to(target.into(), speed).map_err(Into::into)
+            // }
+            // fn move_to_async(
+            //     &mut self,
+            //     target: py_motion_type!(MotionType<$dof>),
+            //     speed: f64,
+            // ) -> PyResult<()> {
+            //     self.0
+            //         .move_to_async(target.into(), speed)
+            //         .map_err(Into::into)
+            // }
+            // fn move_rel(
+            //     &mut self,
+            //     target: py_motion_type!(MotionType<$dof>),
+            //     speed: f64,
+            // ) -> PyResult<()> {
+            //     self.0.move_rel(target.into(), speed).map_err(Into::into)
+            // }
+            // fn move_rel_async(
+            //     &mut self,
+            //     target: py_motion_type!(MotionType<$dof>),
+            //     speed: f64,
+            // ) -> PyResult<()> {
+            //     self.0
+            //         .move_rel_async(target.into(), speed)
+            //         .map_err(Into::into)
+            // }
+        }
+    };
 }
 
 #[macro_export]
 macro_rules! py_arm_preplanned_motion_ext {
     ($pyname: ident<{ $dof: expr }>($name: ident)) => {
-        py_mathods! {
-            fn move_joint(&self, target: &[f64; $dof], speed: f64) -> RobotResult<()>;
-            fn move_joint_async(&self, target: &[f64; $dof], speed: f64) -> RobotResult<()>;
-            fn move_joint_rel(&self, target: &[f64; $dof], speed: f64) -> RobotResult<()>;
-            fn move_joint_rel_async(&self, target: &[f64; $dof], speed: f64) -> RobotResult<()>;
-        }
-        // py_mathods! {
-        //     fn move_joint_with_quat(&self, target: &na::Isometry3<f64>,  speed: f64) -> RobotResult<()>;
-        //     fn move_joint_with_quat_async(&self, target: &na::Isometry3<f64>,  speed: f64) -> RobotResult<()>;
-        // }
-        // fn move_joint_with_quat(
-        //     target: &na::Isometry3<f64>,
-        //     quat: &na::Quaternion<f64>,
-        //     speed: f64,
-        // ) -> PyResult<()> {
-        //     self.0.move_joint_with_quat(target, quat, speed)
-        // }
-        // fn move_joint_with_quat_async(
-        //     target: &na::Isometry3<f64>,
-        //     quat: &na::Quaternion<f64>,
-        //     speed: f64,
-        // ) -> PyResult<()> {
-        //     self.0.move_joint_with_quat_async(target, quat, speed)
-        // }
-        py_mathods! {
-            fn move_linear(&self, target: &[f64; 6], speed: f64) -> RobotResult<()>;
-            fn move_linear_async(&self, target: &[f64; 6], speed: f64) -> RobotResult<()>;
-            fn move_linear_rel(&self, target: &[f64; 6], speed: f64) -> RobotResult<()>;
-            fn move_linear_rel_async(&self, target: &[f64; 6], speed: f64) -> RobotResult<()>;
-        }
-        // fn move_path_prepare
-        // fn move_path_start
-        py_mathods! {
-            fn move_path_prepare_from_file(&self, file_path: &str) -> RobotResult<()>;
-            fn move_path_start(&self, path: &[f64; 6]) -> RobotResult<()>;
+        #[pymethods]
+        impl $pyname {
+            fn move_joint(&mut self, target: [f64; $dof], speed: f64) -> PyResult<()> {
+                self.0.move_joint(&target, speed).map_err(Into::into)
+            }
+            fn move_joint_async(&mut self, target: [f64; $dof], speed: f64) -> PyResult<()> {
+                self.0.move_joint_async(&target, speed).map_err(Into::into)
+            }
+            fn move_joint_rel(&mut self, target: [f64; $dof], speed: f64) -> PyResult<()> {
+                self.0.move_joint_rel(&target, speed).map_err(Into::into)
+            }
+            fn move_joint_rel_async(&mut self, target: [f64; $dof], speed: f64) -> PyResult<()> {
+                self.0
+                    .move_joint_rel_async(&target, speed)
+                    .map_err(Into::into)
+            }
+            fn move_joint_path(&mut self, target: Vec<[f64; $dof]>, speed: f64) -> PyResult<()> {
+                self.0.move_joint_path(target, speed).map_err(Into::into)
+            }
+
+            fn move_cartesian(&mut self, target: Pose, speed: f64) -> PyResult<()> {
+                self.0.move_cartesian(&target, speed).map_err(Into::into)
+            }
+            fn move_cartesian_async(&mut self, target: Pose, speed: f64) -> PyResult<()> {
+                self.0
+                    .move_cartesian_async(&target, speed)
+                    .map_err(Into::into)
+            }
+            fn move_cartesian_rel(&mut self, target: Pose, speed: f64) -> PyResult<()> {
+                self.0
+                    .move_cartesian_rel(&target, speed)
+                    .map_err(Into::into)
+            }
+            fn move_cartesian_rel_async(&mut self, target: Pose, speed: f64) -> PyResult<()> {
+                self.0
+                    .move_cartesian_rel_async(&target, speed)
+                    .map_err(Into::into)
+            }
+            fn move_cartesian_path(&mut self, target: Vec<Pose>, speed: f64) -> PyResult<()> {
+                self.0
+                    .move_cartesian_path(target, speed)
+                    .map_err(Into::into)
+            }
+
+            fn move_path_from_file(&mut self, path: &str, speed: f64) -> PyResult<()> {
+                self.0.move_path_from_file(path, speed).map_err(Into::into)
+            }
+            // fn move_path_prepare(
+            //     &mut self,
+            //     path: Vec<py_motion_type!(MotionType<$dof>)>,
+            // ) -> RobotResult<()> {
+            //     self.0.move_path_prepare(path).map_err(Into::into)
+            // }
+            fn move_path_start(&mut self) -> RobotResult<()> {
+                self.0.move_path_start().map_err(Into::into)
+            }
+            fn move_path_prepare_from_file(&mut self, path: &str) -> RobotResult<()> {
+                self.0.move_path_prepare_from_file(path).map_err(Into::into)
+            }
         }
     };
 }
 
 #[macro_export]
 macro_rules! py_arm_streaming_handle {
-    ($pyname: ident<{ $dof: expr }>($name: ident)) => {};
+    ($pyname: ident<{ $dof: expr }>($name: ident)) => {
+        #[pymethods]
+        impl $pyname {
+            fn move_to(&mut self, target: py_motion_type($dof)) -> PyResult<()> {
+                self.0.move_to(target.into()).map_err(Into::into)
+            }
+            fn last_motion(&self) -> PyResult<PyMotionType> {
+                self.0.last_motion().map(Into::into).map_err(Into::into)
+            }
+
+            fn control_with(&mut self, target: PyArmState) -> PyResult<()> {
+                self.0.control_with(target.into()).map_err(Into::into)
+            }
+            fn last_control(&self) -> PyResult<PyArmState> {
+                self.0.last_control().map(Into::into).map_err(Into::into)
+            }
+        }
+    };
 }
 
 #[macro_export]
 macro_rules! py_arm_streaming_motion {
-    ($pyname: ident<{ $dof: expr }>($name: ident)) => {};
+    ($pyname: ident<{ $dof: expr }>($name: ident) -> $handle_name: ident) => {
+        #[pymethods]
+        impl $pyname {
+            fn start_streaming(&mut self) -> PyResult<$handle_name> {
+                self.0.start_streaming().map_err(Into::into)
+            }
+            fn stop_streaming(&mut self) -> PyResult<()> {
+                self.0.stop_streaming().map_err(Into::into)
+            }
+        }
+    };
 }
 
 #[macro_export]
@@ -193,5 +260,97 @@ macro_rules! py_arm_real_time_control_ext {
 // py_arm_state!(ArmState6, 6);
 // py_arm_state!(ArmState7, 7);
 
-#[cfg(test)]
-mod test {}
+#[cfg(all(test, feature = "to_py"))]
+mod test {
+    use pyo3::{PyResult, pyclass, pymethods};
+
+    use crate::{
+        ArmBehavior, ArmPreplannedMotion, ArmPreplannedMotionExt, ArmState, ControlType, LoadState,
+        MotionType, Pose, RobotBehavior, RobotResult, to_py::PyArmState,
+    };
+
+    struct TestRobot;
+
+    #[pyclass]
+    struct PyTestRobot(TestRobot);
+
+    py_robot_behavior!(PyTestRobot(TestRobot));
+    py_arm_behavior!(PyTestRobot<{0}>(TestRobot));
+    py_arm_preplanned_motion!(PyTestRobot<{0}>(TestRobot));
+    py_arm_preplanned_motion_ext!(PyTestRobot<{0}>(TestRobot));
+
+    macro_rules! unimpl {
+        // For methods with return type only (no arguments)
+        ($(fn $name:ident(&self) -> $ret:ty;)+) => {
+            $(
+                fn $name(&self) -> $ret {
+                    unimplemented!()
+                }
+            )+
+        };
+        ($(fn $name:ident(&mut self) -> $ret:ty;)+) => {
+            $(
+                fn $name(&mut self) -> $ret {
+                    unimplemented!()
+                }
+            )+
+        };
+        ($(fn $name:ident(&mut self, $($arg: ident: $arg_ty: ty),*) -> $ret:ty;)+) => {
+            $(
+                fn $name(&mut self, $($arg: $arg_ty),* ) -> $ret {
+                    unimplemented!()
+                }
+            )+
+        };
+    }
+
+    impl RobotBehavior for TestRobot {
+        type State = ();
+        unimpl! {
+            fn version(&self) -> String;
+        }
+        unimpl! {
+            fn is_moving(&mut self) -> bool;
+            fn init(&mut self) -> RobotResult<()>;
+            fn shutdown(&mut self) -> RobotResult<()>;
+            fn enable(&mut self) -> RobotResult<()>;
+            fn disable(&mut self) -> RobotResult<()>;
+            fn reset(&mut self) -> RobotResult<()>;
+            fn stop(&mut self) -> RobotResult<()>;
+            fn pause(&mut self) -> RobotResult<()>;
+            fn resume(&mut self) -> RobotResult<()>;
+            fn emergency_stop(&mut self) -> RobotResult<()>;
+            fn clear_emergency_stop(&mut self) -> RobotResult<()>;
+            fn read_state(&mut self) -> RobotResult<Self::State>;
+        }
+    }
+
+    impl ArmBehavior<0> for TestRobot {
+        unimpl!(
+            fn state(&mut self) -> RobotResult<ArmState<0>>;
+        );
+        unimpl!(
+            fn set_load(&mut self, _load: LoadState) -> RobotResult<()>;
+        );
+    }
+
+    impl ArmPreplannedMotion<0> for TestRobot {
+        unimpl!(
+            fn move_to(&mut self, _target: MotionType<0>, _speed: f64) -> RobotResult<()>;
+            fn move_to_async(&mut self, _target: MotionType<0>, _speed: f64) -> RobotResult<()>;
+            fn move_rel(&mut self, _target: MotionType<0>, _speed: f64) -> RobotResult<()>;
+            fn move_rel_async(&mut self, _target: MotionType<0>, _speed: f64) -> RobotResult<()>;
+            fn move_path(&mut self, _path: Vec<MotionType<0>>, _speed: f64) -> RobotResult<()>;
+            fn control_with(&mut self, _control: ControlType<0>) -> RobotResult<()>;
+        );
+    }
+
+    impl ArmPreplannedMotionExt<0> for TestRobot {
+        unimpl!(
+            fn move_path_prepare(&mut self, _path: Vec<MotionType<0>>) -> RobotResult<()>;
+        );
+        unimpl!(
+            fn move_path_start(&mut self) -> RobotResult<()>;
+        );
+    }
+}

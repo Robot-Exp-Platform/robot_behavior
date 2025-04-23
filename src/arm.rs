@@ -53,6 +53,9 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
     fn move_joint_rel_async(&mut self, target: &[f64; N], speed: f64) -> RobotResult<()> {
         self.move_rel_async(MotionType::Joint(*target), speed)
     }
+    fn move_joint_path(&mut self, path: Vec<[f64; N]>, speed: f64) -> RobotResult<()> {
+        self.move_path(path.iter().map(|j| MotionType::Joint(*j)).collect(), speed)
+    }
 
     fn move_cartesian(&mut self, target: &Pose, speed: f64) -> RobotResult<()> {
         self.move_to(MotionType::Cartesian(*target), speed)
@@ -65,6 +68,12 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
     }
     fn move_cartesian_rel_async(&mut self, target: &Pose, speed: f64) -> RobotResult<()> {
         self.move_rel_async(MotionType::Cartesian(*target), speed)
+    }
+    fn move_cartesian_path(&mut self, path: Vec<Pose>, speed: f64) -> RobotResult<()> {
+        self.move_path(
+            path.iter().map(|p| MotionType::Cartesian(*p)).collect(),
+            speed,
+        )
     }
 
     fn move_linear_with_quat(
@@ -103,7 +112,7 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
     fn move_linear_with_homo_async(&mut self, target: &[f64; 16], speed: f64) -> RobotResult<()> {
         self.move_cartesian_async(&Pose::Homo(*target), speed)
     }
-    fn move_path_prepare(&mut self, _path: Vec<MotionType<N>>) -> RobotResult<()>;
+    fn move_path_prepare(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
     fn move_path_start(&mut self) -> RobotResult<()>;
     fn move_path_prepare_from_file(&mut self, path: &str) -> RobotResult<()> {
         let file = File::open(path)?;
@@ -285,13 +294,14 @@ impl<const N: usize> Display for ArmState<N> {
 }
 
 #[cfg(feature = "to_py")]
-mod to_py {
+pub mod to_py {
     use super::*;
     use pyo3::{pyclass, pymethods};
     #[pyclass(name = "ArmState")]
     pub struct PyArmState(ArmStateEnum);
 
     pub enum ArmStateEnum {
+        ArmState0(ArmState<0>),
         ArmState1(ArmState<1>),
         ArmState2(ArmState<2>),
         ArmState3(ArmState<3>),
@@ -311,6 +321,7 @@ mod to_py {
         };
     }
 
+    impl_from_arm_state!(ArmState0, 0);
     impl_from_arm_state!(ArmState1, 1);
     impl_from_arm_state!(ArmState2, 2);
     impl_from_arm_state!(ArmState3, 3);
@@ -323,6 +334,7 @@ mod to_py {
     impl PyArmState {
         fn joint(&self) -> Option<Vec<f64>> {
             match &self.0 {
+                ArmStateEnum::ArmState0(state) => state.joint.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState1(state) => state.joint.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState2(state) => state.joint.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState3(state) => state.joint.map(|j| j.to_vec()),
@@ -335,6 +347,7 @@ mod to_py {
 
         fn joint_vel(&self) -> Option<Vec<f64>> {
             match &self.0 {
+                ArmStateEnum::ArmState0(state) => state.joint_vel.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState1(state) => state.joint_vel.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState2(state) => state.joint_vel.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState3(state) => state.joint_vel.map(|j| j.to_vec()),
@@ -347,6 +360,7 @@ mod to_py {
 
         fn joint_acc(&self) -> Option<Vec<f64>> {
             match &self.0 {
+                ArmStateEnum::ArmState0(state) => state.joint_acc.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState1(state) => state.joint_acc.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState2(state) => state.joint_acc.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState3(state) => state.joint_acc.map(|j| j.to_vec()),
@@ -359,6 +373,7 @@ mod to_py {
 
         fn tau(&self) -> Option<Vec<f64>> {
             match &self.0 {
+                ArmStateEnum::ArmState0(state) => state.tau.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState1(state) => state.tau.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState2(state) => state.tau.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState3(state) => state.tau.map(|j| j.to_vec()),
@@ -371,6 +386,7 @@ mod to_py {
 
         fn pose_o_to_ee(&self) -> Option<Pose> {
             match &self.0 {
+                ArmStateEnum::ArmState0(state) => state.pose_o_to_ee,
                 ArmStateEnum::ArmState1(state) => state.pose_o_to_ee,
                 ArmStateEnum::ArmState2(state) => state.pose_o_to_ee,
                 ArmStateEnum::ArmState3(state) => state.pose_o_to_ee,
@@ -383,6 +399,7 @@ mod to_py {
 
         fn pose_f_to_ee(&self) -> Option<Pose> {
             match &self.0 {
+                ArmStateEnum::ArmState0(state) => state.pose_f_to_ee,
                 ArmStateEnum::ArmState1(state) => state.pose_f_to_ee,
                 ArmStateEnum::ArmState2(state) => state.pose_f_to_ee,
                 ArmStateEnum::ArmState3(state) => state.pose_f_to_ee,
@@ -395,6 +412,7 @@ mod to_py {
 
         fn pose_ee_to_k(&self) -> Option<Pose> {
             match &self.0 {
+                ArmStateEnum::ArmState0(state) => state.pose_ee_to_k,
                 ArmStateEnum::ArmState1(state) => state.pose_ee_to_k,
                 ArmStateEnum::ArmState2(state) => state.pose_ee_to_k,
                 ArmStateEnum::ArmState3(state) => state.pose_ee_to_k,
@@ -407,6 +425,7 @@ mod to_py {
 
         fn cartesian_vel(&self) -> Option<Vec<f64>> {
             match &self.0 {
+                ArmStateEnum::ArmState0(state) => state.cartesian_vel.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState1(state) => state.cartesian_vel.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState2(state) => state.cartesian_vel.map(|j| j.to_vec()),
                 ArmStateEnum::ArmState3(state) => state.cartesian_vel.map(|j| j.to_vec()),
@@ -419,6 +438,7 @@ mod to_py {
 
         fn load(&self) -> Option<LoadState> {
             match &self.0 {
+                ArmStateEnum::ArmState0(state) => state.load.clone(),
                 ArmStateEnum::ArmState1(state) => state.load.clone(),
                 ArmStateEnum::ArmState2(state) => state.load.clone(),
                 ArmStateEnum::ArmState3(state) => state.load.clone(),
@@ -431,6 +451,7 @@ mod to_py {
 
         fn __repr__(&self) -> String {
             match &self.0 {
+                ArmStateEnum::ArmState0(state) => format!("{:?}", state),
                 ArmStateEnum::ArmState1(state) => format!("{:?}", state),
                 ArmStateEnum::ArmState2(state) => format!("{:?}", state),
                 ArmStateEnum::ArmState3(state) => format!("{:?}", state),
