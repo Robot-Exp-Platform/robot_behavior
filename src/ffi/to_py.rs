@@ -1,7 +1,3 @@
-use pyo3::{PyResult, pyclass, pymethods};
-
-use crate::ArmState;
-
 #[macro_export]
 macro_rules! py_mathods {
     ($(fn $name: ident(&self $(, $arg: ident: $arg_type: ty)*) -> $ret: ty;)*) => {
@@ -154,48 +150,48 @@ macro_rules! py_arm_real_time_control_ext {
     ($pyname: ident<{ $dof: expr }>($name: ident)) => {};
 }
 
-macro_rules! py_arm_state {
-    ($name: ident, $dof: expr) => {
-        #[pyclass]
-        pub struct $name(ArmState<$dof>);
+// macro_rules! py_arm_state {
+//     ($name: ident, $dof: expr) => {
+//         #[pyclass]
+//         pub struct $name(ArmState<$dof>);
 
-        #[pymethods]
-        impl $name {
-            fn echo(&self) -> PyResult<String> {
-                Ok(format!("{}", self.0))
-            }
+//         #[pymethods]
+//         impl $name {
+//             fn echo(&self) -> PyResult<String> {
+//                 Ok(format!("{}", self.0))
+//             }
 
-            #[getter]
-            fn joint(&self) -> PyResult<Option<[f64; $dof]>> {
-                Ok(self.0.joint)
-            }
+//             #[getter]
+//             fn joint(&self) -> PyResult<Option<[f64; $dof]>> {
+//                 Ok(self.0.joint)
+//             }
 
-            #[getter]
-            fn joint_vel(&self) -> PyResult<Option<[f64; $dof]>> {
-                Ok(self.0.joint_vel)
-            }
+//             #[getter]
+//             fn joint_vel(&self) -> PyResult<Option<[f64; $dof]>> {
+//                 Ok(self.0.joint_vel)
+//             }
 
-            #[getter]
-            fn joint_acc(&self) -> PyResult<Option<[f64; $dof]>> {
-                Ok(self.0.joint_acc)
-            }
-        }
+//             #[getter]
+//             fn joint_acc(&self) -> PyResult<Option<[f64; $dof]>> {
+//                 Ok(self.0.joint_acc)
+//             }
+//         }
 
-        impl From<ArmState<$dof>> for $name {
-            fn from(state: ArmState<$dof>) -> Self {
-                $name(state)
-            }
-        }
-    };
-}
+//         impl From<ArmState<$dof>> for $name {
+//             fn from(state: ArmState<$dof>) -> Self {
+//                 $name(state)
+//             }
+//         }
+//     };
+// }
 
-py_arm_state!(ArmState1, 1);
-py_arm_state!(ArmState2, 2);
-py_arm_state!(ArmState3, 3);
-py_arm_state!(ArmState4, 4);
-py_arm_state!(ArmState5, 5);
-py_arm_state!(ArmState6, 6);
-py_arm_state!(ArmState7, 7);
+// py_arm_state!(ArmState1, 1);
+// py_arm_state!(ArmState2, 2);
+// py_arm_state!(ArmState3, 3);
+// py_arm_state!(ArmState4, 4);
+// py_arm_state!(ArmState5, 5);
+// py_arm_state!(ArmState6, 6);
+// py_arm_state!(ArmState7, 7);
 
 #[cfg(test)]
 mod test {}

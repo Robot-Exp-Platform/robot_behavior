@@ -27,8 +27,6 @@ pub struct ArmState<const N: usize> {
 }
 
 pub trait ArmBehavior<const N: usize>: RobotBehavior {
-    type State;
-    fn read_state(&mut self) -> RobotResult<Self::State>;
     fn state(&mut self) -> RobotResult<ArmState<N>>;
     fn set_load(&mut self, load: LoadState) -> RobotResult<()>;
 }
@@ -135,7 +133,7 @@ pub trait ArmStreamingMotion<const N: usize>: ArmBehavior<N> {
     fn end_streaming(&mut self) -> RobotResult<()>;
 
     fn move_to_target(&mut self) -> Arc<Mutex<Option<MotionType<N>>>>;
-    fn control_to_target(&mut self) -> Arc<Mutex<Option<ControlType<N>>>>;
+    fn control_with_target(&mut self) -> Arc<Mutex<Option<ControlType<N>>>>;
 }
 
 pub trait ArmStreamingMotionExt<const N: usize>: ArmStreamingMotion<N> {
@@ -283,5 +281,164 @@ impl<const N: usize> Display for ArmState<N> {
     | pose_o_to_ee: {:?},"#,
             self.joint, self.joint_vel, self.joint_acc, self.tau, self.pose_o_to_ee
         )
+    }
+}
+
+#[cfg(feature = "to_py")]
+mod to_py {
+    use super::*;
+    use pyo3::{pyclass, pymethods};
+    #[pyclass(name = "ArmState")]
+    pub struct PyArmState(ArmStateEnum);
+
+    pub enum ArmStateEnum {
+        ArmState1(ArmState<1>),
+        ArmState2(ArmState<2>),
+        ArmState3(ArmState<3>),
+        ArmState4(ArmState<4>),
+        ArmState5(ArmState<5>),
+        ArmState6(ArmState<6>),
+        ArmState7(ArmState<7>),
+    }
+
+    macro_rules! impl_from_arm_state {
+        ($name: ident, $dof: expr) => {
+            impl From<ArmState<$dof>> for PyArmState {
+                fn from(state: ArmState<$dof>) -> Self {
+                    PyArmState(ArmStateEnum::$name(state))
+                }
+            }
+        };
+    }
+
+    impl_from_arm_state!(ArmState1, 1);
+    impl_from_arm_state!(ArmState2, 2);
+    impl_from_arm_state!(ArmState3, 3);
+    impl_from_arm_state!(ArmState4, 4);
+    impl_from_arm_state!(ArmState5, 5);
+    impl_from_arm_state!(ArmState6, 6);
+    impl_from_arm_state!(ArmState7, 7);
+
+    #[pymethods]
+    impl PyArmState {
+        fn joint(&self) -> Option<Vec<f64>> {
+            match &self.0 {
+                ArmStateEnum::ArmState1(state) => state.joint.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState2(state) => state.joint.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState3(state) => state.joint.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState4(state) => state.joint.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState5(state) => state.joint.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState6(state) => state.joint.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState7(state) => state.joint.map(|j| j.to_vec()),
+            }
+        }
+
+        fn joint_vel(&self) -> Option<Vec<f64>> {
+            match &self.0 {
+                ArmStateEnum::ArmState1(state) => state.joint_vel.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState2(state) => state.joint_vel.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState3(state) => state.joint_vel.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState4(state) => state.joint_vel.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState5(state) => state.joint_vel.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState6(state) => state.joint_vel.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState7(state) => state.joint_vel.map(|j| j.to_vec()),
+            }
+        }
+
+        fn joint_acc(&self) -> Option<Vec<f64>> {
+            match &self.0 {
+                ArmStateEnum::ArmState1(state) => state.joint_acc.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState2(state) => state.joint_acc.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState3(state) => state.joint_acc.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState4(state) => state.joint_acc.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState5(state) => state.joint_acc.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState6(state) => state.joint_acc.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState7(state) => state.joint_acc.map(|j| j.to_vec()),
+            }
+        }
+
+        fn tau(&self) -> Option<Vec<f64>> {
+            match &self.0 {
+                ArmStateEnum::ArmState1(state) => state.tau.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState2(state) => state.tau.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState3(state) => state.tau.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState4(state) => state.tau.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState5(state) => state.tau.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState6(state) => state.tau.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState7(state) => state.tau.map(|j| j.to_vec()),
+            }
+        }
+
+        fn pose_o_to_ee(&self) -> Option<Pose> {
+            match &self.0 {
+                ArmStateEnum::ArmState1(state) => state.pose_o_to_ee,
+                ArmStateEnum::ArmState2(state) => state.pose_o_to_ee,
+                ArmStateEnum::ArmState3(state) => state.pose_o_to_ee,
+                ArmStateEnum::ArmState4(state) => state.pose_o_to_ee,
+                ArmStateEnum::ArmState5(state) => state.pose_o_to_ee,
+                ArmStateEnum::ArmState6(state) => state.pose_o_to_ee,
+                ArmStateEnum::ArmState7(state) => state.pose_o_to_ee,
+            }
+        }
+
+        fn pose_f_to_ee(&self) -> Option<Pose> {
+            match &self.0 {
+                ArmStateEnum::ArmState1(state) => state.pose_f_to_ee,
+                ArmStateEnum::ArmState2(state) => state.pose_f_to_ee,
+                ArmStateEnum::ArmState3(state) => state.pose_f_to_ee,
+                ArmStateEnum::ArmState4(state) => state.pose_f_to_ee,
+                ArmStateEnum::ArmState5(state) => state.pose_f_to_ee,
+                ArmStateEnum::ArmState6(state) => state.pose_f_to_ee,
+                ArmStateEnum::ArmState7(state) => state.pose_f_to_ee,
+            }
+        }
+
+        fn pose_ee_to_k(&self) -> Option<Pose> {
+            match &self.0 {
+                ArmStateEnum::ArmState1(state) => state.pose_ee_to_k,
+                ArmStateEnum::ArmState2(state) => state.pose_ee_to_k,
+                ArmStateEnum::ArmState3(state) => state.pose_ee_to_k,
+                ArmStateEnum::ArmState4(state) => state.pose_ee_to_k,
+                ArmStateEnum::ArmState5(state) => state.pose_ee_to_k,
+                ArmStateEnum::ArmState6(state) => state.pose_ee_to_k,
+                ArmStateEnum::ArmState7(state) => state.pose_ee_to_k,
+            }
+        }
+
+        fn cartesian_vel(&self) -> Option<Vec<f64>> {
+            match &self.0 {
+                ArmStateEnum::ArmState1(state) => state.cartesian_vel.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState2(state) => state.cartesian_vel.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState3(state) => state.cartesian_vel.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState4(state) => state.cartesian_vel.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState5(state) => state.cartesian_vel.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState6(state) => state.cartesian_vel.map(|j| j.to_vec()),
+                ArmStateEnum::ArmState7(state) => state.cartesian_vel.map(|j| j.to_vec()),
+            }
+        }
+
+        fn load(&self) -> Option<LoadState> {
+            match &self.0 {
+                ArmStateEnum::ArmState1(state) => state.load.clone(),
+                ArmStateEnum::ArmState2(state) => state.load.clone(),
+                ArmStateEnum::ArmState3(state) => state.load.clone(),
+                ArmStateEnum::ArmState4(state) => state.load.clone(),
+                ArmStateEnum::ArmState5(state) => state.load.clone(),
+                ArmStateEnum::ArmState6(state) => state.load.clone(),
+                ArmStateEnum::ArmState7(state) => state.load.clone(),
+            }
+        }
+
+        fn __repr__(&self) -> String {
+            match &self.0 {
+                ArmStateEnum::ArmState1(state) => format!("{:?}", state),
+                ArmStateEnum::ArmState2(state) => format!("{:?}", state),
+                ArmStateEnum::ArmState3(state) => format!("{:?}", state),
+                ArmStateEnum::ArmState4(state) => format!("{:?}", state),
+                ArmStateEnum::ArmState5(state) => format!("{:?}", state),
+                ArmStateEnum::ArmState6(state) => format!("{:?}", state),
+                ArmStateEnum::ArmState7(state) => format!("{:?}", state),
+            }
+        }
     }
 }

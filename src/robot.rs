@@ -3,6 +3,8 @@ use crate::RobotResult;
 /// # Robot Behavior
 /// 机器人行为特征
 pub trait RobotBehavior {
+    type State;
+
     /// Get the robot version
     /// 获取机器人版本和驱动版本
     fn version(&self) -> String;
@@ -50,4 +52,8 @@ pub trait RobotBehavior {
     /// Clear the emergency stop
     /// 清除紧急停止
     fn clear_emergency_stop(&mut self) -> RobotResult<()>;
+
+    /// Get the robot state
+    /// 获取机器人状态
+    fn read_state(&mut self) -> RobotResult<Self::State>;
 }
