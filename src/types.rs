@@ -258,7 +258,7 @@ impl TryFrom<&[f64]> for Pose {
 }
 
 #[cfg(feature = "to_py")]
-mod to_py {
+pub mod to_py {
     use super::*;
     use pyo3::{Bound, FromPyObject, IntoPyObject, PyAny, PyErr, pyclass, pymethods};
 
@@ -370,31 +370,6 @@ mod to_py {
                 }
             }
         };
-
-        (MotionType<0>) => {
-            MotionType0
-        };
-        (MotionType<1>) => {
-            MotionType1
-        };
-        (MotionType<2>) => {
-            MotionType2
-        };
-        (MotionType<3>) => {
-            MotionType3
-        };
-        (MotionType<4>) => {
-            MotionType4
-        };
-        (MotionType<5>) => {
-            MotionType5
-        };
-        (MotionType<6>) => {
-            MotionType6
-        };
-        (MotionType<7>) => {
-            MotionType7
-        };
     }
 
     py_motion_type!(MotionType0, 0);
@@ -420,30 +395,6 @@ mod to_py {
                     value.0
                 }
             }
-        };
-        (0) => {
-            ControlType0
-        };
-        (1) => {
-            ControlType1
-        };
-        (2) => {
-            ControlType2
-        };
-        (3) => {
-            ControlType3
-        };
-        (4) => {
-            ControlType4
-        };
-        (5) => {
-            ControlType5
-        };
-        (6) => {
-            ControlType6
-        };
-        (7) => {
-            ControlType7
         };
     }
 

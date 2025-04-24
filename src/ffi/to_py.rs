@@ -60,19 +60,19 @@ macro_rules! py_arm_behavior {
 
 #[macro_export]
 macro_rules! py_arm_preplanned_motion {
-    ($pyname: ident<{ $dof: expr }>($name: ident)) => {
+    ($pyname: ident<{ $dof: literal }>($name: ident)) => {
         #[pymethods]
         impl $pyname {
             // fn move_to(
             //     &mut self,
-            //     target: py_motion_type!(MotionType<$dof>),
+            //     target: ::paste::paste! {[<MotionType $dof>]},
             //     speed: f64,
             // ) -> PyResult<()> {
             //     self.0.move_to(target.into(), speed).map_err(Into::into)
             // }
             // fn move_to_async(
             //     &mut self,
-            //     target: py_motion_type!(MotionType<$dof>),
+            //     target: [::paste::paste! {[<MotionType $dof>]}],
             //     speed: f64,
             // ) -> PyResult<()> {
             //     self.0
@@ -81,14 +81,14 @@ macro_rules! py_arm_preplanned_motion {
             // }
             // fn move_rel(
             //     &mut self,
-            //     target: py_motion_type!(MotionType<$dof>),
+            //     target: [::paste::paste! {[<MotionType $dof>]}],
             //     speed: f64,
             // ) -> PyResult<()> {
             //     self.0.move_rel(target.into(), speed).map_err(Into::into)
             // }
             // fn move_rel_async(
             //     &mut self,
-            //     target: py_motion_type!(MotionType<$dof>),
+            //     target: [::paste::paste! {[<MotionType $dof>]}],
             //     speed: f64,
             // ) -> PyResult<()> {
             //     self.0
@@ -151,7 +151,7 @@ macro_rules! py_arm_preplanned_motion_ext {
             }
             // fn move_path_prepare(
             //     &mut self,
-            //     path: Vec<py_motion_type!(MotionType<$dof>)>,
+            //     path: Vec<[::paste::paste! {[<MotionType $dof>]}]>,
             // ) -> RobotResult<()> {
             //     self.0.move_path_prepare(path).map_err(Into::into)
             // }
@@ -266,7 +266,7 @@ mod test {
 
     use crate::{
         ArmBehavior, ArmPreplannedMotion, ArmPreplannedMotionExt, ArmState, ControlType, LoadState,
-        MotionType, Pose, RobotBehavior, RobotResult, to_py::PyArmState,
+        MotionType, Pose, RobotBehavior, RobotResult, arm::to_py::*, types::to_py::*,
     };
 
     struct TestRobot;

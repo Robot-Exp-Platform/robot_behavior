@@ -1,6 +1,6 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
-mod arm;
+pub mod arm;
 mod exception;
 #[cfg(feature = "ffi")]
 pub mod ffi;
@@ -8,7 +8,7 @@ mod load;
 mod params;
 mod realtime;
 mod robot;
-mod types;
+pub mod types;
 pub mod utils;
 
 pub use arm::*;
