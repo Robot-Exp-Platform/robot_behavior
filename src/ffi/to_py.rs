@@ -48,7 +48,7 @@ macro_rules! py_arm_behavior {
     ($pyname: ident<{$dof: expr}>($name: ident)) => {
         #[pyo3::pymethods]
         impl $pyname {
-            fn state(&mut self) -> pyo3::PyResult<PyArmState> {
+            fn state(&mut self) -> pyo3::PyResult<$crate::PyArmState> {
                 self.0.state().map(Into::into).map_err(Into::into)
             }
             fn set_load(&mut self, load: $crate::LoadState) -> pyo3::PyResult<()> {
