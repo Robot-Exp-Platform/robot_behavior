@@ -1,42 +1,42 @@
 #[macro_export]
 macro_rules! py_robot_behavior {
     ($pyname: ident($name: ident)) => {
-        #[pymethods]
+        #[pyo3::pymethods]
         impl $pyname {
             fn version(&self) -> String {
                 self.0.version()
             }
-            fn init(&mut self) -> PyResult<()> {
+            fn init(&mut self) -> pyo3::PyResult<()> {
                 self.0.init().map_err(Into::into)
             }
-            fn shutdown(&mut self) -> PyResult<()> {
+            fn shutdown(&mut self) -> pyo3::PyResult<()> {
                 self.0.shutdown().map_err(Into::into)
             }
-            fn enable(&mut self) -> PyResult<()> {
+            fn enable(&mut self) -> pyo3::PyResult<()> {
                 self.0.enable().map_err(Into::into)
             }
-            fn disable(&mut self) -> PyResult<()> {
+            fn disable(&mut self) -> pyo3::PyResult<()> {
                 self.0.disable().map_err(Into::into)
             }
-            fn reset(&mut self) -> PyResult<()> {
+            fn reset(&mut self) -> pyo3::PyResult<()> {
                 self.0.reset().map_err(Into::into)
             }
             fn is_moving(&mut self) -> bool {
                 self.0.is_moving()
             }
-            fn stop(&mut self) -> PyResult<()> {
+            fn stop(&mut self) -> pyo3::PyResult<()> {
                 self.0.stop().map_err(Into::into)
             }
-            fn pause(&mut self) -> PyResult<()> {
+            fn pause(&mut self) -> pyo3::PyResult<()> {
                 self.0.pause().map_err(Into::into)
             }
-            fn resume(&mut self) -> PyResult<()> {
+            fn resume(&mut self) -> pyo3::PyResult<()> {
                 self.0.resume().map_err(Into::into)
             }
-            fn emergency_stop(&mut self) -> PyResult<()> {
+            fn emergency_stop(&mut self) -> pyo3::PyResult<()> {
                 self.0.emergency_stop().map_err(Into::into)
             }
-            fn clear_emergency_stop(&mut self) -> PyResult<()> {
+            fn clear_emergency_stop(&mut self) -> pyo3::PyResult<()> {
                 self.0.clear_emergency_stop().map_err(Into::into)
             }
         }
@@ -46,12 +46,12 @@ macro_rules! py_robot_behavior {
 #[macro_export]
 macro_rules! py_arm_behavior {
     ($pyname: ident<{$dof: expr}>($name: ident)) => {
-        #[pymethods]
+        #[pyo3::pymethods]
         impl $pyname {
-            fn state(&mut self) -> PyResult<PyArmState> {
+            fn state(&mut self) -> pyo3::PyResult<PyArmState> {
                 self.0.state().map(Into::into).map_err(Into::into)
             }
-            fn set_load(&mut self, load: LoadState) -> PyResult<()> {
+            fn set_load(&mut self, load: $crate::LoadState) -> pyo3::PyResult<()> {
                 self.0.set_load(load).map_err(Into::into)
             }
         }
@@ -61,40 +61,40 @@ macro_rules! py_arm_behavior {
 #[macro_export]
 macro_rules! py_arm_preplanned_motion {
     ($pyname: ident<{ $dof: literal }>($name: ident)) => {
-        #[pymethods]
+        #[pyo3::pymethods]
         impl $pyname {
-            // fn move_to(
-            //     &mut self,
-            //     target: ::paste::paste! {[<MotionType $dof>]},
-            //     speed: f64,
-            // ) -> PyResult<()> {
-            //     self.0.move_to(target.into(), speed).map_err(Into::into)
-            // }
-            // fn move_to_async(
-            //     &mut self,
-            //     target: [::paste::paste! {[<MotionType $dof>]}],
-            //     speed: f64,
-            // ) -> PyResult<()> {
-            //     self.0
-            //         .move_to_async(target.into(), speed)
-            //         .map_err(Into::into)
-            // }
-            // fn move_rel(
-            //     &mut self,
-            //     target: [::paste::paste! {[<MotionType $dof>]}],
-            //     speed: f64,
-            // ) -> PyResult<()> {
-            //     self.0.move_rel(target.into(), speed).map_err(Into::into)
-            // }
-            // fn move_rel_async(
-            //     &mut self,
-            //     target: [::paste::paste! {[<MotionType $dof>]}],
-            //     speed: f64,
-            // ) -> PyResult<()> {
-            //     self.0
-            //         .move_rel_async(target.into(), speed)
-            //         .map_err(Into::into)
-            // }
+            fn move_to(
+                &mut self,
+                target: ::paste::paste! {$crate::[<MotionType $dof>]},
+                speed: f64,
+            ) -> pyo3::PyResult<()> {
+                self.0.move_to(target.into(), speed).map_err(Into::into)
+            }
+            fn move_to_async(
+                &mut self,
+                target: ::paste::paste! {$crate::[<MotionType $dof>]},
+                speed: f64,
+            ) -> pyo3::PyResult<()> {
+                self.0
+                    .move_to_async(target.into(), speed)
+                    .map_err(Into::into)
+            }
+            fn move_rel(
+                &mut self,
+                target: ::paste::paste! {$crate::[<MotionType $dof>]},
+                speed: f64,
+            ) -> pyo3::PyResult<()> {
+                self.0.move_rel(target.into(), speed).map_err(Into::into)
+            }
+            fn move_rel_async(
+                &mut self,
+                target: ::paste::paste! {$crate::[<MotionType $dof>]},
+                speed: f64,
+            ) -> pyo3::PyResult<()> {
+                self.0
+                    .move_rel_async(target.into(), speed)
+                    .map_err(Into::into)
+            }
         }
     };
 }
@@ -102,63 +102,91 @@ macro_rules! py_arm_preplanned_motion {
 #[macro_export]
 macro_rules! py_arm_preplanned_motion_ext {
     ($pyname: ident<{ $dof: expr }>($name: ident)) => {
-        #[pymethods]
+        #[pyo3::pymethods]
         impl $pyname {
-            fn move_joint(&mut self, target: [f64; $dof], speed: f64) -> PyResult<()> {
+            fn move_joint(&mut self, target: [f64; $dof], speed: f64) -> pyo3::PyResult<()> {
                 self.0.move_joint(&target, speed).map_err(Into::into)
             }
-            fn move_joint_async(&mut self, target: [f64; $dof], speed: f64) -> PyResult<()> {
+            fn move_joint_async(&mut self, target: [f64; $dof], speed: f64) -> pyo3::PyResult<()> {
                 self.0.move_joint_async(&target, speed).map_err(Into::into)
             }
-            fn move_joint_rel(&mut self, target: [f64; $dof], speed: f64) -> PyResult<()> {
+            fn move_joint_rel(&mut self, target: [f64; $dof], speed: f64) -> pyo3::PyResult<()> {
                 self.0.move_joint_rel(&target, speed).map_err(Into::into)
             }
-            fn move_joint_rel_async(&mut self, target: [f64; $dof], speed: f64) -> PyResult<()> {
+            fn move_joint_rel_async(
+                &mut self,
+                target: [f64; $dof],
+                speed: f64,
+            ) -> pyo3::PyResult<()> {
                 self.0
                     .move_joint_rel_async(&target, speed)
                     .map_err(Into::into)
             }
-            fn move_joint_path(&mut self, target: Vec<[f64; $dof]>, speed: f64) -> PyResult<()> {
+            fn move_joint_path(
+                &mut self,
+                target: Vec<[f64; $dof]>,
+                speed: f64,
+            ) -> pyo3::PyResult<()> {
                 self.0.move_joint_path(target, speed).map_err(Into::into)
             }
 
-            fn move_cartesian(&mut self, target: Pose, speed: f64) -> PyResult<()> {
-                self.0.move_cartesian(&target, speed).map_err(Into::into)
-            }
-            fn move_cartesian_async(&mut self, target: Pose, speed: f64) -> PyResult<()> {
+            fn move_cartesian(&mut self, target: $crate::PyPose, speed: f64) -> pyo3::PyResult<()> {
                 self.0
-                    .move_cartesian_async(&target, speed)
+                    .move_cartesian(&target.into(), speed)
                     .map_err(Into::into)
             }
-            fn move_cartesian_rel(&mut self, target: Pose, speed: f64) -> PyResult<()> {
+            fn move_cartesian_async(
+                &mut self,
+                target: $crate::PyPose,
+                speed: f64,
+            ) -> pyo3::PyResult<()> {
                 self.0
-                    .move_cartesian_rel(&target, speed)
+                    .move_cartesian_async(&target.into(), speed)
                     .map_err(Into::into)
             }
-            fn move_cartesian_rel_async(&mut self, target: Pose, speed: f64) -> PyResult<()> {
+            fn move_cartesian_rel(
+                &mut self,
+                target: $crate::PyPose,
+                speed: f64,
+            ) -> pyo3::PyResult<()> {
                 self.0
-                    .move_cartesian_rel_async(&target, speed)
+                    .move_cartesian_rel(&target.into(), speed)
                     .map_err(Into::into)
             }
-            fn move_cartesian_path(&mut self, target: Vec<Pose>, speed: f64) -> PyResult<()> {
+            fn move_cartesian_rel_async(
+                &mut self,
+                target: $crate::PyPose,
+                speed: f64,
+            ) -> pyo3::PyResult<()> {
                 self.0
-                    .move_cartesian_path(target, speed)
+                    .move_cartesian_rel_async(&target.into(), speed)
+                    .map_err(Into::into)
+            }
+            fn move_cartesian_path(
+                &mut self,
+                target: Vec<$crate::PyPose>,
+                speed: f64,
+            ) -> pyo3::PyResult<()> {
+                self.0
+                    .move_cartesian_path(target.into_iter().map(Into::into).collect(), speed)
                     .map_err(Into::into)
             }
 
-            fn move_path_from_file(&mut self, path: &str, speed: f64) -> PyResult<()> {
+            fn move_path_from_file(&mut self, path: &str, speed: f64) -> pyo3::PyResult<()> {
                 self.0.move_path_from_file(path, speed).map_err(Into::into)
             }
-            // fn move_path_prepare(
-            //     &mut self,
-            //     path: Vec<[::paste::paste! {[<MotionType $dof>]}]>,
-            // ) -> RobotResult<()> {
-            //     self.0.move_path_prepare(path).map_err(Into::into)
-            // }
-            fn move_path_start(&mut self) -> RobotResult<()> {
+            fn move_path_prepare(
+                &mut self,
+                path: Vec<::paste::paste! {$crate::[<MotionType $dof>]}>,
+            ) -> pyo3::PyResult<()> {
+                self.0
+                    .move_path_prepare(path.into_iter().map(Into::into).collect())
+                    .map_err(Into::into)
+            }
+            fn move_path_start(&mut self) -> pyo3::PyResult<()> {
                 self.0.move_path_start().map_err(Into::into)
             }
-            fn move_path_prepare_from_file(&mut self, path: &str) -> RobotResult<()> {
+            fn move_path_prepare_from_file(&mut self, path: &str) -> pyo3::PyResult<()> {
                 self.0.move_path_prepare_from_file(path).map_err(Into::into)
             }
         }
@@ -168,19 +196,27 @@ macro_rules! py_arm_preplanned_motion_ext {
 #[macro_export]
 macro_rules! py_arm_streaming_handle {
     ($pyname: ident<{ $dof: expr }>($name: ident)) => {
-        #[pymethods]
+        #[pyo3::pymethods]
         impl $pyname {
-            fn move_to(&mut self, target: py_motion_type($dof)) -> PyResult<()> {
+            fn move_to(
+                &mut self,
+                target: ::paste::paste! {$crate::[<MotionType $dof>]},
+            ) -> pyo3::PyResult<()> {
                 self.0.move_to(target.into()).map_err(Into::into)
             }
-            fn last_motion(&self) -> PyResult<PyMotionType> {
+            fn last_motion(&self) -> pyo3::PyResult<::paste::paste! {$crate::[<MotionType $dof>]}> {
                 self.0.last_motion().map(Into::into).map_err(Into::into)
             }
 
-            fn control_with(&mut self, target: PyArmState) -> PyResult<()> {
+            fn control_with(
+                &mut self,
+                target: ::paste::paste! {$crate::[<ControlType $dof>]},
+            ) -> pyo3::PyResult<()> {
                 self.0.control_with(target.into()).map_err(Into::into)
             }
-            fn last_control(&self) -> PyResult<PyArmState> {
+            fn last_control(
+                &self,
+            ) -> pyo3::PyResult<::paste::paste! {$crate::[<ControlType $dof>]}> {
                 self.0.last_control().map(Into::into).map_err(Into::into)
             }
         }
@@ -190,12 +226,12 @@ macro_rules! py_arm_streaming_handle {
 #[macro_export]
 macro_rules! py_arm_streaming_motion {
     ($pyname: ident<{ $dof: expr }>($name: ident) -> $handle_name: ident) => {
-        #[pymethods]
+        #[pyo3::pymethods]
         impl $pyname {
-            fn start_streaming(&mut self) -> PyResult<$handle_name> {
+            fn start_streaming(&mut self) -> pyo3::PyResult<$handle_name> {
                 self.0.start_streaming().map_err(Into::into)
             }
-            fn stop_streaming(&mut self) -> PyResult<()> {
+            fn stop_streaming(&mut self) -> pyo3::PyResult<()> {
                 self.0.stop_streaming().map_err(Into::into)
             }
         }
@@ -219,27 +255,27 @@ macro_rules! py_arm_real_time_control_ext {
 
 // macro_rules! py_arm_state {
 //     ($name: ident, $dof: expr) => {
-//         #[pyclass]
+//         #[pyo3::pyclass]
 //         pub struct $name(ArmState<$dof>);
 
-//         #[pymethods]
+//         #[pyo3::pymethods]
 //         impl $name {
-//             fn echo(&self) -> PyResult<String> {
+//             fn echo(&self) -> pyo3::PyResult<String> {
 //                 Ok(format!("{}", self.0))
 //             }
 
 //             #[getter]
-//             fn joint(&self) -> PyResult<Option<[f64; $dof]>> {
+//             fn joint(&self) -> pyo3::PyResult<Option<[f64; $dof]>> {
 //                 Ok(self.0.joint)
 //             }
 
 //             #[getter]
-//             fn joint_vel(&self) -> PyResult<Option<[f64; $dof]>> {
+//             fn joint_vel(&self) -> pyo3::PyResult<Option<[f64; $dof]>> {
 //                 Ok(self.0.joint_vel)
 //             }
 
 //             #[getter]
-//             fn joint_acc(&self) -> PyResult<Option<[f64; $dof]>> {
+//             fn joint_acc(&self) -> pyo3::PyResult<Option<[f64; $dof]>> {
 //                 Ok(self.0.joint_acc)
 //             }
 //         }
@@ -262,16 +298,13 @@ macro_rules! py_arm_real_time_control_ext {
 
 #[cfg(all(test, feature = "to_py"))]
 mod test {
-    use pyo3::{PyResult, pyclass, pymethods};
+    use pyo3;
 
-    use crate::{
-        ArmBehavior, ArmPreplannedMotion, ArmPreplannedMotionExt, ArmState, ControlType, LoadState,
-        MotionType, Pose, RobotBehavior, RobotResult, arm::to_py::*, types::to_py::*,
-    };
+    use crate::{LoadState, RobotBehavior, RobotResult, arm::*, types::*};
 
     struct TestRobot;
 
-    #[pyclass]
+    #[pyo3::pyclass]
     struct PyTestRobot(TestRobot);
 
     py_robot_behavior!(PyTestRobot(TestRobot));

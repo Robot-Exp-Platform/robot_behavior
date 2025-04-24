@@ -258,7 +258,7 @@ impl TryFrom<&[f64]> for Pose {
 }
 
 #[cfg(feature = "to_py")]
-pub mod to_py {
+mod to_py {
     use super::*;
     use pyo3::{Bound, FromPyObject, IntoPyObject, PyAny, PyErr, pyclass, pymethods};
 
@@ -358,6 +358,7 @@ pub mod to_py {
     #[macro_export]
     macro_rules! py_motion_type {
         ($name: ident, $dof: expr) => {
+            #[derive(Clone, Copy)]
             #[pyclass]
             pub struct $name(MotionType<$dof>);
 
@@ -407,3 +408,6 @@ pub mod to_py {
     py_control_type!(ControlType6, 6);
     py_control_type!(ControlType7, 7);
 }
+
+#[cfg(feature = "to_py")]
+pub use to_py::*;

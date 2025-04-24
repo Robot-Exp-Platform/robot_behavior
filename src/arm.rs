@@ -294,7 +294,7 @@ impl<const N: usize> Display for ArmState<N> {
 }
 
 #[cfg(feature = "to_py")]
-pub mod to_py {
+mod to_py {
     use super::*;
     use pyo3::{pyclass, pymethods};
     #[pyclass(name = "ArmState")]
@@ -463,3 +463,6 @@ pub mod to_py {
         }
     }
 }
+
+#[cfg(feature = "to_py")]
+pub use to_py::*;
