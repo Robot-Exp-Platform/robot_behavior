@@ -876,7 +876,7 @@ dependencies = [
 
 [[package]]
 name = "robot_behavior"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "libc",
  "nalgebra",

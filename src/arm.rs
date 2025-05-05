@@ -112,6 +112,7 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
     fn move_linear_with_homo_async(&mut self, target: &[f64; 16], speed: f64) -> RobotResult<()> {
         self.move_cartesian_async(&Pose::Homo(*target), speed)
     }
+
     fn move_path_prepare(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
     fn move_path_start(&mut self) -> RobotResult<()>;
     fn move_path_prepare_from_file(&mut self, path: &str) -> RobotResult<()> {
@@ -160,72 +161,80 @@ pub trait ArmStreamingMotionExt<const N: usize>: ArmStreamingMotion<N> {
 pub trait ArmRealtimeControl<const N: usize>: ArmBehavior<N> {
     fn move_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> MotionType<N> + Send + 'static;
+        FM: Fn(ArmState<N>, Duration) -> (MotionType<N>, bool) + Send + 'static;
     fn control_with_closure<FC>(&mut self, closure: FC) -> RobotResult<()>
     where
-        FC: Fn(ArmState<N>, Duration) -> ControlType<N> + Send + 'static;
+        FC: Fn(ArmState<N>, Duration) -> (ControlType<N>, bool) + Send + 'static;
 }
 
 pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
     fn move_joint_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> [f64; N] + Send + Sync + 'static,
+        FM: Fn(ArmState<N>, Duration) -> ([f64; N], bool) + Send + Sync + 'static,
     {
-        self.move_with_closure(move |state, duration| MotionType::Joint(closure(state, duration)))
+        self.move_with_closure(move |state, duration| {
+            let (joint, finished) = closure(state, duration);
+            (MotionType::Joint(joint), finished)
+        })
     }
 
     fn move_joint_vel_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> [f64; N] + Send + Sync + 'static,
+        FM: Fn(ArmState<N>, Duration) -> ([f64; N], bool) + Send + Sync + 'static,
     {
         self.move_with_closure(move |state, duration| {
-            MotionType::JointVel(closure(state, duration))
+            let (joint_vel, finished) = closure(state, duration);
+            (MotionType::JointVel(joint_vel), finished)
         })
     }
 
     fn move_cartesian_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> Pose + Send + Sync + 'static,
+        FM: Fn(ArmState<N>, Duration) -> (Pose, bool) + Send + Sync + 'static,
     {
         self.move_with_closure(move |state, duration| {
-            MotionType::Cartesian(closure(state, duration))
+            let (pose, finished) = closure(state, duration);
+            (MotionType::Cartesian(pose), finished)
         })
     }
 
     fn move_cartesian_vel_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> [f64; 6] + Send + Sync + 'static,
+        FM: Fn(ArmState<N>, Duration) -> ([f64; 6], bool) + Send + Sync + 'static,
     {
         self.move_with_closure(move |state, duration| {
-            MotionType::CartesianVel(closure(state, duration))
+            let (vel, finished) = closure(state, duration);
+            (MotionType::CartesianVel(vel), finished)
         })
     }
 
     fn move_cartesian_euler_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> ([f64; 3], [f64; 3]) + Send + Sync + 'static,
+        FM: Fn(ArmState<N>, Duration) -> ([f64; 3], [f64; 3], bool) + Send + Sync + 'static,
     {
         self.move_cartesian_with_closure(move |state, duration| {
-            let (tran, rot) = closure(state, duration);
-            Pose::Euler(tran, rot)
+            let (tran, rot, finished) = closure(state, duration);
+            (Pose::Euler(tran, rot), finished)
         })
     }
 
     fn move_cartesian_quat_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> na::Isometry3<f64> + Send + Sync + 'static,
+        FM: Fn(ArmState<N>, Duration) -> (na::Isometry3<f64>, bool) + Send + Sync + 'static,
     {
         self.move_cartesian_with_closure(move |state, duration| {
-            Pose::Quat(closure(state, duration))
+            let (quat, finished) = closure(state, duration);
+            (Pose::Quat(quat), finished)
         })
     }
 
     fn move_cartesian_homo_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> [f64; 16] + Send + Sync + 'static,
+        FM: Fn(ArmState<N>, Duration) -> ([f64; 16], bool) + Send + Sync + 'static,
     {
         self.move_cartesian_with_closure(move |state, duration| {
-            Pose::Homo(closure(state, duration))
+            let (homo, finished) = closure(state, duration);
+            (Pose::Homo(homo), finished)
         })
     }
 }
