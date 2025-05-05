@@ -161,16 +161,16 @@ pub trait ArmStreamingMotionExt<const N: usize>: ArmStreamingMotion<N> {
 pub trait ArmRealtimeControl<const N: usize>: ArmBehavior<N> {
     fn move_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> (MotionType<N>, bool) + Send + 'static;
+        FM: FnMut(ArmState<N>, Duration) -> (MotionType<N>, bool) + Send + 'static;
     fn control_with_closure<FC>(&mut self, closure: FC) -> RobotResult<()>
     where
-        FC: Fn(ArmState<N>, Duration) -> (ControlType<N>, bool) + Send + 'static;
+        FC: FnMut(ArmState<N>, Duration) -> (ControlType<N>, bool) + Send + 'static;
 }
 
 pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
-    fn move_joint_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    fn move_joint_with_closure<FM>(&mut self, mut closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> ([f64; N], bool) + Send + Sync + 'static,
+        FM: FnMut(ArmState<N>, Duration) -> ([f64; N], bool) + Send + Sync + 'static,
     {
         self.move_with_closure(move |state, duration| {
             let (joint, finished) = closure(state, duration);
@@ -178,9 +178,9 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
         })
     }
 
-    fn move_joint_vel_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    fn move_joint_vel_with_closure<FM>(&mut self, mut closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> ([f64; N], bool) + Send + Sync + 'static,
+        FM: FnMut(ArmState<N>, Duration) -> ([f64; N], bool) + Send + Sync + 'static,
     {
         self.move_with_closure(move |state, duration| {
             let (joint_vel, finished) = closure(state, duration);
@@ -188,9 +188,9 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
         })
     }
 
-    fn move_cartesian_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    fn move_cartesian_with_closure<FM>(&mut self, mut closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> (Pose, bool) + Send + Sync + 'static,
+        FM: FnMut(ArmState<N>, Duration) -> (Pose, bool) + Send + Sync + 'static,
     {
         self.move_with_closure(move |state, duration| {
             let (pose, finished) = closure(state, duration);
@@ -198,9 +198,9 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
         })
     }
 
-    fn move_cartesian_vel_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    fn move_cartesian_vel_with_closure<FM>(&mut self, mut closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> ([f64; 6], bool) + Send + Sync + 'static,
+        FM: FnMut(ArmState<N>, Duration) -> ([f64; 6], bool) + Send + Sync + 'static,
     {
         self.move_with_closure(move |state, duration| {
             let (vel, finished) = closure(state, duration);
@@ -208,9 +208,9 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
         })
     }
 
-    fn move_cartesian_euler_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    fn move_cartesian_euler_with_closure<FM>(&mut self, mut closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> ([f64; 3], [f64; 3], bool) + Send + Sync + 'static,
+        FM: FnMut(ArmState<N>, Duration) -> ([f64; 3], [f64; 3], bool) + Send + Sync + 'static,
     {
         self.move_cartesian_with_closure(move |state, duration| {
             let (tran, rot, finished) = closure(state, duration);
@@ -218,9 +218,9 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
         })
     }
 
-    fn move_cartesian_quat_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    fn move_cartesian_quat_with_closure<FM>(&mut self, mut closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> (na::Isometry3<f64>, bool) + Send + Sync + 'static,
+        FM: FnMut(ArmState<N>, Duration) -> (na::Isometry3<f64>, bool) + Send + Sync + 'static,
     {
         self.move_cartesian_with_closure(move |state, duration| {
             let (quat, finished) = closure(state, duration);
@@ -228,9 +228,9 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
         })
     }
 
-    fn move_cartesian_homo_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
+    fn move_cartesian_homo_with_closure<FM>(&mut self, mut closure: FM) -> RobotResult<()>
     where
-        FM: Fn(ArmState<N>, Duration) -> ([f64; 16], bool) + Send + Sync + 'static,
+        FM: FnMut(ArmState<N>, Duration) -> ([f64; 16], bool) + Send + Sync + 'static,
     {
         self.move_cartesian_with_closure(move |state, duration| {
             let (homo, finished) = closure(state, duration);

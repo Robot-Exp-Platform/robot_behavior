@@ -30,6 +30,7 @@ pub enum MotionType<const N: usize> {
     CartesianVel([f64; 6]),
     Position([f64; 3]),
     PositionVel([f64; 3]),
+    Stop,
 }
 
 impl Default for Pose {
