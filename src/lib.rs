@@ -1,5 +1,7 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
+#![feature(portable_simd)]
+
 mod arm;
 mod exception;
 #[cfg(feature = "ffi")]

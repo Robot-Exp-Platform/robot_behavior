@@ -59,6 +59,23 @@ macro_rules! py_arm_behavior {
 }
 
 #[macro_export]
+macro_rules! py_arm_param {
+    ($pyname: ident<{$dof: expr}>($name: ident)) => {
+        #[pyo3::pymethods]
+        impl $pyname {
+            fn forward_kinematics(q: &[f64; $dof]) -> pyo3::PyResult<$crate::PyPose> {
+                Ok($crate::ArmParam::<$dof>::forward_kinematics(q).into())
+            }
+
+            fn inverse_kinematics(pose: $crate::PyPose) -> pyo3::PyResult<[f64; $dof]> {
+                let pose: $crate::Pose = pose.into();
+                $crate::ArmParam::<$dof>::inverse_kinematics(&pose).map_err(Into::into)
+            }
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! py_arm_preplanned_motion {
     ($pyname: ident<{ $dof: literal }>($name: ident)) => {
         #[pyo3::pymethods]
@@ -309,6 +326,7 @@ mod test {
 
     py_robot_behavior!(PyTestRobot(TestRobot));
     py_arm_behavior!(PyTestRobot<{0}>(TestRobot));
+    py_arm_param!(PyTestRobot<{0}>(TestRobot));
     py_arm_preplanned_motion!(PyTestRobot<{0}>(TestRobot));
     py_arm_preplanned_motion_ext!(PyTestRobot<{0}>(TestRobot));
 
@@ -365,6 +383,12 @@ mod test {
         unimpl!(
             fn set_load(&mut self, _load: LoadState) -> RobotResult<()>;
         );
+    }
+
+    impl ArmParam<0> for TestRobot {
+        const DH: [[f64; 4]; 0] = [];
+        const JOINT_MIN: [f64; 0] = [];
+        const JOINT_MAX: [f64; 0] = [];
     }
 
     impl ArmPreplannedMotion<0> for TestRobot {

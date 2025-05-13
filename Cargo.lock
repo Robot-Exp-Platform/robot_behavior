@@ -699,6 +699,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "pipe-trait"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1be1ec9e59f0360aefe84efa6f699198b685ab0d5718081e9f72aa2344289e2"
+
+[[package]]
 name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -881,6 +887,7 @@ dependencies = [
  "libc",
  "nalgebra",
  "paste",
+ "pipe-trait",
  "plotters",
  "pyo3",
  "serde",
