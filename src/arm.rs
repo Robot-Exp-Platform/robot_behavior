@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::{fs::File, time::Duration};
 
 use crate::utils::limit::*;
-use crate::{ControlType, LoadState, MotionType, Pose, RobotBehavior, RobotResult};
+use crate::{ControlType, Desc, LoadState, MotionType, Pose, Repr, RobotBehavior, RobotResult};
 
 pub struct ArmRealtimeConfig {
     pub period: f64,
@@ -31,6 +31,7 @@ pub struct ArmState<const N: usize> {
 pub trait ArmBehavior<const N: usize>: RobotBehavior {
     fn state(&mut self) -> RobotResult<ArmState<N>>;
     fn set_load(&mut self, load: LoadState) -> RobotResult<()>;
+    fn set_coord_description(&mut self, desc: Desc) -> RobotResult<()>;
 }
 
 pub trait ArmParam<const N: usize> {
@@ -63,7 +64,7 @@ pub trait ArmParam<const N: usize> {
         note = "inverse kinematics is not implemented because the representation method of the robotic arm configuration has not been determined"
     )]
     #[inline(always)]
-    fn inverse_kinematics(_pose: Pose) -> [f64; N] {
+    fn inverse_kinematics(_pose: Pose) -> RobotResult<[f64; N]> {
         unimplemented!(
             "inverse kinematics is not implemented because the representation method of the robotic arm configuration has not been determined"
         )
@@ -142,60 +143,81 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
         self.move_path(path.iter().map(|j| MotionType::Joint(*j)).collect(), speed)
     }
 
-    fn move_cartesian(&mut self, target: &Pose, speed: f64) -> RobotResult<()> {
-        self.move_to(MotionType::Cartesian(*target), speed)
+    fn move_cartesian(&mut self, desc: Desc, target: &Pose, speed: f64) -> RobotResult<()> {
+        self.move_to(MotionType::Cartesian(desc, *target), speed)
     }
-    fn move_cartesian_async(&mut self, target: &Pose, speed: f64) -> RobotResult<()> {
-        self.move_to_async(MotionType::Cartesian(*target), speed)
+    fn move_cartesian_async(&mut self, desc: Desc, target: &Pose, speed: f64) -> RobotResult<()> {
+        self.move_to_async(MotionType::Cartesian(desc, *target), speed)
     }
-    fn move_cartesian_rel(&mut self, target: &Pose, speed: f64) -> RobotResult<()> {
-        self.move_rel(MotionType::Cartesian(*target), speed)
+    fn move_cartesian_rel(&mut self, desc: Desc, target: &Pose, speed: f64) -> RobotResult<()> {
+        self.move_rel(MotionType::Cartesian(desc, *target), speed)
     }
-    fn move_cartesian_rel_async(&mut self, target: &Pose, speed: f64) -> RobotResult<()> {
-        self.move_rel_async(MotionType::Cartesian(*target), speed)
+    fn move_cartesian_rel_async(
+        &mut self,
+        desc: Desc,
+        target: &Pose,
+        speed: f64,
+    ) -> RobotResult<()> {
+        self.move_rel_async(MotionType::Cartesian(desc, *target), speed)
     }
-    fn move_cartesian_path(&mut self, path: Vec<Pose>, speed: f64) -> RobotResult<()> {
+    fn move_cartesian_path(&mut self, desc: Desc, path: Vec<Pose>, speed: f64) -> RobotResult<()> {
         self.move_path(
-            path.iter().map(|p| MotionType::Cartesian(*p)).collect(),
+            path.iter()
+                .map(|p| MotionType::Cartesian(desc, *p))
+                .collect(),
             speed,
         )
     }
 
     fn move_linear_with_quat(
         &mut self,
+        desc: Desc,
         target: &na::Isometry3<f64>,
         speed: f64,
     ) -> RobotResult<()> {
-        self.move_cartesian(&Pose::Quat(*target), speed)
+        self.move_cartesian(desc, &Pose::Quat(*target), speed)
     }
     fn move_linear_with_quat_async(
         &mut self,
+        desc: Desc,
         target: &na::Isometry3<f64>,
         speed: f64,
     ) -> RobotResult<()> {
-        self.move_cartesian_async(&Pose::Quat(*target), speed)
+        self.move_cartesian_async(desc, &Pose::Quat(*target), speed)
     }
     fn move_linear_with_euler(
         &mut self,
+        desc: Desc,
         tran: [f64; 3],
         rot: [f64; 3],
         speed: f64,
     ) -> RobotResult<()> {
-        self.move_cartesian(&Pose::Euler(tran, rot), speed)
+        self.move_cartesian(desc, &Pose::Euler(tran, rot), speed)
     }
     fn move_linear_with_euler_async(
         &mut self,
+        desc: Desc,
         tran: [f64; 3],
         rot: [f64; 3],
         speed: f64,
     ) -> RobotResult<()> {
-        self.move_cartesian_async(&Pose::Euler(tran, rot), speed)
+        self.move_cartesian_async(desc, &Pose::Euler(tran, rot), speed)
     }
-    fn move_linear_with_homo(&mut self, target: &[f64; 16], speed: f64) -> RobotResult<()> {
-        self.move_cartesian(&Pose::Homo(*target), speed)
+    fn move_linear_with_homo(
+        &mut self,
+        desc: Desc,
+        target: &[f64; 16],
+        speed: f64,
+    ) -> RobotResult<()> {
+        self.move_cartesian(desc, &Pose::Homo(*target), speed)
     }
-    fn move_linear_with_homo_async(&mut self, target: &[f64; 16], speed: f64) -> RobotResult<()> {
-        self.move_cartesian_async(&Pose::Homo(*target), speed)
+    fn move_linear_with_homo_async(
+        &mut self,
+        desc: Desc,
+        target: &[f64; 16],
+        speed: f64,
+    ) -> RobotResult<()> {
+        self.move_cartesian_async(desc, &Pose::Homo(*target), speed)
     }
 
     fn move_path_prepare(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
@@ -273,13 +295,13 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
         })
     }
 
-    fn move_cartesian_with_closure<FM>(&mut self, mut closure: FM) -> RobotResult<()>
+    fn move_cartesian_with_closure<FM>(&mut self, desc: Desc, mut closure: FM) -> RobotResult<()>
     where
         FM: FnMut(ArmState<N>, Duration) -> (Pose, bool) + Send + Sync + 'static,
     {
         self.move_with_closure(move |state, duration| {
             let (pose, finished) = closure(state, duration);
-            (MotionType::Cartesian(pose), finished)
+            (MotionType::Cartesian(desc, pose), finished)
         })
     }
 
@@ -293,31 +315,43 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
         })
     }
 
-    fn move_cartesian_euler_with_closure<FM>(&mut self, mut closure: FM) -> RobotResult<()>
+    fn move_cartesian_euler_with_closure<FM>(
+        &mut self,
+        desc: Desc,
+        mut closure: FM,
+    ) -> RobotResult<()>
     where
         FM: FnMut(ArmState<N>, Duration) -> ([f64; 3], [f64; 3], bool) + Send + Sync + 'static,
     {
-        self.move_cartesian_with_closure(move |state, duration| {
+        self.move_cartesian_with_closure(desc, move |state, duration| {
             let (tran, rot, finished) = closure(state, duration);
             (Pose::Euler(tran, rot), finished)
         })
     }
 
-    fn move_cartesian_quat_with_closure<FM>(&mut self, mut closure: FM) -> RobotResult<()>
+    fn move_cartesian_quat_with_closure<FM>(
+        &mut self,
+        desc: Desc,
+        mut closure: FM,
+    ) -> RobotResult<()>
     where
         FM: FnMut(ArmState<N>, Duration) -> (na::Isometry3<f64>, bool) + Send + Sync + 'static,
     {
-        self.move_cartesian_with_closure(move |state, duration| {
+        self.move_cartesian_with_closure(desc, move |state, duration| {
             let (quat, finished) = closure(state, duration);
             (Pose::Quat(quat), finished)
         })
     }
 
-    fn move_cartesian_homo_with_closure<FM>(&mut self, mut closure: FM) -> RobotResult<()>
+    fn move_cartesian_homo_with_closure<FM>(
+        &mut self,
+        desc: Desc,
+        mut closure: FM,
+    ) -> RobotResult<()>
     where
         FM: FnMut(ArmState<N>, Duration) -> ([f64; 16], bool) + Send + Sync + 'static,
     {
-        self.move_cartesian_with_closure(move |state, duration| {
+        self.move_cartesian_with_closure(desc, move |state, duration| {
             let (homo, finished) = closure(state, duration);
             (Pose::Homo(homo), finished)
         })
@@ -352,7 +386,19 @@ impl<const N: usize> PartialEq<MotionType<N>> for ArmState<N> {
         if let (MotionType::JointVel(vel_target), Some(vel_state)) = (other, self.joint_vel) {
             return vel_state == *vel_target;
         }
-        if let (MotionType::Cartesian(pose_target), Some(pose_state)) = (other, self.pose_o_to_ee) {
+        if let (MotionType::Cartesian(Desc(Repr::OCS, Repr::EE), pose_target), Some(pose_state)) =
+            (other, self.pose_o_to_ee)
+        {
+            return pose_state == *pose_target;
+        }
+        if let (MotionType::Cartesian(Desc(Repr::OCS, Repr::TCP), pose_target), Some(pose_state)) =
+            (other, self.pose_o_to_ee)
+        {
+            return pose_state == *pose_target;
+        }
+        if let (MotionType::Cartesian(Desc(Repr::F, Repr::EE), pose_target), Some(pose_state)) =
+            (other, self.pose_f_to_ee)
+        {
             return pose_state == *pose_target;
         }
         if let (MotionType::CartesianVel(vel_target), Some(vel_state)) = (other, self.cartesian_vel)
@@ -545,14 +591,14 @@ mod to_py {
 
         fn __repr__(&self) -> String {
             match &self.0 {
-                ArmStateEnum::ArmState0(state) => format!("{:?}", state),
-                ArmStateEnum::ArmState1(state) => format!("{:?}", state),
-                ArmStateEnum::ArmState2(state) => format!("{:?}", state),
-                ArmStateEnum::ArmState3(state) => format!("{:?}", state),
-                ArmStateEnum::ArmState4(state) => format!("{:?}", state),
-                ArmStateEnum::ArmState5(state) => format!("{:?}", state),
-                ArmStateEnum::ArmState6(state) => format!("{:?}", state),
-                ArmStateEnum::ArmState7(state) => format!("{:?}", state),
+                ArmStateEnum::ArmState0(state) => format!("{state:?}"),
+                ArmStateEnum::ArmState1(state) => format!("{state:?}"),
+                ArmStateEnum::ArmState2(state) => format!("{state:?}"),
+                ArmStateEnum::ArmState3(state) => format!("{state:?}"),
+                ArmStateEnum::ArmState4(state) => format!("{state:?}"),
+                ArmStateEnum::ArmState5(state) => format!("{state:?}"),
+                ArmStateEnum::ArmState6(state) => format!("{state:?}"),
+                ArmStateEnum::ArmState7(state) => format!("{state:?}"),
             }
         }
     }

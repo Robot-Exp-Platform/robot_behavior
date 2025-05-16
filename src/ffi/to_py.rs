@@ -60,16 +60,17 @@ macro_rules! py_arm_behavior {
 
 #[macro_export]
 macro_rules! py_arm_param {
-    ($pyname: ident<{$dof: expr}>($name: ident)) => {
+    ($pyname: ident<{ $dof: expr }>($name: ident)) => {
         #[pyo3::pymethods]
         impl $pyname {
-            fn forward_kinematics(q: &[f64; $dof]) -> pyo3::PyResult<$crate::PyPose> {
-                Ok($crate::ArmParam::<$dof>::forward_kinematics(q).into())
+            fn forward_kinematics(&self, q: [f64; $dof]) -> pyo3::PyResult<$crate::PyPose> {
+                Ok($name::forward_kinematics(&q).into())
             }
 
-            fn inverse_kinematics(pose: $crate::PyPose) -> pyo3::PyResult<[f64; $dof]> {
+            #[allow(deprecated)]
+            fn inverse_kinematics(&self, pose: $crate::PyPose) -> pyo3::PyResult<[f64; $dof]> {
                 let pose: $crate::Pose = pose.into();
-                $crate::ArmParam::<$dof>::inverse_kinematics(&pose).map_err(Into::into)
+                $name::inverse_kinematics(pose).map_err(Into::into)
             }
         }
     };
@@ -147,45 +148,58 @@ macro_rules! py_arm_preplanned_motion_ext {
                 self.0.move_joint_path(target, speed).map_err(Into::into)
             }
 
-            fn move_cartesian(&mut self, target: $crate::PyPose, speed: f64) -> pyo3::PyResult<()> {
+            fn move_cartesian(
+                &mut self,
+                desc: (String, String),
+                target: $crate::PyPose,
+                speed: f64,
+            ) -> pyo3::PyResult<()> {
                 self.0
-                    .move_cartesian(&target.into(), speed)
+                    .move_cartesian(desc.into(), &target.into(), speed)
                     .map_err(Into::into)
             }
             fn move_cartesian_async(
                 &mut self,
+                desc: (String, String),
                 target: $crate::PyPose,
                 speed: f64,
             ) -> pyo3::PyResult<()> {
                 self.0
-                    .move_cartesian_async(&target.into(), speed)
+                    .move_cartesian_async(desc.into(), &target.into(), speed)
                     .map_err(Into::into)
             }
             fn move_cartesian_rel(
                 &mut self,
+                desc: (String, String),
                 target: $crate::PyPose,
                 speed: f64,
             ) -> pyo3::PyResult<()> {
                 self.0
-                    .move_cartesian_rel(&target.into(), speed)
+                    .move_cartesian_rel(desc.into(), &target.into(), speed)
                     .map_err(Into::into)
             }
             fn move_cartesian_rel_async(
                 &mut self,
+                desc: (String, String),
                 target: $crate::PyPose,
                 speed: f64,
             ) -> pyo3::PyResult<()> {
                 self.0
-                    .move_cartesian_rel_async(&target.into(), speed)
+                    .move_cartesian_rel_async(desc.into(), &target.into(), speed)
                     .map_err(Into::into)
             }
             fn move_cartesian_path(
                 &mut self,
+                desc: (String, String),
                 target: Vec<$crate::PyPose>,
                 speed: f64,
             ) -> pyo3::PyResult<()> {
                 self.0
-                    .move_cartesian_path(target.into_iter().map(Into::into).collect(), speed)
+                    .move_cartesian_path(
+                        desc.into(),
+                        target.into_iter().map(Into::into).collect(),
+                        speed,
+                    )
                     .map_err(Into::into)
             }
 
@@ -382,6 +396,9 @@ mod test {
         );
         unimpl!(
             fn set_load(&mut self, _load: LoadState) -> RobotResult<()>;
+        );
+        unimpl!(
+            fn set_coord_description(&mut self, _desc: Desc) -> RobotResult<()>;
         );
     }
 

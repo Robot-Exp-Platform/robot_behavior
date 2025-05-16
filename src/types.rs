@@ -8,6 +8,20 @@ use thiserror::Error;
 use crate::utils::homo_to_isometry;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
+pub enum Repr {
+    OCS,
+    TCS,
+    UCS,
+    Joint,
+    F,
+    EE,
+    TCP,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
+pub struct Desc(pub Repr, pub Repr);
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
 pub enum Pose {
     Euler([f64; 3], [f64; 3]),
     Quat(na::Isometry3<f64>),
@@ -26,11 +40,38 @@ pub enum ControlType<const N: usize> {
 pub enum MotionType<const N: usize> {
     Joint(#[serde_as(as = "[_; N]")] [f64; N]),
     JointVel(#[serde_as(as = "[_; N]")] [f64; N]),
-    Cartesian(Pose),
+    Cartesian(Desc, Pose),
     CartesianVel([f64; 6]),
     Position([f64; 3]),
     PositionVel([f64; 3]),
     Stop,
+}
+
+impl From<&str> for Repr {
+    fn from(value: &str) -> Self {
+        match value {
+            "OCS" => Repr::OCS,
+            "TCS" => Repr::TCS,
+            "UCS" => Repr::UCS,
+            "Joint" => Repr::Joint,
+            "F" => Repr::F,
+            "EE" => Repr::EE,
+            "TCP" => Repr::TCP,
+            _ => panic!("Unknown Repr variant"),
+        }
+    }
+}
+
+impl From<(&str, &str)> for Desc {
+    fn from(value: (&str, &str)) -> Self {
+        Desc(Repr::from(value.0), Repr::from(value.1))
+    }
+}
+
+impl From<(String, String)> for Desc {
+    fn from(value: (String, String)) -> Self {
+        Desc(Repr::from(value.0.as_str()), Repr::from(value.1.as_str()))
+    }
 }
 
 impl Default for Pose {
@@ -263,8 +304,26 @@ mod to_py {
     use super::*;
     use pyo3::{Bound, FromPyObject, IntoPyObject, PyAny, PyErr, pyclass, pymethods};
 
+    #[derive(Debug, Clone)]
+    #[pyclass(name = "Desc")]
+    pub struct PyDesc {
+        #[pyo3(get, set)]
+        pub from: String,
+        #[pyo3(get, set)]
+        pub to: String,
+    }
+
+    #[pymethods]
+    impl PyDesc {
+        #[new]
+        fn new(from: String, to: String) -> Self {
+            PyDesc { from, to }
+        }
+    }
+
     #[derive(Debug, Clone, Copy)]
     #[pyclass(name = "Pose")]
+
     pub enum PyPose {
         #[pyo3(constructor = (_0, _1))]
         Euler([f64; 3], [f64; 3]),
