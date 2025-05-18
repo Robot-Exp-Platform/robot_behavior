@@ -8,18 +8,12 @@ use thiserror::Error;
 use crate::utils::homo_to_isometry;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
-pub enum Repr {
+pub enum Coord {
     OCS,
-    TCS,
-    UCS,
-    Joint,
-    F,
-    EE,
-    TCP,
+    Shot,
+    Interial,
+    Other(Pose),
 }
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
-pub struct Desc(pub Repr, pub Repr);
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
 pub enum Pose {
@@ -30,9 +24,11 @@ pub enum Pose {
     Position([f64; 3]),
 }
 
+#[serde_as]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub enum ControlType<const N: usize> {
     Zero,
-    Torque([f64; N]),
+    Torque(#[serde_as(as = "[_; N]")] [f64; N]),
 }
 
 #[serde_as]
@@ -40,37 +36,21 @@ pub enum ControlType<const N: usize> {
 pub enum MotionType<const N: usize> {
     Joint(#[serde_as(as = "[_; N]")] [f64; N]),
     JointVel(#[serde_as(as = "[_; N]")] [f64; N]),
-    Cartesian(Desc, Pose),
+    Cartesian(Pose),
     CartesianVel([f64; 6]),
     Position([f64; 3]),
     PositionVel([f64; 3]),
     Stop,
 }
 
-impl From<&str> for Repr {
-    fn from(value: &str) -> Self {
-        match value {
-            "OCS" => Repr::OCS,
-            "TCS" => Repr::TCS,
-            "UCS" => Repr::UCS,
-            "Joint" => Repr::Joint,
-            "F" => Repr::F,
-            "EE" => Repr::EE,
-            "TCP" => Repr::TCP,
-            _ => panic!("Unknown Repr variant"),
+impl From<&str> for Coord {
+    fn from(s: &str) -> Self {
+        match s {
+            "OCS" => Coord::OCS,
+            "Shot" => Coord::Shot,
+            "Interial" => Coord::Interial,
+            _ => Coord::Other(serde_json::from_str(s).unwrap()),
         }
-    }
-}
-
-impl From<(&str, &str)> for Desc {
-    fn from(value: (&str, &str)) -> Self {
-        Desc(Repr::from(value.0), Repr::from(value.1))
-    }
-}
-
-impl From<(String, String)> for Desc {
-    fn from(value: (String, String)) -> Self {
-        Desc(Repr::from(value.0.as_str()), Repr::from(value.1.as_str()))
     }
 }
 
@@ -445,6 +425,7 @@ mod to_py {
     #[macro_export]
     macro_rules! py_control_type {
         ($name: ident, $dof: expr) => {
+            #[derive(Clone, Copy)]
             #[pyclass]
             pub struct $name(ControlType<$dof>);
 
