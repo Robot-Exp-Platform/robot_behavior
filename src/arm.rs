@@ -42,7 +42,7 @@ pub trait ArmBehavior<const N: usize>: RobotBehavior {
     fn with_velocity(&mut self, joint_vel: &[f64; N]) -> &mut Self;
     fn with_cartesian_velocity(&mut self, cartesian_vel: f64) -> &mut Self;
     fn with_acceleration(&mut self, joint_acc: &[f64; N]) -> &mut Self;
-    fn with_jeckson(&mut self, joint_jeck: &[f64; N]) -> &mut Self;
+    fn with_jerk(&mut self, joint_jerk: &[f64; N]) -> &mut Self;
 }
 
 pub trait ArmParam<const N: usize> {
@@ -52,7 +52,7 @@ pub trait ArmParam<const N: usize> {
     const JOINT_MAX: [f64; N];
     const JOINT_VEL_BOUND: [f64; N] = [f64::MAX; N];
     const JOINT_ACC_BOUND: [f64; N] = [f64::MAX; N];
-    const JOINT_JECK_BOUND: [f64; N] = [f64::MAX; N];
+    const JOINT_JERK_BOUND: [f64; N] = [f64::MAX; N];
     const CARTESIAN_VEL_BOUND: f64 = f64::MAX;
     const CARTESIAN_ACC_BOUND: f64 = f64::MAX;
     const TORQUE_BOUND: [f64; N] = [f64::MAX; N];
@@ -82,8 +82,8 @@ pub trait ArmParam<const N: usize> {
     }
 
     #[inline(always)]
-    fn limit_joint_jeck(q_dddot: &mut [f64; N]) -> &mut [f64; N] {
-        limit(q_dddot, &Self::JOINT_JECK_BOUND)
+    fn limit_joint_jerk(q_dddot: &mut [f64; N]) -> &mut [f64; N] {
+        limit(q_dddot, &Self::JOINT_JERK_BOUND)
     }
 
     #[inline]
@@ -93,7 +93,7 @@ pub trait ArmParam<const N: usize> {
         time: f64,
     ) -> &'a mut [f64; N] {
         q_ddot
-            .pipe_mut(|q| limit_dot(q, q_ddot_last, time, &Self::JOINT_JECK_BOUND))
+            .pipe_mut(|q| limit_dot(q, q_ddot_last, time, &Self::JOINT_JERK_BOUND))
             .pipe_mut(|q| limit(q, &Self::JOINT_ACC_BOUND))
     }
 

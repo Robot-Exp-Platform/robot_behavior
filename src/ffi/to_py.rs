@@ -648,7 +648,7 @@ mod test {
             fn with_velocity(&mut self, _joint_vel: &[f64; 0]) -> &mut Self;
             fn with_cartesian_velocity(&mut self, _cartesian_vel: f64) -> &mut Self;
             fn with_acceleration(&mut self, _joint_acc: &[f64; 0]) -> &mut Self;
-            fn with_jeckson(&mut self, _joint_jeck: &[f64; 0]) -> &mut Self;
+            fn with_jerk(&mut self, _joint_jerk: &[f64; 0]) -> &mut Self;
         );
     }
 
