@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use thiserror::Error;
 
-use crate::utils::homo_to_isometry;
+use crate::utils::{combine_array, homo_to_isometry};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
 pub enum Coord {
@@ -252,6 +252,25 @@ impl From<na::Isometry3<f64>> for Pose {
 impl From<[f64; 16]> for Pose {
     fn from(value: [f64; 16]) -> Self {
         Pose::Homo(value)
+    }
+}
+
+impl From<Pose> for [f64; 3] {
+    fn from(value: Pose) -> Self {
+        value.position()
+    }
+}
+
+impl From<Pose> for [f64; 6] {
+    fn from(value: Pose) -> Self {
+        let euler = value.euler();
+        combine_array(&euler.0, &euler.1)
+    }
+}
+
+impl From<Pose> for [f64; 16] {
+    fn from(value: Pose) -> Self {
+        value.homo()
     }
 }
 

@@ -7,6 +7,7 @@ mod exception;
 #[cfg(feature = "ffi")]
 pub mod ffi;
 mod load;
+mod once;
 mod params;
 mod realtime;
 mod robot;
@@ -16,7 +17,17 @@ pub mod utils;
 pub use arm::*;
 pub use exception::*;
 pub use load::*;
+pub use once::*;
 pub use params::*;
 pub use realtime::*;
 pub use robot::*;
 pub use types::*;
+
+pub mod behavior {
+    pub use crate::arm::{
+        ArmBehavior, ArmParam, ArmPreplannedMotion, ArmPreplannedMotionExt,
+        ArmPreplannedMotionImpl, ArmRealtimeControl, ArmRealtimeControlExt, ArmStreamingHandle,
+        ArmStreamingMotion, ArmStreamingMotionExt,
+    };
+    pub use crate::robot::RobotBehavior;
+}
