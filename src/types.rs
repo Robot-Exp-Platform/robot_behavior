@@ -1,4 +1,4 @@
-use std::array::TryFromSliceError;
+use std::{array::TryFromSliceError, ops::Div};
 
 use nalgebra as na;
 use serde::{Deserialize, Serialize};
@@ -276,6 +276,28 @@ impl TryFrom<&[f64]> for Pose {
             16 => Ok(Pose::Homo(value.try_into()?)),
             _ => Err(TryIntoPoseError(())),
         }
+    }
+}
+
+impl Div for Pose {
+    type Output = f64;
+    fn div(self, rhs: Self) -> Self::Output {
+        self.position()
+            .iter()
+            .zip(rhs.position().iter())
+            .map(|(a, b)| (a - b).exp2())
+            .sum()
+    }
+}
+
+impl Div for &Pose {
+    type Output = f64;
+    fn div(self, rhs: Self) -> Self::Output {
+        self.position()
+            .iter()
+            .zip(rhs.position().iter())
+            .map(|(a, b)| (a - b).exp2())
+            .sum()
     }
 }
 

@@ -24,6 +24,7 @@ pub struct ArmState<const N: usize> {
     pub joint_acc: Option<[f64; N]>,
     pub tau: Option<[f64; N]>,
     pub pose_o_to_ee: Option<Pose>,
+    pub pose_ee_to_k: Option<Pose>,
     pub cartesian_vel: Option<[f64; 6]>,
     pub load: Option<LoadState>,
 }
@@ -411,6 +412,7 @@ impl<const N: usize> Default for ArmState<N> {
             joint_acc: Some([0.; N]),
             tau: Some([0.; N]),
             pose_o_to_ee: Some(Pose::default()),
+            pose_ee_to_k: Some(Pose::default()),
             cartesian_vel: Some([0.; 6]),
             load: Some(LoadState {
                 m: 0.,
