@@ -202,349 +202,759 @@ class ControlType7(ControlType):
     ...
     
 class ArmState:
+    """
+    ArmState
+
+    Represents the state of a robot arm, including joint positions, velocities, accelerations, torques, end-effector poses, Cartesian velocities, and load state.
+
+    机械臂状态，包含关节位置、速度、加速度、力矩、末端位姿、笛卡尔速度和负载状态等信息。
+    """
+    joint: list[float] | None
+    joint_vel: list[float] | None
+    joint_acc: list[float] | None
+    tau: list[float] | None
+    pose_o_to_ee: Pose | None
+    pose_ee_to_k: Pose | None
+    cartesian_vel: list[float] | None
+    load: LoadState | None
+
+    def __init__(
+        self,
+        joint: list[float] | None = ...,
+        joint_vel: list[float] | None = ...,
+        joint_acc: list[float] | None = ...,
+        tau: list[float] | None = ...,
+        pose_o_to_ee: Pose | None = ...,
+        pose_ee_to_k: Pose | None = ...,
+        cartesian_vel: list[float] | None = ...,
+        load: LoadState | None = ...,
+    ):
+        """
+        Initialize ArmState.
+
+        初始化机械臂状态。
+        """
+        ...
     def joint(self) -> list[float] | None:
+        """
+        Get the joint positions of the arm.
+
+        获取机械臂的关节位置。
+        """
         ...
     def joint_vel(self) -> list[float] | None:
+        """
+        Get the joint velocities of the arm.
+
+        获取机械臂的关节速度。
+        """
         ...
     def joint_acc(self) -> list[float] | None:
+        """
+        Get the joint accelerations of the arm.
+
+        获取机械臂的关节加速度。
+        """
         ...
     def tau(self) -> list[float] | None:
+        """
+        Get the joint torques of the arm.
+
+        获取机械臂的关节力矩。
+        """
         ...
     def pose_o_to_ee(self) -> Pose | None:
         """
-        Get the pose of the end effector in the base frame 获取末端执行器在基坐标系下的位姿
+        Get the pose of the end effector in the base frame.
+
+        获取末端执行器在基坐标系下的位姿。
         Returns:
             Pose: the pose of the end effector in the base frame 末端执行器在基坐标系下的位姿
         """
         ...
     def pose_f_to_ee(self) -> Pose | None:
         """
-        Get the pose of the end effector in the flange frame 获取末端执行器在法兰坐标系下的位姿
+        Get the pose of the end effector in the flange frame.
+
+        获取末端执行器在法兰坐标系下的位姿。
         Returns:
             Pose: the pose of the end effector in the flange frame 末端执行器在法兰坐标系下的位姿
         """
         ...
     def pose_ee_to_kin(self) -> Pose | None:
         """
-        Get the pose of the end effector in the kin frame 获取末端执行器在关节坐标系下的位姿
+        Get the pose of the end effector in the kin frame.
+
+        获取末端执行器在关节坐标系下的位姿。
         Returns:
             Pose: the pose of the end effector in the kin frame 末端执行器在关节坐标系下的位姿
         """
         ...
     def cartesian_val(self) -> list[float] | None:
         """
-        Get the cartesian velocity of the end effector 获取末端执行器在笛卡尔坐标系下的速度
+        Get the Cartesian velocity of the end effector.
+
+        获取末端执行器在笛卡尔坐标系下的速度。
         Returns:
             list[float]: the cartesian velocity of the end effector 末端执行器在笛卡尔坐标系下的速度
         """
         ...
     def load(self) -> LoadState | None:
         """
-        Get the load state of the end effector 获取末端执行器的负载状态
+        Get the load state of the end effector.
+
+        获取末端执行器的负载状态。
         Returns:
             LoadState: the load state of the end effector 末端执行器的负载状态
         """
         ...
-    ...
 
 # TODO rewrite the docstring with `python` style 
 class Arm(Robot):
     """
-    # Robot Arm
-    机械臂型机器人
-    
-    ## methods(as `ArmBehavior`) 方法
-    
-    ```
-    type State;
-    fn read_state(&mut self) -> RobotResult<Self::State>;
-    fn state(&mut self) -> RobotResult<ArmState<N>>;
-    fn set_load(&mut self, load: LoadState) -> RobotResult<()>;
-    ```
-    
-    ## methods as `ArmPreplannedMotion`
-    
-    ```
-    fn move_to(&mut self, target: MotionType<N>, speed: f64) -> RobotResult<()>;
-    fn move_to_async(&mut self, target: MotionType<N>, speed: f64) -> RobotResult<()>;
-    fn move_rel(&mut self, rel: MotionType<N>, speed: f64) -> RobotResult<()>;
-    fn move_rel_async(&mut self, rel: MotionType<N>, speed: f64) -> RobotResult<()>;
-    fn move_path(&mut self, path: Vec<MotionType<N>>, speed: f64) -> RobotResult<()>;
-    fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
-    ```
-    
-    ## methods as `ArmPreplannedMotionExt`
-    
-    ```
-    fn move_joint(&mut self, target: &[f64; N], speed: f64) -> RobotResult<()>;
-    fn move_joint_async(&mut self, target: &[f64; N], speed: f64) -> RobotResult<()>;
-    fn move_joint_rel(&mut self, target: &[f64; N], speed: f64) -> RobotResult<()>;
-    fn move_joint_rel_async(&mut self, target: &[f64; N], speed: f64) -> RobotResult<()>;
-    fn move_cartesian(&mut self, target: &Pose, speed: f64) -> RobotResult<()>;
-    fn move_cartesian_async(&mut self, target: &Pose, speed: f64) -> RobotResult<()>;
-    fn move_cartesian_rel(&mut self, target: &Pose, speed: f64) -> RobotResult<()>;
-    fn move_cartesian_rel_async(&mut self, target: &Pose, speed: f64) -> RobotResult<()>;
-    fn move_linear_with_euler(&mut self, tran: [f64; 3], rot: [f64; 3], speed: f64) -> RobotResult<()>;
-    fn move_linear_with_euler_async(&mut self, tran: [f64; 3], rot: [f64; 3], speed: f64) -> RobotResult<()>;
-    fn move_linear_with_homo(&mut self, target: &[f64; 16], speed: f64) -> RobotResult<()>;
-    fn move_linear_with_homo_async(&mut self, target: &[f64; 16], speed: f64) -> RobotResult<()>;
-    fn move_path_prepare(&mut self, _path: Vec<MotionType<N>>) -> RobotResult<()>;
-    fn move_path_start(&mut self) -> RobotResult<()>;
-    fn move_path_prepare_from_file(&mut self, path: &str) -> RobotResult<()>;
-    fn move_path_from_file(&mut self, path: &str, speed: f64) -> RobotResult<()>;
-    ```
-    
-    ## methods as `ArmStreamingHandle`
-    
-    ```
-    type Handle: ArmStreamingHandle<N>;
-    fn start_streaming(&mut self) -> RobotResult<Self::Handle>;
-    fn end_streaming(&mut self) -> RobotResult<()>;
+    Arm
 
-    fn move_to_target(&mut self) -> Arc<Mutex<Option<MotionType<N>>>>;
-    fn control_to_target(&mut self) -> Arc<Mutex<Option<ControlType<N>>>>;
-    ```
-    
-    ## methods as `ArmStreamingHandleExt`
-    
-    ```
-    fn move_joint_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
-    fn move_joint_vel_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
-    fn move_joint_acc_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
-    fn move_cartesian_target(&mut self) -> Arc<Mutex<Option<Pose>>>;
-    fn move_cartesian_vel_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
-    fn move_cartesian_euler_target(&mut self) -> Arc<Mutex<Option<[f64; 6]>>>;
-    fn move_cartesian_quat_target(&mut self) -> Arc<Mutex<Option<na::Isometry3<f64>>>>;
-    fn move_cartesian_homo_target(&mut self) -> Arc<Mutex<Option<[f64; 16]>>>;
-    fn control_tau_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
-    ```
-    
-    ## methods as `ArmRealtimeControl`
-    
-    ```
-    fn move_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
-    where
-        FM: Fn(ArmState<N>, Duration) -> MotionType<N> + Send + 'static;
-    fn control_with_closure<FC>(&mut self, closure: FC) -> RobotResult<()>
-    where
-        FC: Fn(ArmState<N>, Duration) -> ControlType<N> + Send + 'static;
-    ```
-    
-    ## methods as `ArmRealtimeControlExt`
-    
-    ```
-    fn move_joint_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
-    where
-        FM: Fn(ArmState<N>, Duration) -> [f64; N] + Send + Sync + 'static;
+    Robot arm main class, inherits from Robot and provides arm-specific state and load operations.
 
-    fn move_joint_vel_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
-    where
-        FM: Fn(ArmState<N>, Duration) -> [f64; N] + Send + Sync + 'static;
-
-    fn move_cartesian_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
-    where
-        FM: Fn(ArmState<N>, Duration) -> Pose + Send + Sync + 'static;
-
-    fn move_cartesian_vel_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
-    where
-        FM: Fn(ArmState<N>, Duration) -> [f64; 6] + Send + Sync + 'static;
-
-    fn move_cartesian_euler_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
-    where
-        FM: Fn(ArmState<N>, Duration) -> ([f64; 3], [f64; 3]) + Send + Sync + 'static;
-
-    fn move_cartesian_quat_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
-    where
-        FM: Fn(ArmState<N>, Duration) -> na::Isometry3<f64> + Send + Sync + 'static;
-
-    fn move_cartesian_homo_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
-    where
-        FM: Fn(ArmState<N>, Duration) -> [f64; 16] + Send + Sync + 'static;
-    ```
+    机械臂主类，继承自Robot，提供机械臂专有的状态与负载操作。
     """
     def state(self) -> ArmState:
+        """
+        Get the current state of the robot arm.
+
+        获取机械臂当前状态。
+        """
         ...
     def set_load(self, load: LoadState) -> None:
+        """
+        Set the load state of the end effector.
+
+        设置末端执行器的负载状态。
+        """
         ...
-    ...
-    
+
+class ArmBehavior:
+    """
+    ArmBehavior
+
+    Basic interface for robot arm behavior, including state query, load and coordinate system settings, and motion parameters.
+
+    机械臂基础行为接口，包括状态查询、负载与坐标系设置、运动参数设置等。
+    """
+    def state(self) -> ArmState:
+        """
+        Get the current state of the robot arm.
+
+        获取机械臂当前状态。
+        """
+        ...
+    def set_load(self, load: LoadState) -> None:
+        """
+        Set the load state of the end effector.
+
+        设置末端执行器的负载状态。
+        """
+        ...
+    def set_coord(self, coord: str) -> None:
+        """
+        Set the coordinate system for the robot arm.
+
+        设置机械臂的坐标系。
+        """
+        ...
+    def with_coord(self, coord: str) -> ArmBehavior:
+        """
+        Set the coordinate system for the next motion command.
+
+        设置下一个运动指令的坐标系。
+        """
+        ...
+    def set_speed(self, speed: float) -> None:
+        """
+        Set the speed of the robot arm.
+
+        设置机械臂的速度。
+        """
+        ...
+    def with_speed(self, speed: float) -> 'ArmBehavior':
+        """
+        Set the speed for the next motion command.
+
+        设置下一个运动指令的速度。
+        """
+        ...
+    def with_velocity(self, joint_vel: list[float]) -> 'ArmBehavior':
+        """
+        Set the joint velocity for the next motion command.
+
+        设置下一个运动指令的关节速度。
+        """
+        ...
+    def with_cartesian_velocity(self, cartesian_vel: float) -> 'ArmBehavior':
+        """
+        Set the Cartesian velocity for the next motion command.
+
+        设置下一个运动指令的笛卡尔速度。
+        """
+        ...
+    def with_acceleration(self, joint_acc: list[float]) -> 'ArmBehavior':
+        """
+        Set the joint acceleration for the next motion command.
+
+        设置下一个运动指令的关节加速度。
+        """
+        ...
+    def with_jerk(self, joint_jerk: list[float]) -> 'ArmBehavior':
+        """
+        Set the joint jerk for the next motion command.
+
+        设置下一个运动指令的关节加加速度。
+        """
+        ...
+
 class ArmPreplannedMotion:
-    def move_to(self, target: MotionType, speed) -> None:
+    """
+    ArmPreplannedMotion
+
+    Interface for preplanned motion of the robot arm, supporting absolute/relative/inertial moves and path operations.
+
+    机械臂预规划运动接口，支持绝对/相对/惯性移动及路径操作。
+    """
+    def move_to(self, target: 'MotionType') -> None:
+        """
+        Move to the target position.
+
+        移动到目标位置。
+        """
         ...
-    def move_to_async(self, target: MotionType, speed: float) -> None:
+    def move_to_async(self, target: 'MotionType') -> None:
+        """
+        Move to the target position asynchronously.
+
+        异步移动到目标位置。
+        """
         ...
-    def move_rel(self, rel: MotionType, speed: float) -> None:
+    def move_rel(self, target: 'MotionType') -> None:
+        """
+        Move to the target position relative to the current pose.
+
+        相对当前位置移动到目标位置。
+        """
         ...
-    def move_rel_async(self, rel: MotionType, speed: float) -> None:
+    def move_rel_async(self, target: 'MotionType') -> None:
+        """
+        Move to the target position asynchronously in relative mode.
+
+        以相对模式异步移动到目标位置。
+        """
         ...
-    def move_path(self, path: list[MotionType], speed: float) -> None:
+    def move_int(self, target: 'MotionType') -> None:
+        """
+        Move to the target position in inertial coordinate system.
+
+        在惯性坐标系下移动到目标位置。
+        """
         ...
-    def control_with(self, control: ControlType) -> None:
+    def move_int_async(self, target: 'MotionType') -> None:
+        """
+        Move to the target position asynchronously in inertial coordinate system.
+
+        在惯性坐标系下异步移动到目标位置。
+        """
         ...
-    ...
-    
+    def move_path(self, path: list['MotionType']) -> None:
+        """
+        Move along a given path.
+
+        按给定路径移动。
+        """
+        ...
+    def move_path_async(self, path: list['MotionType']) -> None:
+        """
+        Move along a given path asynchronously.
+
+        异步按给定路径移动。
+        """
+        ...
+    def move_path_prepare(self, path: list['MotionType']) -> None:
+        """
+        Prepare for path motion.
+
+        准备路径运动。
+        """
+        ...
+    def move_path_start(self, start: 'MotionType') -> None:
+        """
+        Start path motion from a given start point.
+
+        从指定起点开始路径运动。
+        """
+        ...
+
+class ArmPreplannedMotionImpl:
+    """
+    ArmPreplannedMotionImpl
+
+    Implementation interface for preplanned motion, providing joint and Cartesian space motion methods.
+
+    机械臂预规划运动实现接口，提供关节空间和笛卡尔空间的运动方法。
+    """
+    def move_joint(self, target: list[float]) -> None:
+        """
+        Move in joint space to the target.
+
+        关节空间移动到目标。
+        """
+        ...
+    def move_joint_async(self, target: list[float]) -> None:
+        """
+        Move in joint space to the target asynchronously.
+
+        关节空间异步移动到目标。
+        """
+        ...
+    def move_cartesian(self, target: 'Pose') -> None:
+        """
+        Move in Cartesian space to the target pose.
+
+        笛卡尔空间移动到目标位姿。
+        """
+        ...
+    def move_cartesian_async(self, target: 'Pose') -> None:
+        """
+        Move in Cartesian space to the target pose asynchronously.
+
+        笛卡尔空间异步移动到目标位姿。
+        """
+        ...
+
 class ArmPreplannedMotionExt:
-    def move_joint(self, joint: list[float], speed: float) -> None:
-        """以关节角度方式移动机器人
-        Args:
-            joint: 关节角度列表（长度必须为 HANS_DOF）
-            speed: 运动速度（0.0~1.0）
-        """
-        ...
-        
-    def move_joint_async(self, joint: list[float], speed: float) -> None:
-        """以关节角度方式异步移动机器人
-        Args:
-            joint: 关节角度列表（长度必须为 HANS_DOF）
-            speed: 运动速度（0.0~1.0）
-        """
-        ...
+    """
+    ArmPreplannedMotionExt
 
-    def move_joint_rel(self, joint_rel: list[float], speed: float) -> None:
-        """以关节角度方式相对移动机器人
-        Args:
-            joint_rel: 相对关节角度列表（长度必须为 HANS_DOF）
-            speed: 运动速度（0.0~1.0）
-        """
-        ...
-        
-    def move_joint_rel_async(self, joint_rel: list[float], speed: float) -> None:
-        """以关节角度方式异步相对移动机器人
-        Args:
-            joint_rel: 相对关节角度列表（长度必须为 HANS_DOF）
-            speed: 运动速度（0.0~1.0）
-        """
-        ...
-    
-    def move_joint_path(self, joints: list[list[float]], speed: float) -> None:
-        """以关节角度方式移动机器人
-        Args:
-            joints: 关节角度列表
-            speed: 运动速度（0.0~1.0）
-        """
-        ...
-        
-    def move_cartesian(self, pose: Pose, speed: float) -> None:
-        """以笛卡尔坐标系移动机器人
-        Args:
-            pose: 位姿描述
-            speed: 运动速度（0.0~1.0）
-        """
-        ...
-        
-    def move_cartesian_async(self, pose: Pose, speed: float) -> None:
-        """以笛卡尔坐标系异步移动机器人
-        Args:
-            pose: 位姿描述
-            speed: 运动速度（0.0~1.0）
-        """
-        ...
+    Extension interface for preplanned motion, supporting relative, path, and various linear moves.
 
-    def move_cartesian_rel(self, pose_rel: Pose, speed: float) -> None:
-        """以笛卡尔坐标系相对移动机器人
-        Args:
-            pose_rel: 位姿描述
-            speed: 运动速度（0.0~1.0）
+    机械臂预规划运动扩展接口，支持相对、路径及多种直线运动方式。
+    """
+    def move_joint_rel(self, target: list[float]) -> None:
+        """
+        Move relatively in joint space.
+
+        关节空间相对移动。
         """
         ...
-    
-    def move_cartesian_rel_async(self, pose_rel: Pose, speed: float) -> None:
-        """以笛卡尔坐标系异步相对移动机器人
-        Args:
-            pose_rel: 位姿描述
-            speed: 运动速度（0.0~1.0）
+    def move_joint_rel_async(self, target: list[float]) -> None:
+        """
+        Move relatively in joint space asynchronously.
+
+        关节空间异步相对移动。
         """
         ...
-        
-    def move_cartesian_path(self, poses: list[Pose], speed: float) -> None:
-        """以笛卡尔坐标系移动机器人
-        Args:
-            poses: 位姿描述
-            speed: 运动速度（0.0~1.0）
+    def move_joint_path(self, path: list[list[float]]) -> None:
+        """
+        Move along a joint space path.
+
+        按关节空间路径移动。
         """
         ...
-        
-    def move_path_from_file(self, path: str, speed: float) -> None:
-        """从文件中读取关节角度路径并执行
-        Args:
-            path: 文件路径
-            speed: 运动速度（0.0~1.0）
+    def move_cartesian_rel(self, target: 'Pose') -> None:
+        """
+        Move relatively in Cartesian space.
+
+        笛卡尔空间相对移动。
         """
         ...
-    ...
+    def move_cartesian_rel_async(self, target: 'Pose') -> None:
+        """
+        Move relatively in Cartesian space asynchronously.
+
+        笛卡尔空间异步相对移动。
+        """
+        ...
+    def move_cartesian_int(self, target: 'Pose') -> None:
+        """
+        Move in inertial Cartesian space.
+
+        惯性坐标系下笛卡尔空间移动。
+        """
+        ...
+    def move_cartesian_int_async(self, target: 'Pose') -> None:
+        """
+        Move in inertial Cartesian space asynchronously.
+
+        惯性坐标系下笛卡尔空间异步移动。
+        """
+        ...
+    def move_cartesian_path(self, path: list['Pose']) -> None:
+        """
+        Move along a Cartesian space path.
+
+        按笛卡尔空间路径移动。
+        """
+        ...
+    def move_linear_with_euler(self, pose: list[float]) -> None:
+        """
+        Move linearly using Euler angles.
+
+        以欧拉角方式直线移动。
+        """
+        ...
+    def move_linear_with_euler_async(self, pose: list[float]) -> None:
+        """
+        Move linearly using Euler angles asynchronously.
+
+        以欧拉角方式异步直线移动。
+        """
+        ...
+    def move_linear_with_euler_rel(self, pose: list[float]) -> None:
+        """
+        Move linearly and relatively using Euler angles.
+
+        以欧拉角方式相对直线移动。
+        """
+        ...
+    def move_linear_with_euler_rel_async(self, pose: list[float]) -> None:
+        """
+        Move linearly and relatively using Euler angles asynchronously.
+
+        以欧拉角方式异步相对直线移动。
+        """
+        ...
+    def move_linear_with_euler_int(self, pose: list[float]) -> None:
+        """
+        Move linearly in inertial coordinates using Euler angles.
+
+        以欧拉角方式惯性直线移动。
+        """
+        ...
+    def move_linear_with_euler_int_async(self, pose: list[float]) -> None:
+        """
+        Move linearly in inertial coordinates using Euler angles asynchronously.
+
+        以欧拉角方式惯性异步直线移动。
+        """
+        ...
+    def move_linear_with_quat(self, target) -> None:
+        """
+        Move linearly using quaternion.
+
+        以四元数方式直线移动。
+        """
+        ...
+    def move_linear_with_quat_async(self, target) -> None:
+        """
+        Move linearly using quaternion asynchronously.
+
+        以四元数方式异步直线移动。
+        """
+        ...
+    def move_linear_with_quat_rel(self, target) -> None:
+        """
+        Move linearly and relatively using quaternion.
+
+        以四元数方式相对直线移动。
+        """
+        ...
+    def move_linear_with_quat_rel_async(self, target) -> None:
+        """
+        Move linearly and relatively using quaternion asynchronously.
+
+        以四元数方式异步相对直线移动。
+        """
+        ...
+    def move_linear_with_quat_int(self, target) -> None:
+        """
+        Move linearly in inertial coordinates using quaternion.
+
+        以四元数方式惯性直线移动。
+        """
+        ...
+    def move_linear_with_quat_int_async(self, target) -> None:
+        """
+        Move linearly in inertial coordinates using quaternion asynchronously.
+
+        以四元数方式惯性异步直线移动。
+        """
+        ...
+    def move_linear_with_homo(self, target: list[float]) -> None:
+        """
+        Move linearly using homogeneous matrix.
+
+        以齐次矩阵方式直线移动。
+        """
+        ...
+    def move_linear_with_homo_async(self, target: list[float]) -> None:
+        """
+        Move linearly using homogeneous matrix asynchronously.
+
+        以齐次矩阵方式异步直线移动。
+        """
+        ...
+    def move_linear_with_homo_rel(self, target: list[float]) -> None:
+        """
+        Move linearly and relatively using homogeneous matrix.
+
+        以齐次矩阵方式相对直线移动。
+        """
+        ...
+    def move_linear_with_homo_rel_async(self, target: list[float]) -> None:
+        """
+        Move linearly and relatively using homogeneous matrix asynchronously.
+
+        以齐次矩阵方式异步相对直线移动。
+        """
+        ...
+    def move_linear_with_homo_int(self, target: list[float]) -> None:
+        """
+        Move linearly in inertial coordinates using homogeneous matrix.
+
+        以齐次矩阵方式惯性直线移动。
+        """
+        ...
+    def move_linear_with_homo_int_async(self, target: list[float]) -> None:
+        """
+        Move linearly in inertial coordinates using homogeneous matrix asynchronously.
+
+        以齐次矩阵方式惯性异步直线移动。
+        """
+        ...
+    def move_path_prepare_from_file(self, path: str) -> None:
+        """
+        Prepare path motion from file.
+
+        从文件准备路径运动。
+        """
+        ...
+    def move_path_from_file(self, path: str) -> None:
+        """
+        Execute path motion from file.
+
+        从文件执行路径运动。
+        """
+        ...
 
 class ArmStreamingHandle:
-    def move_to(self, target: MotionType) -> None:
-        ...
-    def last_motion(self) -> MotionType:
+    """
+    ArmStreamingHandle
+
+    Streaming handle for robot arm, provides access to last motion/control and allows setting new targets.
+
+    机械臂流式运动句柄，提供上一个运动/控制目标的访问与新目标的设置。
+    """
+    def last_motion(self) -> 'MotionType':
         """
-        Get the last motion target 获取上一个运动目标
-        Returns:
-            MotionType: the last motion target 上一个运动目标
-        """
-        ...
-    def control_with(self, control: ControlType) -> None:
-        """
-        Set the control target 设置控制目标
-        Args:
-            control: 控制目标
+        Get the last motion target.
+
+        获取上一个运动目标。
         """
         ...
-    def last_control(self) -> ControlType:
+    def move_to(self, target: 'MotionType') -> None:
         """
-        Get the last control target 获取上一个控制目标
-        Returns:
-            ControlType: the last control target 上一个控制目标
+        Set a new motion target for streaming.
+
+        设置新的流式运动目标。
         """
-    ...
-    
+        ...
+    def last_control(self) -> 'ControlType':
+        """
+        Get the last control target.
+
+        获取上一个控制目标。
+        """
+        ...
+    def control_with(self, control: 'ControlType') -> None:
+        """
+        Set a new control target for streaming.
+
+        设置新的流式控制目标。
+        """
+        ...
+
 class ArmStreamingMotion:
-    def start_streaming(self) -> ArmStreamingHandle:
-        """start streaming the robot state 开始流式运动机器人状态"""
+    """
+    ArmStreamingMotion
+
+    Streaming motion interface for robot arm, supports starting/stopping streaming and accessing shared targets.
+
+    机械臂流式运动接口，支持流式运动的启动/停止及目标共享对象的访问。
+    """
+    def start_streaming(self) -> 'ArmStreamingHandle':
+        """
+        Start streaming motion.
+
+        开始流式运动。
+        """
         ...
     def end_streaming(self) -> None:
-        """end streaming the robot state 结束流式运动机器人状态"""
+        """
+        End streaming motion.
+
+        结束流式运动。
+        """
         ...
-    ...
-    
+    def move_to_target(self) -> object:
+        """
+        Get the shared object for motion target.
+
+        获取运动目标的共享对象。
+        """
+        ...
+    def control_with_target(self) -> object:
+        """
+        Get the shared object for control target.
+
+        获取控制目标的共享对象。
+        """
+        ...
+
 class ArmStreamingMotionExt:
-    ...
-    
+    """
+    ArmStreamingMotionExt
+
+    Extension interface for streaming motion, provides access to various shared targets.
+
+    机械臂流式运动扩展接口，提供多种目标的共享对象访问。
+    """
+    def move_joint_target(self) -> object:
+        """
+        Get the shared object for joint target.
+
+        获取关节目标的共享对象。
+        """
+        ...
+    def move_joint_vel_target(self) -> object:
+        """
+        Get the shared object for joint velocity target.
+
+        获取关节速度目标的共享对象。
+        """
+        ...
+    def move_joint_acc_target(self) -> object:
+        """
+        Get the shared object for joint acceleration target.
+
+        获取关节加速度目标的共享对象。
+        """
+        ...
+    def move_cartesian_target(self) -> object:
+        """
+        Get the shared object for Cartesian target.
+
+        获取笛卡尔目标的共享对象。
+        """
+        ...
+    def move_cartesian_vel_target(self) -> object:
+        """
+        Get the shared object for Cartesian velocity target.
+
+        获取笛卡尔速度目标的共享对象。
+        """
+        ...
+    def move_cartesian_euler_target(self) -> object:
+        """
+        Get the shared object for Euler angle target.
+
+        获取欧拉角目标的共享对象。
+        """
+        ...
+    def move_cartesian_quat_target(self) -> object:
+        """
+        Get the shared object for quaternion target.
+
+        获取四元数目标的共享对象。
+        """
+        ...
+    def move_cartesian_homo_target(self) -> object:
+        """
+        Get the shared object for homogeneous matrix target.
+
+        获取齐次矩阵目标的共享对象。
+        """
+        ...
+    def control_tau_target(self) -> object:
+        """
+        Get the shared object for torque target.
+
+        获取力矩目标的共享对象。
+        """
+        ...
+
 class ArmRealtimeControl:
-    def move_with_closure(self, closure: callable[[ArmState, float], MotionType]) -> None:
-        """以闭包方式移动机器人
-        Args:
-            closure: 闭包函数，接受机器人状态和时间间隔，返回运动目标
+    """
+    ArmRealtimeControl
+
+    Real-time control interface for robot arm, supports closure-based real-time motion and control.
+
+    机械臂实时控制接口，支持基于闭包的实时运动与控制。
+    """
+    def move_with_closure(self, closure: callable[['ArmState', float], tuple['MotionType', bool]]) -> None:
+        """
+        Real-time motion using a closure, returns (motion target, finished).
+
+        以闭包方式实时运动，返回(运动目标, 是否结束)。
         """
         ...
-    def control_with_closure(self, closure: callable[[ArmState, float], ControlType]) -> None:
-        """以闭包方式控制机器人
-        Args:
-            closure: 闭包函数，接受机器人状态和时间间隔，返回控制目标
+    def control_with_closure(self, closure: callable[['ArmState', float], tuple['ControlType', bool]]) -> None:
         """
-    ...
-    
+        Real-time control using a closure, returns (control target, finished).
+
+        以闭包方式实时控制，返回(控制目标, 是否结束)。
+        """
+        ...
+
 class ArmRealtimeControlExt:
-    def move_joint_with_closure(self, closure: callable[[ArmState, float], list[float]]) -> None:
-        """以闭包方式在位置环中移动机器人
-        Args:
-            closure: 闭包函数，接受机器人状态和时间间隔，返回关节角度列表（长度必须为 HANS_DOF）
+    """
+    ArmRealtimeControlExt
+
+    Extension interface for real-time control, supports closure-based joint/Cartesian/velocity control.
+
+    机械臂实时控制扩展接口，支持基于闭包的关节/笛卡尔/速度控制。
+    """
+    def move_joint_with_closure(self, closure: callable[['ArmState', float], tuple[list[float], bool]]) -> None:
+        """
+        Real-time joint space motion using a closure, returns (joint target, finished).
+
+        以闭包方式实时关节空间运动，返回(关节目标, 是否结束)。
         """
         ...
-    def move_joint_vel_with_closure(self, closure: callable[[ArmState, float], list[float]]) -> None:
-        """以闭包方式在速度环中移动机器人
-        Args:
-            closure: 闭包函数，接受机器人状态和时间间隔，返回关节角速度列表（长度必须为 HANS_DOF）
+    def move_joint_vel_with_closure(self, closure: callable[['ArmState', float], tuple[list[float], bool]]) -> None:
         """
-    def move_cartesian_with_closure(self, closure: callable[[ArmState, float], Pose]) -> None:
-        """以闭包方式在位置环中移动机器人
-        Args:
-            closure: 闭包函数，接受机器人状态和时间间隔，返回位姿描述
+        Real-time joint velocity motion using a closure, returns (joint velocity target, finished).
+
+        以闭包方式实时关节速度运动，返回(关节速度目标, 是否结束)。
         """
         ...
-    def move_cartesian_vel_with_closure(self, closure: callable[[ArmState, float], list[float]]) -> None:
-        """以闭包方式在速度环中移动机器人
-        Args:
-            closure: 闭包函数，接受机器人状态和时间间隔，返回笛卡尔坐标系下的速度列表（长度必须为 6）
+    def move_cartesian_with_closure(self, closure: callable[['ArmState', float], tuple['Pose', bool]]) -> None:
         """
-    ...
+        Real-time Cartesian space motion using a closure, returns (pose target, finished).
+
+        以闭包方式实时笛卡尔空间运动，返回(位姿目标, 是否结束)。
+        """
+        ...
+    def move_cartesian_vel_with_closure(self, closure: callable[['ArmState', float], tuple[list[float], bool]]) -> None:
+        """
+        Real-time Cartesian velocity motion using a closure, returns (velocity target, finished).
+
+        以闭包方式实时笛卡尔速度运动，返回(速度目标, 是否结束)。
+        """
+        ...
+    def move_cartesian_euler_with_closure(self, closure: callable[['ArmState', float], tuple[list[float], list[float], bool]]) -> None:
+        """
+        Real-time Euler angle motion using a closure, returns (translation, rotation, finished).
+
+        以闭包方式实时欧拉角运动，返回(平移, 旋转, 是否结束)。
+        """
+        ...
+    def move_cartesian_quat_with_closure(self, closure: callable[['ArmState', float], tuple[object, bool]]) -> None:
+        """
+        Real-time quaternion motion using a closure, returns (quaternion target, finished).
+
+        以闭包方式实时四元数运动，返回(四元数目标, 是否结束)。
+        """
+        ...
+    def move_cartesian_homo_with_closure(self, closure: callable[['ArmState', float], tuple[list[float], bool]]) -> None:
+        """
+        Real-time homogeneous matrix motion using a closure, returns (homogeneous matrix target, finished).
+
+        以闭包方式实时齐次矩阵运动，返回(齐次矩阵目标, 是否结束)。
+        """
