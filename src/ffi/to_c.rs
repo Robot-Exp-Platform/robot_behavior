@@ -1,6 +1,6 @@
 use std::ffi::{CString, c_char};
 
-use crate::{ControlType, MotionType, RobotResult};
+use crate::{ControlType, MotionType, RobotResult, behavior::*};
 
 #[repr(C)]
 pub struct CError {
@@ -33,7 +33,7 @@ impl<T> From<RobotResult<T>> for CError {
 pub enum CMotionType {
     Joint,
     JointVel,
-    CartesianEuler,
+    Cartesian,
     CartesianVel,
     Position,
     PositionVel,
@@ -44,9 +44,7 @@ impl<const N: usize> Into<MotionType<N>> for (CMotionType, [f64; N]) {
         match self.0 {
             CMotionType::Joint => MotionType::Joint(self.1),
             CMotionType::JointVel => MotionType::JointVel(self.1),
-            CMotionType::CartesianEuler => {
-                MotionType::CartesianEuler(self.1[0..6].try_into().unwrap())
-            }
+            CMotionType::Cartesian => MotionType::Cartesian(self.1[0..6].try_into().unwrap()),
             CMotionType::CartesianVel => MotionType::CartesianVel(self.1[0..6].try_into().unwrap()),
             CMotionType::Position => MotionType::Position(self.1[0..3].try_into().unwrap()),
             CMotionType::PositionVel => MotionType::PositionVel(self.1[0..3].try_into().unwrap()),
@@ -67,3 +65,22 @@ impl<const N: usize> Into<ControlType<N>> for (CControlType, [f64; N]) {
         }
     }
 }
+
+pub type DynRobotBehavior<T> = Box<dyn RobotBehavior<State = T>>;
+pub type DynArmBehavior<const N: usize, S> = Box<dyn ArmBehavior<N, State = S>>;
+pub type DynArmParam<const N: usize> = Box<dyn ArmParam<N>>;
+
+pub type DynArmPreplannedMotion<const N: usize, S> = Box<dyn ArmPreplannedMotion<N, State = S>>;
+pub type DynArmPreplannedMotionImpl<const N: usize, S> =
+    Box<dyn ArmPreplannedMotionImpl<N, State = S>>;
+pub type DynArmPreplannedMotionExt<const N: usize, S> =
+    Box<dyn ArmPreplannedMotionExt<N, State = S>>;
+
+pub type DynArmStreamingHandle<const N: usize> = Box<dyn ArmStreamingHandle<N>>;
+pub type DynArmStreamingMotion<const N: usize, S, H> =
+    Box<dyn ArmStreamingMotion<N, State = S, Handle = H>>;
+pub type DynArmStreamingMotionExt<const N: usize, S, H> =
+    Box<dyn ArmStreamingMotionExt<N, State = S, Handle = H>>;
+
+pub type DynArmRealtimeControl<const N: usize, S> = Box<dyn ArmRealtimeControl<N, State = S>>;
+pub type DynArmRealtimeControlExt<const N: usize, S> = Box<dyn ArmRealtimeControlExt<N, State = S>>;
