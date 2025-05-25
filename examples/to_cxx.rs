@@ -1,67 +1,68 @@
 fn main() {}
 
-#[cfg(feature = "to_py")]
-mod to_py {
-    use pyo3::types::{PyAnyMethods, PyModule, PyModuleMethods};
-    use robot_behavior::*;
-    use std::sync::{Arc, Mutex};
+#[cfg(feature = "to_cxx")]
+mod to_cxx {
+    struct TestRobot;
+    struct CTestRobot(TestRobot);
 
-    struct ExRobot;
+    #[cxx::bridge]
+    mod ffi {
+        extern "Rust" {
+            type CTestRobot;
+            fn create() -> CTestRobot;
+            fn version(&self) -> String;
+            fn init(&mut self) -> RobotResult<()>;
+            fn shutdown(&mut self) -> RobotResult<()>;
+            fn enable(&mut self) -> RobotResult<()>;
+            fn disable(&mut self) -> RobotResult<()>;
+            fn reset(&mut self) -> RobotResult<()>;
+            fn is_moving(&mut self) -> bool;
+            fn stop(&mut self) -> RobotResult<()>;
+            fn pause(&mut self) -> RobotResult<()>;
+            fn resume(&mut self) -> RobotResult<()>;
+            fn emergency_stop(&mut self) -> RobotResult<()>;
+            fn clear_emergency_stop(&mut self) -> RobotResult<()>;
+        }
+    }
 
-    #[pyo3::pyclass]
-    struct PyExRobot(ExRobot);
-
-    py_robot_behavior!(PyExRobot(ExRobot));
-    py_arm_behavior!(PyExRobot<{0}>(ExRobot));
-    py_arm_param!(PyExRobot<{0}>(ExRobot));
-
-    py_arm_preplanned_motion_impl!(PyExRobot<{0}>(ExRobot));
-    py_arm_preplanned_motion!(PyExRobot<{0}>(ExRobot));
-    py_arm_preplanned_motion_ext!(PyExRobot<{0}>(ExRobot));
-
-    #[pyo3::pyclass]
-    struct ExRobotHandle;
-    py_arm_streaming_motion!(PyExRobot<{0}>(ExRobot) -> ExRobotHandle);
-    py_arm_streaming_motion_ext!(PyExRobot<{0}>(ExRobot));
-
-    py_arm_real_time_control!(PyExRobot<{0}>(ExRobot));
-    py_arm_real_time_control_ext!(PyExRobot<{0}>(ExRobot));
-
-    #[pyo3::pymodule]
-    fn ex_robot(m: &pyo3::Bound<'_, PyModule>) -> pyo3::PyResult<()> {
-        m.add_class::<PyExRobot>()?;
-        m.add_class::<PyPose>()?;
-        m.add_class::<PyArmState>()?;
-        m.add_class::<LoadState>()?;
-        Ok(())
+    impl CTestRobot {
+        fn create() -> Self {
+            CTestRobot(TestRobot)
+        }
+        c_robot_behavior!(CTestRobot(TestRobot));
+        c_arm_behavior!(CTestRobot<{0}>(TestRobot));
+        c_arm_param!(CTestRobot<{0}>(TestRobot));
+        c_arm_preplanned_motion_impl!(CTestRobot<{0}>(TestRobot));
+        c_arm_preplanned_motion!(CTestRobot<{0}>(TestRobot));
+        c_arm_preplanned_motion_ext!(CTestRobot<{0}>(TestRobot));
     }
 
     macro_rules! unimpl {
-            // For methods with return type only (no arguments)
-            ($(fn $name:ident(&self) -> $ret:ty;)+) => {
-                $(
-                    fn $name(&self) -> $ret {
-                        unimplemented!()
-                    }
-                )+
-            };
-            ($(fn $name:ident(&mut self) -> $ret:ty;)+) => {
-                $(
-                    fn $name(&mut self) -> $ret {
-                        unimplemented!()
-                    }
-                )+
-            };
-            ($(fn $name:ident(&mut self, $($arg: ident: $arg_ty: ty),*) -> $ret:ty;)+) => {
-                $(
-                    fn $name(&mut self, $($arg: $arg_ty),* ) -> $ret {
-                        unimplemented!()
-                    }
-                )+
-            };
-        }
+        // For methods with return type only (no arguments)
+        ($(fn $name:ident(&self) -> $ret:ty;)+) => {
+            $(
+                fn $name(&self) -> $ret {
+                    unimplemented!()
+                }
+            )+
+        };
+        ($(fn $name:ident(&mut self) -> $ret:ty;)+) => {
+            $(
+                fn $name(&mut self) -> $ret {
+                    unimplemented!()
+                }
+            )+
+        };
+        ($(fn $name:ident(&mut self, $($arg: ident: $arg_ty: ty),*) -> $ret:ty;)+) => {
+            $(
+                fn $name(&mut self, $($arg: $arg_ty),* ) -> $ret {
+                    unimplemented!()
+                }
+            )+
+        };
+    }
 
-    impl RobotBehavior for ExRobot {
+    impl RobotBehavior for TestRobot {
         type State = ();
         unimpl! {
             fn version(&self) -> String;
@@ -82,7 +83,7 @@ mod to_py {
         }
     }
 
-    impl ArmBehavior<0> for ExRobot {
+    impl ArmBehavior<0> for TestRobot {
         unimpl!(
             fn state(&mut self) -> RobotResult<ArmState<0>>;
         );
@@ -94,24 +95,19 @@ mod to_py {
             fn with_speed(&mut self, _speed: f64) -> &mut Self;
 
             fn with_velocity(&mut self, _joint_vel: &[f64; 0]) -> &mut Self;
+            fn with_cartesian_velocity(&mut self, _cartesian_vel: f64) -> &mut Self;
             fn with_acceleration(&mut self, _joint_acc: &[f64; 0]) -> &mut Self;
             fn with_jerk(&mut self, _joint_jerk: &[f64; 0]) -> &mut Self;
-            fn with_cartesian_velocity(&mut self, _cartesian_vel: f64) -> &mut Self;
-            fn with_cartesian_acceleration(&mut self, _cartesian_acc: f64) -> &mut Self;
-            fn with_cartesian_jerk(&mut self, _cartesian_jerk: f64) -> &mut Self;
-            fn with_rotation_velocity(&mut self, _rotation_vel: f64) -> &mut Self;
-            fn with_rotation_acceleration(&mut self, _rotation_acc: f64) -> &mut Self;
-            fn with_rotation_jerk(&mut self, _rotation_jerk: f64) -> &mut Self;
         );
     }
 
-    impl ArmParam<0> for ExRobot {
+    impl ArmParam<0> for TestRobot {
         const DH: [[f64; 4]; 0] = [];
         const JOINT_MIN: [f64; 0] = [];
         const JOINT_MAX: [f64; 0] = [];
     }
 
-    impl ArmPreplannedMotionImpl<0> for ExRobot {
+    impl ArmPreplannedMotionImpl<0> for TestRobot {
         unimpl!(
             fn move_joint(&mut self, _target: &[f64; 0]) -> RobotResult<()>;
             fn move_joint_async(&mut self, _target: &[f64; 0]) -> RobotResult<()>;
@@ -121,17 +117,17 @@ mod to_py {
         );
     }
 
-    impl ArmPreplannedMotion<0> for ExRobot {
+    impl ArmPreplannedMotion<0> for TestRobot {
         #[rustfmt::skip]
         unimpl!(
-                fn move_path(&mut self, _path: Vec<MotionType<0>>) -> RobotResult<()>;
-                fn move_path_async(&mut self, _path: Vec<MotionType<0>>) -> RobotResult<()>;
-                fn move_path_prepare(&mut self, _path: Vec<MotionType<0>>) -> RobotResult<()>;
-                fn move_path_start(&mut self, _start: MotionType<0>) -> RobotResult<()>;
-            );
+            fn move_path(&mut self, _path: Vec<MotionType<0>>) -> RobotResult<()>;
+            fn move_path_async(&mut self, _path: Vec<MotionType<0>>) -> RobotResult<()>;
+            fn move_path_prepare(&mut self, _path: Vec<MotionType<0>>) -> RobotResult<()>;
+            fn move_path_start(&mut self, _start: MotionType<0>) -> RobotResult<()>;
+        );
     }
 
-    impl ArmStreamingHandle<0> for ExRobotHandle {
+    impl ArmStreamingHandle<0> for TestRobotHandle {
         unimpl!(
             fn last_motion(&self) -> RobotResult<MotionType<0>>;
             fn last_control(&self) -> RobotResult<ControlType<0>>;
@@ -142,8 +138,8 @@ mod to_py {
         );
     }
 
-    impl ArmStreamingMotion<0> for ExRobot {
-        type Handle = ExRobotHandle;
+    impl ArmStreamingMotion<0> for TestRobot {
+        type Handle = TestRobotHandle;
         unimpl!(
             fn start_streaming(&mut self) -> RobotResult<Self::Handle>;
             fn end_streaming(&mut self) -> RobotResult<()>;
@@ -153,7 +149,7 @@ mod to_py {
         );
     }
 
-    impl ArmRealtimeControl<0> for ExRobot {
+    impl ArmRealtimeControl<0> for TestRobot {
         fn control_with_closure<FC>(&mut self, _closure: FC) -> RobotResult<()>
         where
             FC: FnMut(ArmState<0>, std::time::Duration) -> (ControlType<0>, bool) + Send + 'static,
@@ -168,5 +164,5 @@ mod to_py {
         }
     }
 
-    impl ArmRealtimeControlExt<0> for ExRobot {}
+    impl ArmRealtimeControlExt<0> for TestRobot {}
 }

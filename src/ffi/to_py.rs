@@ -68,14 +68,14 @@ macro_rules! py_arm_behavior {
             fn with_speed(&mut self, speed: f64) {
                 self.0.with_speed(speed);
             }
-            fn with_velocity(&mut self, joint_vel: &[f64; $dof]) {
-                self.0.with_velocity(joint_vel);
+            fn with_velocity(&mut self, joint_vel: [f64; $dof]) {
+                self.0.with_velocity(&joint_vel);
             }
-            fn with_acceleration(&mut self, joint_acc: &[f64; $dof]) {
-                self.0.with_acceleration(joint_acc);
+            fn with_acceleration(&mut self, joint_acc: [f64; $dof]) {
+                self.0.with_acceleration(&joint_acc);
             }
-            fn with_jerk(&mut self, joint_jerk: &[f64; $dof]) {
-                self.0.with_jerk(joint_jerk);
+            fn with_jerk(&mut self, joint_jerk: [f64; $dof]) {
+                self.0.with_jerk(&joint_jerk);
             }
             fn with_cartesian_velocity(&mut self, cartesian_vel: f64) {
                 self.0.with_cartesian_velocity(cartesian_vel);
@@ -591,7 +591,7 @@ mod test {
     use pyo3::types::PyAnyMethods;
     use std::sync::{Arc, Mutex};
 
-    use crate::{arm::*, types::*, LoadState, RobotBehavior, RobotResult};
+    use crate::{LoadState, RobotBehavior, RobotResult, arm::*, types::*};
 
     struct TestRobot;
 
@@ -672,9 +672,14 @@ mod test {
             fn with_speed(&mut self, _speed: f64) -> &mut Self;
 
             fn with_velocity(&mut self, _joint_vel: &[f64; 0]) -> &mut Self;
-            fn with_cartesian_velocity(&mut self, _cartesian_vel: f64) -> &mut Self;
             fn with_acceleration(&mut self, _joint_acc: &[f64; 0]) -> &mut Self;
             fn with_jerk(&mut self, _joint_jerk: &[f64; 0]) -> &mut Self;
+            fn with_cartesian_velocity(&mut self, _cartesian_vel: f64) -> &mut Self;
+            fn with_cartesian_acceleration(&mut self, _cartesian_acc: f64) -> &mut Self;
+            fn with_cartesian_jerk(&mut self, _cartesian_jerk: f64) -> &mut Self;
+            fn with_rotation_velocity(&mut self, _rotation_vel: f64) -> &mut Self;
+            fn with_rotation_acceleration(&mut self, _rotation_acc: f64) -> &mut Self;
+            fn with_rotation_jerk(&mut self, _rotation_jerk: f64) -> &mut Self;
         );
     }
 
