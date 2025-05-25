@@ -41,9 +41,14 @@ pub trait ArmBehavior<const N: usize>: RobotBehavior {
     fn with_speed(&mut self, speed: f64) -> &mut Self;
 
     fn with_velocity(&mut self, joint_vel: &[f64; N]) -> &mut Self;
-    fn with_cartesian_velocity(&mut self, cartesian_vel: f64) -> &mut Self;
     fn with_acceleration(&mut self, joint_acc: &[f64; N]) -> &mut Self;
     fn with_jerk(&mut self, joint_jerk: &[f64; N]) -> &mut Self;
+    fn with_cartesian_velocity(&mut self, cartesian_vel: f64) -> &mut Self;
+    fn with_cartesian_acceleration(&mut self, cartesian_acc: f64) -> &mut Self;
+    fn with_cartesian_jerk(&mut self, cartesian_jerk: f64) -> &mut Self;
+    fn with_rotation_velocity(&mut self, rotation_vel: f64) -> &mut Self;
+    fn with_rotation_acceleration(&mut self, rotation_acc: f64) -> &mut Self;
+    fn with_rotation_jerk(&mut self, rotation_jerk: f64) -> &mut Self;
 }
 
 pub trait ArmParam<const N: usize> {
@@ -56,6 +61,10 @@ pub trait ArmParam<const N: usize> {
     const JOINT_JERK_BOUND: [f64; N] = [f64::MAX; N];
     const CARTESIAN_VEL_BOUND: f64 = f64::MAX;
     const CARTESIAN_ACC_BOUND: f64 = f64::MAX;
+    const CARTESIAN_JERK_BOUND: f64 = f64::MAX;
+    const ROTATION_VEL_BOUND: f64 = f64::MAX;
+    const ROTATION_ACC_BOUND: f64 = f64::MAX;
+    const ROTATION_JERK_BOUND: f64 = f64::MAX;
     const TORQUE_BOUND: [f64; N] = [f64::MAX; N];
     const TORQUE_DOT_BOUND: [f64; N] = [f64::MAX; N];
 

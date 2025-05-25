@@ -60,6 +60,32 @@ macro_rules! py_arm_behavior {
             fn with_coord(&mut self, coord: String) {
                 self.0.with_coord(coord.as_str().into());
             }
+
+            fn set_speed(&mut self, speed: f64) -> pyo3::PyResult<()> {
+                self.0.set_speed(speed).map_err(Into::into)
+            }
+
+            fn with_speed(&mut self, speed: f64) {
+                self.0.with_speed(speed);
+            }
+            fn with_velocity(&mut self, joint_vel: &[f64; $dof]) {
+                self.0.with_velocity(joint_vel);
+            }
+            fn with_acceleration(&mut self, joint_acc: &[f64; $dof]) {
+                self.0.with_acceleration(joint_acc);
+            }
+            fn with_jerk(&mut self, joint_jerk: &[f64; $dof]) {
+                self.0.with_jerk(joint_jerk);
+            }
+            fn with_cartesian_velocity(&mut self, cartesian_vel: f64) {
+                self.0.with_cartesian_velocity(cartesian_vel);
+            }
+            fn with_cartesian_acceleration(&mut self, cartesian_acc: f64) {
+                self.0.with_cartesian_acceleration(cartesian_acc);
+            }
+            fn with_cartesian_jerk(&mut self, cartesian_jerk: f64) {
+                self.0.with_cartesian_jerk(cartesian_jerk);
+            }
         }
     };
 }
@@ -565,7 +591,7 @@ mod test {
     use pyo3::types::PyAnyMethods;
     use std::sync::{Arc, Mutex};
 
-    use crate::{LoadState, RobotBehavior, RobotResult, arm::*, types::*};
+    use crate::{arm::*, types::*, LoadState, RobotBehavior, RobotResult};
 
     struct TestRobot;
 
