@@ -30,7 +30,37 @@ class Pose:
     (tran) = pose.position()
     ```
     """
-    
+    @classmethod
+    def Euler(cls, tran: list[float], rot: list[float]) -> 'Pose':
+        """
+        Create a Pose from Euler angles. 从欧拉角创建位姿
+        """
+        ...
+    @classmethod
+    def Quat(cls, tran: list[float], rot: list[float]) -> 'Pose':
+        """
+        Create a Pose from Quaternion angles. 从四元数创建位姿
+        """
+        ...
+    @classmethod
+    def Homo(cls, homo_array: list[float]) -> 'Pose':
+        """
+        Create a Pose from Homogeneous coordinates. 从齐次坐标创建位姿
+        """
+        ...
+    @classmethod
+    def AxisAngle(cls, tran: list[float], axis: list[float], angle: float) -> 'Pose':
+        """
+        Create a Pose from Axis-Angle representation. 从轴角表示创建位姿
+        """
+        ...    
+    @classmethod
+    def Position(cls, tran: list[float]) -> 'Pose':
+        """
+        Create a Pose from Position representation. 从位置表示创建位姿
+        """
+        ...
+
     def euler(self) -> tuple[list[float], list[float]]:
         """
         Convert the pose into the Euler Angle expression 将位姿转化为欧拉角表述  
@@ -309,7 +339,6 @@ class ArmState:
         """
         ...
 
-# TODO rewrite the docstring with `python` style 
 class Arm(Robot):
     """
     Arm
@@ -376,39 +405,53 @@ class ArmBehavior:
         设置机械臂的速度。
         """
         ...
-    def with_speed(self, speed: float) -> 'ArmBehavior':
+    def with_speed(self, speed: float) -> None:
         """
         Set the speed for the next motion command.
 
         设置下一个运动指令的速度。
         """
         ...
-    def with_velocity(self, joint_vel: list[float]) -> 'ArmBehavior':
+    def with_velocity(self, joint_vel: list[float]) -> None:
         """
         Set the joint velocity for the next motion command.
 
         设置下一个运动指令的关节速度。
         """
         ...
-    def with_cartesian_velocity(self, cartesian_vel: float) -> 'ArmBehavior':
-        """
-        Set the Cartesian velocity for the next motion command.
-
-        设置下一个运动指令的笛卡尔速度。
-        """
-        ...
-    def with_acceleration(self, joint_acc: list[float]) -> 'ArmBehavior':
+    def with_acceleration(self, joint_acc: list[float]) -> None:
         """
         Set the joint acceleration for the next motion command.
 
         设置下一个运动指令的关节加速度。
         """
         ...
-    def with_jerk(self, joint_jerk: list[float]) -> 'ArmBehavior':
+    def with_jerk(self, joint_jerk: list[float]) -> None:
         """
         Set the joint jerk for the next motion command.
 
         设置下一个运动指令的关节加加速度。
+        """
+        ...
+    def with_cartesian_velocity(self, cartesian_vel: float) -> None:
+        """
+        Set the Cartesian velocity for the next motion command.
+
+        设置下一个运动指令的笛卡尔速度。
+        """
+        ...
+    def with_cartesian_acceleration(self, cartesian_acc: float) -> None:
+        """
+        Set the Cartesian acceleration for the next motion command.
+
+        设置下一个运动指令的笛卡尔加速度。
+        """
+        ...
+    def with_cartesian_jerk(self, cartesian_jerk: float) -> None:
+        """
+        Set the Cartesian jerk for the next motion command.
+
+        设置下一个运动指令的笛卡尔加加速度。
         """
         ...
 
