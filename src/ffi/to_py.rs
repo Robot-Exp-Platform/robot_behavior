@@ -57,34 +57,60 @@ macro_rules! py_arm_behavior {
             fn set_coord(&mut self, coord: String) -> pyo3::PyResult<()> {
                 self.0.set_coord(coord.as_str().into()).map_err(Into::into)
             }
-            fn with_coord(&mut self, coord: String) {
-                self.0.with_coord(coord.as_str().into());
+            fn with_coord(mut self_: pyo3::PyRefMut<'_, Self>, coord: String) -> pyo3::Py<Self> {
+                self_.0.with_coord(coord.as_str().into());
+                self_.into()
             }
 
             fn set_speed(&mut self, speed: f64) -> pyo3::PyResult<()> {
                 self.0.set_speed(speed).map_err(Into::into)
             }
 
-            fn with_speed(&mut self, speed: f64) {
-                self.0.with_speed(speed);
+            fn with_speed(mut self_: pyo3::PyRefMut<'_, Self>, speed: f64) -> pyo3::Py<Self> {
+                self_.0.with_speed(speed);
+                self_.into()
             }
-            fn with_velocity(&mut self, joint_vel: [f64; $dof]) {
-                self.0.with_velocity(&joint_vel);
+            fn with_velocity(
+                mut self_: pyo3::PyRefMut<'_, Self>,
+                joint_vel: [f64; $dof],
+            ) -> pyo3::Py<Self> {
+                self_.0.with_velocity(&joint_vel);
+                self_.into()
             }
-            fn with_acceleration(&mut self, joint_acc: [f64; $dof]) {
-                self.0.with_acceleration(&joint_acc);
+            fn with_acceleration(
+                mut self_: pyo3::PyRefMut<'_, Self>,
+                joint_acc: [f64; $dof],
+            ) -> pyo3::Py<Self> {
+                self_.0.with_acceleration(&joint_acc);
+                self_.into()
             }
-            fn with_jerk(&mut self, joint_jerk: [f64; $dof]) {
-                self.0.with_jerk(&joint_jerk);
+            fn with_jerk(
+                mut self_: pyo3::PyRefMut<'_, Self>,
+                joint_jerk: [f64; $dof],
+            ) -> pyo3::Py<Self> {
+                self_.0.with_jerk(&joint_jerk);
+                self_.into()
             }
-            fn with_cartesian_velocity(&mut self, cartesian_vel: f64) {
-                self.0.with_cartesian_velocity(cartesian_vel);
+            fn with_cartesian_velocity(
+                mut self_: pyo3::PyRefMut<'_, Self>,
+                cartesian_vel: f64,
+            ) -> pyo3::Py<Self> {
+                self_.0.with_cartesian_velocity(cartesian_vel);
+                self_.into()
             }
-            fn with_cartesian_acceleration(&mut self, cartesian_acc: f64) {
-                self.0.with_cartesian_acceleration(cartesian_acc);
+            fn with_cartesian_acceleration(
+                mut self_: pyo3::PyRefMut<'_, Self>,
+                cartesian_acc: f64,
+            ) -> pyo3::Py<Self> {
+                self_.0.with_cartesian_acceleration(cartesian_acc);
+                self_.into()
             }
-            fn with_cartesian_jerk(&mut self, cartesian_jerk: f64) {
-                self.0.with_cartesian_jerk(cartesian_jerk);
+            fn with_cartesian_jerk(
+                mut self_: pyo3::PyRefMut<'_, Self>,
+                cartesian_jerk: f64,
+            ) -> pyo3::Py<Self> {
+                self_.0.with_cartesian_jerk(cartesian_jerk);
+                self_.into()
             }
         }
     };

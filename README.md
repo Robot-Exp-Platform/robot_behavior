@@ -2,6 +2,12 @@
 
 [English](README.md) | [简体中文](README_cn.md)
 
+<p align = "center">
+    <strong>
+        <a href="https://robot-exp-platform.github.io/robot_behavior_page/">Documentation</a>
+    </strong>
+</p>
+
 ---
 
 At present, the interface definitions among minor versions are still unstable. It is expected that the first stable version will be implemented before 2026.
@@ -19,6 +25,8 @@ We aim to ensure consistent behavior of driver libraries across various operatin
 - **Consistent behavior**: The behavior of the interface should remain consistent across different driver libraries
 
 ## How to use the robot driven by this library
+
+[robot_behavior](https://robot-exp-platform.github.io/robot_behavior_page/)。
 
 ## How to drive a robot driver
 

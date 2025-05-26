@@ -343,29 +343,6 @@ class Arm(Robot):
     """
     Arm
 
-    Robot arm main class, inherits from Robot and provides arm-specific state and load operations.
-
-    机械臂主类，继承自Robot，提供机械臂专有的状态与负载操作。
-    """
-    def state(self) -> ArmState:
-        """
-        Get the current state of the robot arm.
-
-        获取机械臂当前状态。
-        """
-        ...
-    def set_load(self, load: LoadState) -> None:
-        """
-        Set the load state of the end effector.
-
-        设置末端执行器的负载状态。
-        """
-        ...
-
-class ArmBehavior:
-    """
-    ArmBehavior
-
     Basic interface for robot arm behavior, including state query, load and coordinate system settings, and motion parameters.
 
     机械臂基础行为接口，包括状态查询、负载与坐标系设置、运动参数设置等。
@@ -391,7 +368,7 @@ class ArmBehavior:
         设置机械臂的坐标系。
         """
         ...
-    def with_coord(self, coord: str) -> ArmBehavior:
+    def with_coord(self, coord: str) -> 'Arm':
         """
         Set the coordinate system for the next motion command.
 
@@ -405,49 +382,49 @@ class ArmBehavior:
         设置机械臂的速度。
         """
         ...
-    def with_speed(self, speed: float) -> None:
+    def with_speed(self, speed: float) -> 'Arm':
         """
         Set the speed for the next motion command.
 
         设置下一个运动指令的速度。
         """
         ...
-    def with_velocity(self, joint_vel: list[float]) -> None:
+    def with_velocity(self, joint_vel: list[float]) -> 'Arm':
         """
         Set the joint velocity for the next motion command.
 
         设置下一个运动指令的关节速度。
         """
         ...
-    def with_acceleration(self, joint_acc: list[float]) -> None:
+    def with_acceleration(self, joint_acc: list[float]) -> 'Arm':
         """
         Set the joint acceleration for the next motion command.
 
         设置下一个运动指令的关节加速度。
         """
         ...
-    def with_jerk(self, joint_jerk: list[float]) -> None:
+    def with_jerk(self, joint_jerk: list[float]) -> 'Arm':
         """
         Set the joint jerk for the next motion command.
 
         设置下一个运动指令的关节加加速度。
         """
         ...
-    def with_cartesian_velocity(self, cartesian_vel: float) -> None:
+    def with_cartesian_velocity(self, cartesian_vel: float) -> 'Arm':
         """
         Set the Cartesian velocity for the next motion command.
 
         设置下一个运动指令的笛卡尔速度。
         """
         ...
-    def with_cartesian_acceleration(self, cartesian_acc: float) -> None:
+    def with_cartesian_acceleration(self, cartesian_acc: float) -> 'Arm':
         """
         Set the Cartesian acceleration for the next motion command.
 
         设置下一个运动指令的笛卡尔加速度。
         """
         ...
-    def with_cartesian_jerk(self, cartesian_jerk: float) -> None:
+    def with_cartesian_jerk(self, cartesian_jerk: float) -> 'Arm':
         """
         Set the Cartesian jerk for the next motion command.
 
