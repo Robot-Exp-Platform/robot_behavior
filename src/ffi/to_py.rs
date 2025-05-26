@@ -113,32 +113,18 @@ macro_rules! py_arm_preplanned_motion_impl {
     ($pyname: ident<{ $dof: literal }>($name: ident)) => {
         #[pyo3::pymethods]
         impl $pyname {
-            fn move_joint(&mut self, target: [f64; $dof], speed: f64) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_joint(&target)
-                    .map_err(Into::into)
+            fn move_joint(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
+                self.0.move_joint(&target).map_err(Into::into)
             }
-            fn move_joint_async(&mut self, target: [f64; $dof], speed: f64) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_joint_async(&target)
-                    .map_err(Into::into)
+            fn move_joint_async(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
+                self.0.move_joint_async(&target).map_err(Into::into)
             }
 
-            fn move_cartesian(&mut self, target: $crate::PyPose, speed: f64) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_cartesian(&target.into())
-                    .map_err(Into::into)
+            fn move_cartesian(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
+                self.0.move_cartesian(&target.into()).map_err(Into::into)
             }
-            fn move_cartesian_async(
-                &mut self,
-                target: $crate::PyPose,
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
+            fn move_cartesian_async(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
                     .move_cartesian_async(&target.into())
                     .map_err(Into::into)
             }
@@ -154,80 +140,52 @@ macro_rules! py_arm_preplanned_motion {
             fn move_to(
                 &mut self,
                 target: ::paste::paste! {$crate::[<MotionType $dof>]},
-                speed: f64,
             ) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_to(target.into())
-                    .map_err(Into::into)
+                self.0.move_to(target.into()).map_err(Into::into)
             }
             fn move_to_async(
                 &mut self,
                 target: ::paste::paste! {$crate::[<MotionType $dof>]},
-                speed: f64,
             ) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_to_async(target.into())
-                    .map_err(Into::into)
+                self.0.move_to_async(target.into()).map_err(Into::into)
             }
             fn move_rel(
                 &mut self,
                 target: ::paste::paste! {$crate::[<MotionType $dof>]},
-                speed: f64,
             ) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_rel(target.into())
-                    .map_err(Into::into)
+                self.0.move_rel(target.into()).map_err(Into::into)
             }
             fn move_rel_async(
                 &mut self,
                 target: ::paste::paste! {$crate::[<MotionType $dof>]},
-                speed: f64,
             ) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_rel_async(target.into())
-                    .map_err(Into::into)
+                self.0.move_rel_async(target.into()).map_err(Into::into)
             }
             fn move_int(
                 &mut self,
                 target: ::paste::paste! {$crate::[<MotionType $dof>]},
-                speed: f64,
             ) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_int(target.into())
-                    .map_err(Into::into)
+                self.0.move_int(target.into()).map_err(Into::into)
             }
             fn move_int_async(
                 &mut self,
                 target: ::paste::paste! {$crate::[<MotionType $dof>]},
-                speed: f64,
             ) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_int_async(target.into())
-                    .map_err(Into::into)
+                self.0.move_int_async(target.into()).map_err(Into::into)
             }
             fn move_path(
                 &mut self,
                 path: Vec<::paste::paste! {$crate::[<MotionType $dof>]}>,
-                speed: f64,
             ) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
                     .move_path(path.into_iter().map(Into::into).collect())
                     .map_err(Into::into)
             }
             fn move_path_async(
                 &mut self,
                 path: Vec<::paste::paste! {$crate::[<MotionType $dof>]}>,
-                speed: f64,
             ) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
                     .move_path_async(path.into_iter().map(Into::into).collect())
                     .map_err(Into::into)
             }
@@ -254,151 +212,73 @@ macro_rules! py_arm_preplanned_motion_ext {
     ($pyname: ident<{ $dof: expr }>($name: ident)) => {
         #[pyo3::pymethods]
         impl $pyname {
-            fn move_joint_rel(&mut self, target: [f64; $dof], speed: f64) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_joint_rel(&target)
-                    .map_err(Into::into)
+            fn move_joint_rel(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
+                self.0.move_joint_rel(&target).map_err(Into::into)
             }
-            fn move_joint_rel_async(
-                &mut self,
-                target: [f64; $dof],
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_joint_rel_async(&target)
-                    .map_err(Into::into)
+            fn move_joint_rel_async(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
+                self.0.move_joint_rel_async(&target).map_err(Into::into)
             }
-            fn move_joint_path(
-                &mut self,
-                target: Vec<[f64; $dof]>,
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_joint_path(target)
-                    .map_err(Into::into)
+            fn move_joint_path(&mut self, target: Vec<[f64; $dof]>) -> pyo3::PyResult<()> {
+                self.0.move_joint_path(target).map_err(Into::into)
             }
 
-            fn move_cartesian_rel(
-                &mut self,
-                target: $crate::PyPose,
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
+            fn move_cartesian_rel(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
-                    .with_speed(speed)
                     .move_cartesian_rel(&target.into())
                     .map_err(Into::into)
             }
-            fn move_cartesian_rel_async(
-                &mut self,
-                target: $crate::PyPose,
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
+            fn move_cartesian_rel_async(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
                     .move_cartesian_rel_async(&target.into())
                     .map_err(Into::into)
             }
-            fn move_cartesian_int(
-                &mut self,
-                target: $crate::PyPose,
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
+            fn move_cartesian_int(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
                     .move_cartesian_int(&target.into())
                     .map_err(Into::into)
             }
-            fn move_cartesian_int_async(
-                &mut self,
-                target: $crate::PyPose,
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
+            fn move_cartesian_int_async(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
                     .move_cartesian_int_async(&target.into())
                     .map_err(Into::into)
             }
-            fn move_cartesian_path(
-                &mut self,
-                target: Vec<$crate::PyPose>,
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
+            fn move_cartesian_path(&mut self, target: Vec<$crate::PyPose>) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
                     .move_cartesian_path(target.into_iter().map(Into::into).collect())
                     .map_err(Into::into)
             }
 
-            fn move_linear_with_euler(
-                &mut self,
-                target: [f64; 6],
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_linear_with_euler(target)
-                    .map_err(Into::into)
+            fn move_linear_with_euler(&mut self, target: [f64; 6]) -> pyo3::PyResult<()> {
+                self.0.move_linear_with_euler(target).map_err(Into::into)
             }
-            fn move_linear_with_euler_async(
-                &mut self,
-                target: [f64; 6],
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
+            fn move_linear_with_euler_async(&mut self, target: [f64; 6]) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
                     .move_linear_with_euler_async(target)
                     .map_err(Into::into)
             }
-            fn move_linear_with_euler_rel(
-                &mut self,
-                target: [f64; 6],
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
+            fn move_linear_with_euler_rel(&mut self, target: [f64; 6]) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
                     .move_linear_with_euler_rel(target)
                     .map_err(Into::into)
             }
-            fn move_linear_with_euler_rel_async(
-                &mut self,
-                target: [f64; 6],
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
+            fn move_linear_with_euler_rel_async(&mut self, target: [f64; 6]) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
                     .move_linear_with_euler_rel_async(target)
                     .map_err(Into::into)
             }
-            fn move_linear_with_euler_int(
-                &mut self,
-                target: [f64; 6],
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
+            fn move_linear_with_euler_int(&mut self, target: [f64; 6]) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
                     .move_linear_with_euler_int(target)
                     .map_err(Into::into)
             }
-            fn move_linear_with_euler_int_async(
-                &mut self,
-                target: [f64; 6],
-                speed: f64,
-            ) -> pyo3::PyResult<()> {
+            fn move_linear_with_euler_int_async(&mut self, target: [f64; 6]) -> pyo3::PyResult<()> {
                 self.0
-                    .with_speed(speed)
                     .move_linear_with_euler_int_async(target)
                     .map_err(Into::into)
             }
 
-            fn move_path_from_file(&mut self, path: &str, speed: f64) -> pyo3::PyResult<()> {
-                self.0
-                    .with_speed(speed)
-                    .move_path_from_file(path)
-                    .map_err(Into::into)
+            fn move_path_from_file(&mut self, path: &str) -> pyo3::PyResult<()> {
+                self.0.move_path_from_file(path).map_err(Into::into)
             }
             fn move_path_prepare_from_file(&mut self, path: &str) -> pyo3::PyResult<()> {
                 self.0.move_path_prepare_from_file(path).map_err(Into::into)
