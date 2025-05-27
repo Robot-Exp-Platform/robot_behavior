@@ -3,7 +3,7 @@ pub struct OverrideOnce<T> {
     default: T,
 }
 
-impl<T> OverrideOnce<T> {
+impl<T: Clone> OverrideOnce<T> {
     pub fn new(default: T) -> Self {
         Self {
             once: None,
@@ -23,7 +23,7 @@ impl<T> OverrideOnce<T> {
         self.once = Some(f());
     }
 
-    pub fn get(&self) -> &T {
-        self.once.as_ref().unwrap_or(&self.default)
+    pub fn get(&mut self) -> T {
+        self.once.take().unwrap_or(self.default.clone())
     }
 }
