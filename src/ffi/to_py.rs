@@ -163,70 +163,40 @@ macro_rules! py_arm_preplanned_motion {
     ($pyname: ident<{ $dof: literal }>($name: ident)) => {
         #[pyo3::pymethods]
         impl $pyname {
-            fn move_to(
-                &mut self,
-                target: ::paste::paste! {$crate::[<MotionType $dof>]},
-            ) -> pyo3::PyResult<()> {
+            fn move_to(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
                 self.0.move_to(target.into()).map_err(Into::into)
             }
-            fn move_to_async(
-                &mut self,
-                target: ::paste::paste! {$crate::[<MotionType $dof>]},
-            ) -> pyo3::PyResult<()> {
+            fn move_to_async(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
                 self.0.move_to_async(target.into()).map_err(Into::into)
             }
-            fn move_rel(
-                &mut self,
-                target: ::paste::paste! {$crate::[<MotionType $dof>]},
-            ) -> pyo3::PyResult<()> {
+            fn move_rel(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
                 self.0.move_rel(target.into()).map_err(Into::into)
             }
-            fn move_rel_async(
-                &mut self,
-                target: ::paste::paste! {$crate::[<MotionType $dof>]},
-            ) -> pyo3::PyResult<()> {
+            fn move_rel_async(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
                 self.0.move_rel_async(target.into()).map_err(Into::into)
             }
-            fn move_int(
-                &mut self,
-                target: ::paste::paste! {$crate::[<MotionType $dof>]},
-            ) -> pyo3::PyResult<()> {
+            fn move_int(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
                 self.0.move_int(target.into()).map_err(Into::into)
             }
-            fn move_int_async(
-                &mut self,
-                target: ::paste::paste! {$crate::[<MotionType $dof>]},
-            ) -> pyo3::PyResult<()> {
+            fn move_int_async(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
                 self.0.move_int_async(target.into()).map_err(Into::into)
             }
-            fn move_path(
-                &mut self,
-                path: Vec<::paste::paste! {$crate::[<MotionType $dof>]}>,
-            ) -> pyo3::PyResult<()> {
+            fn move_path(&mut self, path: Vec<$crate::PyMotionType>) -> pyo3::PyResult<()> {
                 self.0
                     .move_path(path.into_iter().map(Into::into).collect())
                     .map_err(Into::into)
             }
-            fn move_path_async(
-                &mut self,
-                path: Vec<::paste::paste! {$crate::[<MotionType $dof>]}>,
-            ) -> pyo3::PyResult<()> {
+            fn move_path_async(&mut self, path: Vec<$crate::PyMotionType>) -> pyo3::PyResult<()> {
                 self.0
                     .move_path_async(path.into_iter().map(Into::into).collect())
                     .map_err(Into::into)
             }
-            fn move_path_prepare(
-                &mut self,
-                path: Vec<::paste::paste! {$crate::[<MotionType $dof>]}>,
-            ) -> pyo3::PyResult<()> {
+            fn move_path_prepare(&mut self, path: Vec<$crate::PyMotionType>) -> pyo3::PyResult<()> {
                 self.0
                     .move_path_prepare(path.into_iter().map(Into::into).collect())
                     .map_err(Into::into)
             }
-            fn move_path_start(
-                &mut self,
-                start: ::paste::paste! {$crate::[<MotionType $dof>]},
-            ) -> pyo3::PyResult<()> {
+            fn move_path_start(&mut self, start: $crate::PyMotionType) -> pyo3::PyResult<()> {
                 self.0.move_path_start(start.into()).map_err(Into::into)
             }
         }
@@ -318,25 +288,17 @@ macro_rules! py_arm_streaming_handle {
     ($pyname: ident<{ $dof: expr }>($name: ident)) => {
         #[pyo3::pymethods]
         impl $pyname {
-            fn move_to(
-                &mut self,
-                target: ::paste::paste! {$crate::[<MotionType $dof>]},
-            ) -> pyo3::PyResult<()> {
+            fn move_to(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
                 self.0.move_to(target.into()).map_err(Into::into)
             }
-            fn last_motion(&self) -> pyo3::PyResult<::paste::paste! {$crate::[<MotionType $dof>]}> {
+            fn last_motion(&self) -> pyo3::PyResult<$crate::PyMotionType> {
                 self.0.last_motion().map(Into::into).map_err(Into::into)
             }
 
-            fn control_with(
-                &mut self,
-                target: ::paste::paste! {$crate::[<ControlType $dof>]},
-            ) -> pyo3::PyResult<()> {
+            fn control_with(&mut self, target: PyControlType) -> pyo3::PyResult<()> {
                 self.0.control_with(target.into()).map_err(Into::into)
             }
-            fn last_control(
-                &self,
-            ) -> pyo3::PyResult<::paste::paste! {$crate::[<ControlType $dof>]}> {
+            fn last_control(&self) -> pyo3::PyResult<PyControlType> {
                 self.0.last_control().map(Into::into).map_err(Into::into)
             }
         }
@@ -372,12 +334,13 @@ macro_rules! py_arm_real_time_control {
                 self.0
                     .move_with_closure(move |state, duration| {
                         let state = PyArmState::from(state);
+                        let duration = duration.as_secs_f64();
                         pyo3::Python::with_gil(|py| {
                             closure
                                 .call1(py, (state, duration))
                                 .unwrap()
                                 .bind(py)
-                                .extract::<(::paste::paste! {$crate::[<MotionType $dof>]}, bool)>()
+                                .extract::<($crate::PyMotionType, bool)>()
                                 .map(|(motion, stop)| (motion.into(), stop))
                                 .unwrap()
                         })
@@ -396,7 +359,7 @@ macro_rules! py_arm_real_time_control {
                                 .call1(py, (state, duration))
                                 .unwrap()
                                 .bind(py)
-                                .extract::<(::paste::paste! {$crate::[<ControlType $dof>]}, bool)>()
+                                .extract::<(PyControlType, bool)>()
                                 .map(|(control, stop)| (control.into(), stop))
                                 .unwrap()
                         })

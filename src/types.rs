@@ -25,14 +25,14 @@ pub enum Pose {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum ControlType<const N: usize> {
     Zero,
     Torque(#[serde_as(as = "[_; N]")] [f64; N]),
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum MotionType<const N: usize> {
     Joint(#[serde_as(as = "[_; N]")] [f64; N]),
     JointVel(#[serde_as(as = "[_; N]")] [f64; N]),
@@ -436,59 +436,91 @@ mod to_py {
         }
     }
 
-    #[macro_export]
-    macro_rules! py_motion_type {
-        ($name: ident, $dof: expr) => {
-            #[derive(Clone, Copy)]
-            #[pyclass]
-            pub struct $name(MotionType<$dof>);
-
-            #[pymethods]
-            impl $name {}
-
-            impl From<$name> for MotionType<$dof> {
-                fn from(value: $name) -> Self {
-                    value.0
-                }
-            }
-        };
+    #[derive(Debug, Clone)]
+    #[pyclass(name = "MotionType")]
+    pub enum PyMotionType {
+        #[pyo3(constructor = (_0))]
+        Joint(Vec<f64>),
+        #[pyo3(constructor = (_0))]
+        JointVel(Vec<f64>),
+        #[pyo3(constructor = (_0))]
+        Cartesian(PyPose),
+        #[pyo3(constructor = (_0))]
+        CartesianVel(Vec<f64>),
+        #[pyo3(constructor = (_0))]
+        Position(Vec<f64>),
+        #[pyo3(constructor = (_0))]
+        PositionVel(Vec<f64>),
+        #[pyo3(constructor = ())]
+        Stop(),
     }
 
-    py_motion_type!(MotionType0, 0);
-    py_motion_type!(MotionType1, 1);
-    py_motion_type!(MotionType2, 2);
-    py_motion_type!(MotionType3, 3);
-    py_motion_type!(MotionType4, 4);
-    py_motion_type!(MotionType5, 5);
-    py_motion_type!(MotionType6, 6);
-    py_motion_type!(MotionType7, 7);
-
-    #[macro_export]
-    macro_rules! py_control_type {
-        ($name: ident, $dof: expr) => {
-            #[derive(Clone, Copy)]
-            #[pyclass]
-            pub struct $name(ControlType<$dof>);
-
-            #[pymethods]
-            impl $name {}
-
-            impl From<$name> for ControlType<$dof> {
-                fn from(value: $name) -> Self {
-                    value.0
+    impl<const N: usize> From<MotionType<N>> for PyMotionType {
+        fn from(value: MotionType<N>) -> Self {
+            match value {
+                MotionType::Joint(joint) => PyMotionType::Joint(joint.to_vec()),
+                MotionType::JointVel(joint_vel) => PyMotionType::JointVel(joint_vel.to_vec()),
+                MotionType::Cartesian(pose) => PyMotionType::Cartesian(pose.into()),
+                MotionType::CartesianVel(cartesian_vel) => {
+                    PyMotionType::CartesianVel(cartesian_vel.to_vec())
                 }
+                MotionType::Position(position) => PyMotionType::Position(position.to_vec()),
+                MotionType::PositionVel(position_vel) => {
+                    PyMotionType::PositionVel(position_vel.to_vec())
+                }
+                MotionType::Stop => PyMotionType::Stop(),
             }
-        };
+        }
     }
 
-    py_control_type!(ControlType0, 0);
-    py_control_type!(ControlType1, 1);
-    py_control_type!(ControlType2, 2);
-    py_control_type!(ControlType3, 3);
-    py_control_type!(ControlType4, 4);
-    py_control_type!(ControlType5, 5);
-    py_control_type!(ControlType6, 6);
-    py_control_type!(ControlType7, 7);
+    impl<const N: usize> From<PyMotionType> for MotionType<N> {
+        fn from(value: PyMotionType) -> Self {
+            match value {
+                PyMotionType::Joint(joint) => MotionType::Joint(joint.try_into().unwrap()),
+                PyMotionType::JointVel(joint_vel) => {
+                    MotionType::JointVel(joint_vel.try_into().unwrap())
+                }
+                PyMotionType::Cartesian(pose) => MotionType::Cartesian(pose.into()),
+                PyMotionType::CartesianVel(cartesian_vel) => {
+                    MotionType::CartesianVel(cartesian_vel.try_into().unwrap())
+                }
+                PyMotionType::Position(position) => {
+                    MotionType::Position(position.try_into().unwrap())
+                }
+                PyMotionType::PositionVel(position_vel) => {
+                    MotionType::PositionVel(position_vel.try_into().unwrap())
+                }
+                PyMotionType::Stop() => MotionType::Stop,
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    #[pyclass(name = "ControlType")]
+    pub enum PyControlType {
+        #[pyo3(constructor = ())]
+        Zero(),
+        #[pyo3(constructor = (_0))]
+        Torque(Vec<f64>),
+    }
+
+    impl<const N: usize> From<ControlType<N>> for PyControlType {
+        fn from(value: ControlType<N>) -> Self {
+            match value {
+                ControlType::Zero => PyControlType::Zero(),
+                ControlType::Torque(torque) => PyControlType::Torque(torque.to_vec()),
+            }
+        }
+    }
+
+    impl<const N: usize> From<PyControlType> for ControlType<N> {
+        fn from(value: PyControlType) -> Self {
+            match value {
+                PyControlType::Zero() => ControlType::Zero,
+                PyControlType::Torque(torque) => ControlType::Torque(torque.try_into().unwrap()),
+            }
+        }
+    }
 }
 
 #[cfg(feature = "to_py")]

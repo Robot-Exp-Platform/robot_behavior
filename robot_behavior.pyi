@@ -184,51 +184,72 @@ class Robot:
     ...
 
 class MotionType:
-    ...
+    """
+    # MotionType
+    """
     
-class MotionType1(MotionType):
-    ...
-    
-class MotionType2(MotionType):
-    ...
-
-class MotionType3(MotionType):
-    ...
-    
-class MotionType4(MotionType):
-    ...
-    
-class MotionType5(MotionType):
-    ...
-    
-class MotionType6(MotionType):
-    ...
-    
-class MotionType7(MotionType):
+    @classmethod
+    def Joint(cls, joint: list[float]) -> 'MotionType':
+        """
+        Create a joint space motion type. 创建关节空间运动类型
+        """
+        ...
+    @classmethod
+    def JointVel(cls, joint_vel: list[float]) -> 'MotionType':
+        """
+        Create a joint velocity motion type. 创建关节速度运动类型
+        """
+        ...
+    @classmethod
+    def Cartesian(cls, pose: Pose) -> 'MotionType':
+        """
+        Create a Cartesian space motion type. 创建笛卡尔空间运动类型
+        """
+        ...
+    @classmethod
+    def CartesianVel(cls, cartesian_vel: list[float]) -> 'MotionType':
+        """
+        Create a Cartesian velocity motion type. 创建笛卡尔速度运动类型
+        """
+        ...
+    @classmethod
+    def Position(cls, position: list[float]) -> 'MotionType':
+        """
+        Create a position motion type. 创建位置运动类型
+        """
+        ...
+    @classmethod
+    def PositionVel(cls, position_vel: list[float]) -> 'MotionType':
+        """
+        Create a position velocity motion type. 创建位置速度运动类型
+        """
+        ...
+    @classmethod
+    def Stop(cls) -> 'MotionType':
+        """
+        Create a stop motion type. 创建停止运动类型
+        """
+        ...
     ...
 
 class ControlType:
-    ...
-
-class ControlType1(ControlType):
-    ...
-
-class ControlType2(ControlType):
-    ...
-
-class ControlType3(ControlType):
-    ...
-
-class ControlType4(ControlType):
-    ...
+    """
+    # ControlType
+    """
     
-class ControlType5(ControlType):
-    ...
-    
-class ControlType6(ControlType):
-    ...
-    
-class ControlType7(ControlType):
+    @classmethod
+    def Torque(cls, tau: list[float]) -> 'ControlType':
+        """
+        Create a torque control type. 创建力矩控制类型
+        """
+        ...
+        
+    @classmethod
+    def Zero(cls) -> 'ControlType':
+        """
+        Create a zero control type. 创建零力控制类型
+        """
+        ...
     ...
     
 class ArmState:

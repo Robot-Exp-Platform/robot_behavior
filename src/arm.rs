@@ -477,190 +477,86 @@ impl<const N: usize> Display for ArmState<N> {
 
 #[cfg(feature = "to_py")]
 mod to_py {
+    use crate::PyPose;
+
     use super::*;
     use pyo3::{pyclass, pymethods};
+
+    #[derive(Debug, Clone)]
     #[pyclass(name = "ArmState")]
-    pub struct PyArmState(ArmStateEnum);
-
-    pub enum ArmStateEnum {
-        ArmState0(ArmState<0>),
-        ArmState1(ArmState<1>),
-        ArmState2(ArmState<2>),
-        ArmState3(ArmState<3>),
-        ArmState4(ArmState<4>),
-        ArmState5(ArmState<5>),
-        ArmState6(ArmState<6>),
-        ArmState7(ArmState<7>),
+    pub struct PyArmState {
+        #[pyo3(get, set)]
+        pub joint: Option<Vec<f64>>,
+        #[pyo3(get, set)]
+        pub joint_vel: Option<Vec<f64>>,
+        #[pyo3(get, set)]
+        pub joint_acc: Option<Vec<f64>>,
+        #[pyo3(get, set)]
+        pub tau: Option<Vec<f64>>,
+        #[pyo3(get, set)]
+        pub pose_o_to_ee: Option<PyPose>,
+        #[pyo3(get, set)]
+        pub pose_ee_to_k: Option<PyPose>,
+        #[pyo3(get, set)]
+        pub cartesian_vel: Option<[f64; 6]>,
+        #[pyo3(get, set)]
+        pub load: Option<LoadState>,
     }
 
-    macro_rules! impl_from_arm_state {
-        ($name: ident, $dof: expr) => {
-            impl From<ArmState<$dof>> for PyArmState {
-                fn from(state: ArmState<$dof>) -> Self {
-                    PyArmState(ArmStateEnum::$name(state))
-                }
+    impl<const N: usize> From<ArmState<N>> for PyArmState {
+        fn from(state: ArmState<N>) -> Self {
+            PyArmState {
+                joint: state.joint.map(|j| j.to_vec()),
+                joint_vel: state.joint_vel.map(|j| j.to_vec()),
+                joint_acc: state.joint_acc.map(|j| j.to_vec()),
+                tau: state.tau.map(|t| t.to_vec()),
+                pose_o_to_ee: state.pose_o_to_ee.map(Into::into),
+                pose_ee_to_k: state.pose_ee_to_k.map(Into::into),
+                cartesian_vel: state.cartesian_vel,
+                load: state.load,
             }
-        };
+        }
     }
 
-    impl_from_arm_state!(ArmState0, 0);
-    impl_from_arm_state!(ArmState1, 1);
-    impl_from_arm_state!(ArmState2, 2);
-    impl_from_arm_state!(ArmState3, 3);
-    impl_from_arm_state!(ArmState4, 4);
-    impl_from_arm_state!(ArmState5, 5);
-    impl_from_arm_state!(ArmState6, 6);
-    impl_from_arm_state!(ArmState7, 7);
+    impl<const N: usize> From<PyArmState> for ArmState<N> {
+        fn from(value: PyArmState) -> Self {
+            ArmState {
+                joint: value.joint.map(|j| j.try_into().unwrap_or([0.; N])),
+                joint_vel: value.joint_vel.map(|j| j.try_into().unwrap_or([0.; N])),
+                joint_acc: value.joint_acc.map(|j| j.try_into().unwrap_or([0.; N])),
+                tau: value.tau.map(|t| t.try_into().unwrap_or([0.; N])),
+                pose_o_to_ee: value.pose_o_to_ee.map(Into::into),
+                pose_ee_to_k: value.pose_ee_to_k.map(Into::into),
+                cartesian_vel: value.cartesian_vel,
+                load: value.load,
+            }
+        }
+    }
 
     #[pymethods]
     impl PyArmState {
-        fn joint(&self) -> Option<Vec<f64>> {
-            match &self.0 {
-                ArmStateEnum::ArmState0(state) => state.joint.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState1(state) => state.joint.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState2(state) => state.joint.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState3(state) => state.joint.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState4(state) => state.joint.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState5(state) => state.joint.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState6(state) => state.joint.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState7(state) => state.joint.map(|j| j.to_vec()),
-            }
-        }
-
-        fn joint_vel(&self) -> Option<Vec<f64>> {
-            match &self.0 {
-                ArmStateEnum::ArmState0(state) => state.joint_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState1(state) => state.joint_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState2(state) => state.joint_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState3(state) => state.joint_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState4(state) => state.joint_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState5(state) => state.joint_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState6(state) => state.joint_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState7(state) => state.joint_vel.map(|j| j.to_vec()),
-            }
-        }
-
-        fn joint_acc(&self) -> Option<Vec<f64>> {
-            match &self.0 {
-                ArmStateEnum::ArmState0(state) => state.joint_acc.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState1(state) => state.joint_acc.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState2(state) => state.joint_acc.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState3(state) => state.joint_acc.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState4(state) => state.joint_acc.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState5(state) => state.joint_acc.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState6(state) => state.joint_acc.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState7(state) => state.joint_acc.map(|j| j.to_vec()),
-            }
-        }
-
-        fn tau(&self) -> Option<Vec<f64>> {
-            match &self.0 {
-                ArmStateEnum::ArmState0(state) => state.tau.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState1(state) => state.tau.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState2(state) => state.tau.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState3(state) => state.tau.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState4(state) => state.tau.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState5(state) => state.tau.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState6(state) => state.tau.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState7(state) => state.tau.map(|j| j.to_vec()),
-            }
-        }
-
-        fn pose_o_to_ee(&self) -> Option<Pose> {
-            match &self.0 {
-                ArmStateEnum::ArmState0(state) => state.pose_o_to_ee,
-                ArmStateEnum::ArmState1(state) => state.pose_o_to_ee,
-                ArmStateEnum::ArmState2(state) => state.pose_o_to_ee,
-                ArmStateEnum::ArmState3(state) => state.pose_o_to_ee,
-                ArmStateEnum::ArmState4(state) => state.pose_o_to_ee,
-                ArmStateEnum::ArmState5(state) => state.pose_o_to_ee,
-                ArmStateEnum::ArmState6(state) => state.pose_o_to_ee,
-                ArmStateEnum::ArmState7(state) => state.pose_o_to_ee,
-            }
-        }
-
-        fn cartesian_vel(&self) -> Option<Vec<f64>> {
-            match &self.0 {
-                ArmStateEnum::ArmState0(state) => state.cartesian_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState1(state) => state.cartesian_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState2(state) => state.cartesian_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState3(state) => state.cartesian_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState4(state) => state.cartesian_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState5(state) => state.cartesian_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState6(state) => state.cartesian_vel.map(|j| j.to_vec()),
-                ArmStateEnum::ArmState7(state) => state.cartesian_vel.map(|j| j.to_vec()),
-            }
-        }
-
-        fn load(&self) -> Option<LoadState> {
-            match &self.0 {
-                ArmStateEnum::ArmState0(state) => state.load.clone(),
-                ArmStateEnum::ArmState1(state) => state.load.clone(),
-                ArmStateEnum::ArmState2(state) => state.load.clone(),
-                ArmStateEnum::ArmState3(state) => state.load.clone(),
-                ArmStateEnum::ArmState4(state) => state.load.clone(),
-                ArmStateEnum::ArmState5(state) => state.load.clone(),
-                ArmStateEnum::ArmState6(state) => state.load.clone(),
-                ArmStateEnum::ArmState7(state) => state.load.clone(),
-            }
-        }
-
         fn __repr__(&self) -> String {
-            match &self.0 {
-                ArmStateEnum::ArmState0(state) => format!("{state:?}"),
-                ArmStateEnum::ArmState1(state) => format!("{state:?}"),
-                ArmStateEnum::ArmState2(state) => format!("{state:?}"),
-                ArmStateEnum::ArmState3(state) => format!("{state:?}"),
-                ArmStateEnum::ArmState4(state) => format!("{state:?}"),
-                ArmStateEnum::ArmState5(state) => format!("{state:?}"),
-                ArmStateEnum::ArmState6(state) => format!("{state:?}"),
-                ArmStateEnum::ArmState7(state) => format!("{state:?}"),
-            }
+            format!(
+                r#"ArmState:
+    |> joint: {:?},
+    |> joint_vel: {:?},
+    |> joint_acc: {:?},
+    |> tau: {:?},
+    |> pose_o_to_ee: {:?},
+    |> pose_ee_to_k: {:?},
+    |> cartesian_vel: {:?},
+    |> load: {:?}"#,
+                self.joint,
+                self.joint_vel,
+                self.joint_acc,
+                self.tau,
+                self.pose_o_to_ee,
+                self.pose_ee_to_k,
+                self.cartesian_vel,
+                self.load
+            )
         }
     }
-
-    // macro_rules! py_arm_state {
-    //     ($name: ident, $dof: expr) => {
-    //         #[pyo3::pyclass]
-    //         pub struct $name(ArmState<$dof>);
-
-    //         #[pyo3::pymethods]
-    //         impl $name {
-    //             fn echo(&self) -> pyo3::PyResult<String> {
-    //                 Ok(format!("{}", self.0))
-    //             }
-
-    //             #[getter]
-    //             fn joint(&self) -> pyo3::PyResult<Option<[f64; $dof]>> {
-    //                 Ok(self.0.joint)
-    //             }
-
-    //             #[getter]
-    //             fn joint_vel(&self) -> pyo3::PyResult<Option<[f64; $dof]>> {
-    //                 Ok(self.0.joint_vel)
-    //             }
-
-    //             #[getter]
-    //             fn joint_acc(&self) -> pyo3::PyResult<Option<[f64; $dof]>> {
-    //                 Ok(self.0.joint_acc)
-    //             }
-    //         }
-
-    //         impl From<ArmState<$dof>> for $name {
-    //             fn from(state: ArmState<$dof>) -> Self {
-    //                 $name(state)
-    //             }
-    //         }
-    //     };
-    // }
-
-    // py_arm_state!(ArmState1, 1);
-    // py_arm_state!(ArmState2, 2);
-    // py_arm_state!(ArmState3, 3);
-    // py_arm_state!(ArmState4, 4);
-    // py_arm_state!(ArmState5, 5);
-    // py_arm_state!(ArmState6, 6);
-    // py_arm_state!(ArmState7, 7);
 }
 
 #[cfg(feature = "to_py")]
