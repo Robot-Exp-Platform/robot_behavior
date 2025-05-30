@@ -354,6 +354,7 @@ macro_rules! py_arm_real_time_control {
                 self.0
                     .control_with_closure(move |state, duration| {
                         let state = PyArmState::from(state);
+                        let duration = duration.as_secs_f64();
                         pyo3::Python::with_gil(|py| {
                             closure
                                 .call1(py, (state, duration))
@@ -382,6 +383,7 @@ macro_rules! py_arm_real_time_control_ext {
                 self.0
                     .move_joint_with_closure(move |state, duration| {
                         let state = PyArmState::from(state);
+                        let duration = duration.as_secs_f64();
                         pyo3::Python::with_gil(|py| {
                             closure
                                 .call1(py, (state, duration))
@@ -401,6 +403,7 @@ macro_rules! py_arm_real_time_control_ext {
                 self.0
                     .move_joint_vel_with_closure(move |state, duration| {
                         let state = PyArmState::from(state);
+                        let duration = duration.as_secs_f64();
                         pyo3::Python::with_gil(|py| {
                             closure
                                 .call1(py, (state, duration))
@@ -420,6 +423,7 @@ macro_rules! py_arm_real_time_control_ext {
                 self.0
                     .move_cartesian_with_closure(move |state, duration| {
                         let state = PyArmState::from(state);
+                        let duration = duration.as_secs_f64();
                         pyo3::Python::with_gil(|py| {
                             closure
                                 .call1(py, (state, duration))
@@ -440,6 +444,7 @@ macro_rules! py_arm_real_time_control_ext {
                 self.0
                     .move_cartesian_vel_with_closure(move |state, duration| {
                         let state = PyArmState::from(state);
+                        let duration = duration.as_secs_f64();
                         pyo3::Python::with_gil(|py| {
                             closure
                                 .call1(py, (state, duration))
