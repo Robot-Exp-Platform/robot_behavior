@@ -7,6 +7,7 @@ mod exception;
 #[cfg(feature = "ffi")]
 pub mod ffi;
 mod load;
+mod logger;
 mod once;
 mod params;
 mod realtime;
