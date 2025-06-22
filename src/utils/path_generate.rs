@@ -337,7 +337,7 @@ mod test {
         let start = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
         let end = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
         let v_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
-        let f = joint_linear(&start, &end, &v_max);
+        let (f, _) = joint_linear(&start, &end, &v_max);
 
         let t = Duration::from_secs_f64(0.5);
         let result = f(t);
@@ -352,12 +352,7 @@ mod test {
             na::UnitQuaternion::from_euler_angles(0.1, 0.2, 0.3),
         );
         let v_max = 1.0;
-        let f: Arc<
-            dyn Fn(
-                Duration,
-            )
-                -> nalgebra::Isometry<f64, nalgebra::Unit<nalgebra::Quaternion<f64>>, 3>,
-        > = cartesian_quat_linear(start, end, v_max);
+        let (f, _) = cartesian_quat_linear(start, end, v_max);
 
         for i in 0..210 {
             let t = Duration::from_secs_f64(i as f64 / 100.);
@@ -372,7 +367,7 @@ mod test {
         let end = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
         let v_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
         let a_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
-        let f = joint_trapezoid(&start, &end, &v_max, &a_max);
+        let (f, _) = joint_trapezoid(&start, &end, &v_max, &a_max);
 
         for i in 0..210 {
             let t = Duration::from_secs_f64(i as f64 / 100.);
@@ -390,7 +385,7 @@ mod test {
         let v_max = [2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100];
         let a_max = [15., 7.5, 10., 12.5, 15., 20., 20.];
         let j_max = [100., 100., 100., 100., 100., 100., 100.];
-        let f = joint_s_curve(&start, &end, &v_max, &a_max, &j_max);
+        let (f, _) = joint_s_curve(&start, &end, &v_max, &a_max, &j_max);
         let f_dot = |t: Duration| {
             let dt: Duration = Duration::from_secs_f64(0.001);
             let t_dot = t + dt;
@@ -538,7 +533,7 @@ mod test {
         let end = [0., -PI / 4., 0., -3. * PI / 4., 0., PI / 2., PI / 4.];
         let v_max = [2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100];
         let a_max = [15., 7.5, 10., 12.5, 15., 20., 20.];
-        let f = joint_simple_4th_curve(&start, &end, &v_max, &a_max);
+        let (f, _) = joint_simple_4th_curve(&start, &end, &v_max, &a_max);
         let f_dot = |t: Duration| {
             let dt: Duration = Duration::from_secs_f64(0.001);
             let t_dot = t + dt;
