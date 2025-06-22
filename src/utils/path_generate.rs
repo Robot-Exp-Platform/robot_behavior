@@ -1,12 +1,14 @@
 use nalgebra as na;
 use std::{sync::Arc, time::Duration};
 
+type FN<T> = Arc<dyn Fn(Duration) -> T + Send + Sync>;
+
 /// Generate a linear path for joint space
 pub fn joint_linear<const N: usize>(
     start: &[f64; N],
     end: &[f64; N],
     v_max: &[f64; N],
-) -> Arc<dyn Fn(Duration) -> [f64; N] + Send + Sync> {
+) -> (FN<[f64; N]>, Duration) {
     let start = na::SVector::<f64, N>::from_row_slice(start);
     let end = na::SVector::<f64, N>::from_row_slice(end);
     let v_max = na::SVector::<f64, N>::from_row_slice(v_max);
@@ -24,7 +26,7 @@ pub fn joint_linear<const N: usize>(
         if t >= 1. { end } else { start + delta * t }.into()
     };
 
-    Arc::new(f)
+    (Arc::new(f), Duration::from_secs_f64(t_max))
 }
 
 /// Generate a linear path for cartesian space
@@ -32,7 +34,7 @@ pub fn cartesian_quat_linear(
     start: na::Isometry3<f64>,
     end: na::Isometry3<f64>,
     v_max: f64,
-) -> Arc<dyn Fn(Duration) -> na::Isometry3<f64> + Send + Sync> {
+) -> (FN<na::Isometry3<f64>>, Duration) {
     let start_trans = start.translation.vector;
     let end_trans = end.translation.vector;
     let delta = end_trans - start_trans;
@@ -48,7 +50,7 @@ pub fn cartesian_quat_linear(
         }
     };
 
-    Arc::new(f)
+    (Arc::new(f), Duration::from_secs_f64(t_max))
 }
 
 pub fn joint_trapezoid<const N: usize>(
@@ -56,7 +58,7 @@ pub fn joint_trapezoid<const N: usize>(
     end: &[f64; N],
     v_max: &[f64; N],
     a_max: &[f64; N],
-) -> Arc<dyn Fn(Duration) -> [f64; N] + Send + Sync> {
+) -> (FN<[f64; N]>, Duration) {
     let start = na::SVector::<f64, N>::from_column_slice(start);
     let end = na::SVector::<f64, N>::from_column_slice(end);
     let delta = end - start;
@@ -100,7 +102,7 @@ pub fn joint_trapezoid<const N: usize>(
         .into()
     };
 
-    Arc::new(f)
+    (Arc::new(f), Duration::from_secs_f64(t_max))
 }
 
 fn trapezoid_min_time(para: ((&f64, &f64), &f64)) -> f64 {
@@ -118,7 +120,7 @@ pub fn joint_s_curve<const N: usize>(
     v_max: &[f64; N],
     a_max: &[f64; N],
     j_max: &[f64; N],
-) -> Arc<dyn Fn(Duration) -> [f64; N] + Send + Sync> {
+) -> (Arc<dyn Fn(Duration) -> [f64; N] + Send + Sync>, Duration) {
     let start = na::SVector::<f64, N>::from_column_slice(start);
     let end = na::SVector::<f64, N>::from_column_slice(end);
     let delta = end - start;
@@ -143,7 +145,7 @@ pub fn joint_s_curve<const N: usize>(
         result.into()
     };
 
-    Arc::new(f)
+    (Arc::new(f), Duration::from_secs_f64(t_max))
 }
 
 fn s_curve(
@@ -244,7 +246,7 @@ pub fn joint_simple_4th_curve<const N: usize>(
     end: &[f64; N],
     v_max: &[f64; N],
     a_max: &[f64; N],
-) -> Arc<dyn Fn(Duration) -> [f64; N] + Send + Sync> {
+) -> (FN<[f64; N]>, Duration) {
     let start = na::SVector::<f64, N>::from_column_slice(start);
     let end = na::SVector::<f64, N>::from_column_slice(end);
     let delta = end - start;
@@ -269,7 +271,7 @@ pub fn joint_simple_4th_curve<const N: usize>(
         result.into()
     };
 
-    Arc::new(f)
+    (Arc::new(f), Duration::from_secs_f64(t_max))
 }
 
 pub fn cartesian_quat_simple_4th_curve(
@@ -277,7 +279,7 @@ pub fn cartesian_quat_simple_4th_curve(
     end: na::Isometry3<f64>,
     v_max: f64,
     a_max: f64,
-) -> Arc<dyn Fn(Duration) -> na::Isometry3<f64> + Send + Sync> {
+) -> (FN<na::Isometry3<f64>>, Duration) {
     let delta = (end.translation.vector - start.translation.vector).norm();
     let (t_min, f) = simple_4th_curve(1., v_max / delta, a_max / delta);
     let f = move |t: Duration| {
@@ -288,7 +290,7 @@ pub fn cartesian_quat_simple_4th_curve(
             start.lerp_slerp(&end, t)
         }
     };
-    Arc::new(f)
+    (Arc::new(f), Duration::from_secs_f64(t_min))
 }
 
 fn simple_4th_curve(
