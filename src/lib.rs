@@ -4,6 +4,7 @@
 
 mod arm;
 mod exception;
+mod exrobot;
 #[cfg(feature = "ffi")]
 pub mod ffi;
 mod load;

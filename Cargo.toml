@@ -8,6 +8,10 @@ repository = "https://github.com/Robot-Exp-Platform/robot_behavior"
 license = "Apache-2.0"
 description = "a library for robot common behavior"
 
+[lib]
+name = "robot_behavior"
+crate-type = ["cdylib", "staticlib"]
+
 [profile.test]
 opt-level = 3
 
