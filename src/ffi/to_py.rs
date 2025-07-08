@@ -311,7 +311,7 @@ macro_rules! py_arm_streaming_motion {
         #[pyo3::pymethods]
         impl $pyname {
             fn start_streaming(&mut self) -> pyo3::PyResult<$handle_name> {
-                self.0.start_streaming().map_err(Into::into)
+                self.0.start_streaming().map_err(Into::into).map(Into::into)
             }
             fn end_streaming(&mut self) -> pyo3::PyResult<()> {
                 self.0.end_streaming().map_err(Into::into)
