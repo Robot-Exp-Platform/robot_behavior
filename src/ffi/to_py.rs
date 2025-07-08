@@ -295,10 +295,10 @@ macro_rules! py_arm_streaming_handle {
                 self.0.last_motion().map(Into::into).map_err(Into::into)
             }
 
-            fn control_with(&mut self, target: PyControlType) -> pyo3::PyResult<()> {
+            fn control_with(&mut self, target: $crate::PyControlType) -> pyo3::PyResult<()> {
                 self.0.control_with(target.into()).map_err(Into::into)
             }
-            fn last_control(&self) -> pyo3::PyResult<PyControlType> {
+            fn last_control(&self) -> pyo3::PyResult<$crate::PyControlType> {
                 self.0.last_control().map(Into::into).map_err(Into::into)
             }
         }
@@ -333,7 +333,7 @@ macro_rules! py_arm_real_time_control {
             fn move_with_closure(&mut self, closure: pyo3::Py<pyo3::PyAny>) -> pyo3::PyResult<()> {
                 self.0
                     .move_with_closure(move |state, duration| {
-                        let state = PyArmState::from(state);
+                        let state = $crate::PyArmState::from(state);
                         let duration = duration.as_secs_f64();
                         pyo3::Python::with_gil(|py| {
                             closure
@@ -353,14 +353,14 @@ macro_rules! py_arm_real_time_control {
             ) -> pyo3::PyResult<()> {
                 self.0
                     .control_with_closure(move |state, duration| {
-                        let state = PyArmState::from(state);
+                        let state = $crate::PyArmState::from(state);
                         let duration = duration.as_secs_f64();
                         pyo3::Python::with_gil(|py| {
                             closure
                                 .call1(py, (state, duration))
                                 .unwrap()
                                 .bind(py)
-                                .extract::<(PyControlType, bool)>()
+                                .extract::<($crate::PyControlType, bool)>()
                                 .map(|(control, stop)| (control.into(), stop))
                                 .unwrap()
                         })
@@ -382,7 +382,7 @@ macro_rules! py_arm_real_time_control_ext {
             ) -> pyo3::PyResult<()> {
                 self.0
                     .move_joint_with_closure(move |state, duration| {
-                        let state = PyArmState::from(state);
+                        let state = $crate::PyArmState::from(state);
                         let duration = duration.as_secs_f64();
                         pyo3::Python::with_gil(|py| {
                             closure
@@ -402,7 +402,7 @@ macro_rules! py_arm_real_time_control_ext {
             ) -> pyo3::PyResult<()> {
                 self.0
                     .move_joint_vel_with_closure(move |state, duration| {
-                        let state = PyArmState::from(state);
+                        let state = $crate::PyArmState::from(state);
                         let duration = duration.as_secs_f64();
                         pyo3::Python::with_gil(|py| {
                             closure
@@ -422,14 +422,14 @@ macro_rules! py_arm_real_time_control_ext {
             ) -> pyo3::PyResult<()> {
                 self.0
                     .move_cartesian_with_closure(move |state, duration| {
-                        let state = PyArmState::from(state);
+                        let state = $crate::PyArmState::from(state);
                         let duration = duration.as_secs_f64();
                         pyo3::Python::with_gil(|py| {
                             closure
                                 .call1(py, (state, duration))
                                 .unwrap()
                                 .bind(py)
-                                .extract::<(PyPose, bool)>()
+                                .extract::<($crate::PyPose, bool)>()
                                 .map(|(pose, stop)| (pose.into(), stop))
                                 .unwrap()
                         })
@@ -443,7 +443,7 @@ macro_rules! py_arm_real_time_control_ext {
             ) -> pyo3::PyResult<()> {
                 self.0
                     .move_cartesian_vel_with_closure(move |state, duration| {
-                        let state = PyArmState::from(state);
+                        let state = $crate::PyArmState::from(state);
                         let duration = duration.as_secs_f64();
                         pyo3::Python::with_gil(|py| {
                             closure
@@ -465,7 +465,7 @@ mod test {
     use pyo3::types::PyAnyMethods;
     use std::sync::{Arc, Mutex};
 
-    use crate::{LoadState, RobotBehavior, RobotResult, arm::*, types::*};
+    use crate::{LoadState, RobotResult, arm::*, behavior::*, types::*};
 
     struct TestRobot;
 
