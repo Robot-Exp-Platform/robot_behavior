@@ -63,8 +63,8 @@ mod to_py {
 
     impl RobotBehavior for ExRobot {
         type State = ();
-        unimpl! {
-            fn version(&self) -> String;
+        fn version() -> String {
+            "ExRobot v0.1.0".to_string()
         }
         unimpl! {
             fn is_moving(&mut self) -> bool;

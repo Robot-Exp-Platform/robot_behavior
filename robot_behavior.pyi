@@ -1,3 +1,5 @@
+from typing import Callable
+
 class LoadState:
     m : float
     x : list[float]
@@ -121,7 +123,8 @@ class Robot:
     ## methods(as `RobotBehavior`) 方法
     """
     
-    def version(self) -> str:
+    @classmethod
+    def version(cls) -> str:
         """get the version of the robot 获取机器人版本号
         Returns:
             str: the version of the robot 机器人版本号
@@ -279,84 +282,11 @@ class ArmState:
         pose_ee_to_k: Pose | None = ...,
         cartesian_vel: list[float] | None = ...,
         load: LoadState | None = ...,
-    ):
+    ) -> None:
         """
         Initialize ArmState.
 
         初始化机械臂状态。
-        """
-        ...
-    def joint(self) -> list[float] | None:
-        """
-        Get the joint positions of the arm.
-
-        获取机械臂的关节位置。
-        """
-        ...
-    def joint_vel(self) -> list[float] | None:
-        """
-        Get the joint velocities of the arm.
-
-        获取机械臂的关节速度。
-        """
-        ...
-    def joint_acc(self) -> list[float] | None:
-        """
-        Get the joint accelerations of the arm.
-
-        获取机械臂的关节加速度。
-        """
-        ...
-    def tau(self) -> list[float] | None:
-        """
-        Get the joint torques of the arm.
-
-        获取机械臂的关节力矩。
-        """
-        ...
-    def pose_o_to_ee(self) -> Pose | None:
-        """
-        Get the pose of the end effector in the base frame.
-
-        获取末端执行器在基坐标系下的位姿。
-        Returns:
-            Pose: the pose of the end effector in the base frame 末端执行器在基坐标系下的位姿
-        """
-        ...
-    def pose_f_to_ee(self) -> Pose | None:
-        """
-        Get the pose of the end effector in the flange frame.
-
-        获取末端执行器在法兰坐标系下的位姿。
-        Returns:
-            Pose: the pose of the end effector in the flange frame 末端执行器在法兰坐标系下的位姿
-        """
-        ...
-    def pose_ee_to_kin(self) -> Pose | None:
-        """
-        Get the pose of the end effector in the kin frame.
-
-        获取末端执行器在关节坐标系下的位姿。
-        Returns:
-            Pose: the pose of the end effector in the kin frame 末端执行器在关节坐标系下的位姿
-        """
-        ...
-    def cartesian_val(self) -> list[float] | None:
-        """
-        Get the Cartesian velocity of the end effector.
-
-        获取末端执行器在笛卡尔坐标系下的速度。
-        Returns:
-            list[float]: the cartesian velocity of the end effector 末端执行器在笛卡尔坐标系下的速度
-        """
-        ...
-    def load(self) -> LoadState | None:
-        """
-        Get the load state of the end effector.
-
-        获取末端执行器的负载状态。
-        Returns:
-            LoadState: the load state of the end effector 末端执行器的负载状态
         """
         ...
 
@@ -450,6 +380,145 @@ class Arm(Robot):
         Set the Cartesian jerk for the next motion command.
 
         设置下一个运动指令的笛卡尔加加速度。
+        """
+        ...
+        
+class ArmParam:
+    """
+    ArmParam
+
+    Interface for robot arm parameters, including joint limits, Cartesian limits, and other configuration parameters.
+
+    机械臂参数接口，包括关节极限、笛卡尔极限及其他配置参数。
+    """
+    
+    @staticmethod
+    def dh() -> list[list[float]]:
+        """
+        Get the Denavit-Hartenberg parameters for the robot arm.
+
+        获取机械臂的Denavit-Hartenberg参数。
+        """
+        ...
+    @staticmethod
+    def joint_default() -> list[float]:
+        """
+        Get the default joint positions for the robot arm.
+
+        获取机械臂的默认关节位置。
+        """
+        ...
+    @staticmethod
+    def joint_min() -> list[float]:
+        """
+        Get the minimum joint limits for the robot arm.
+
+        获取机械臂的最小关节限位。
+        """
+        ...
+    @staticmethod
+    def joint_max() -> list[float]:
+        """
+        Get the maximum joint limits for the robot arm.
+
+        获取机械臂的最大关节限位。
+        """
+        ...
+    @staticmethod
+    def joint_vel_bound() -> list[float]:
+        """
+        Get the joint velocity limits for the robot arm.
+
+        获取机械臂的关节速度限位。
+        """
+        ...
+    @staticmethod
+    def joint_acc_bound() -> list[float]:
+        """
+        Get the joint acceleration limits for the robot arm.
+
+        获取机械臂的关节加速度限位。
+        """
+        ...
+    @staticmethod
+    def joint_jerk_bound() -> list[float]:
+        """
+        Get the joint jerk limits for the robot arm.
+
+        获取机械臂的关节加加速度限位。
+        """
+        ...
+    @staticmethod
+    def cartesian_vel_bound() -> float:
+        """
+        Get the Cartesian velocity limit for the robot arm.
+
+        获取机械臂的笛卡尔速度限位。
+        """
+        ...
+    @staticmethod
+    def cartesian_acc_bound() -> float:
+        """
+        Get the Cartesian acceleration limit for the robot arm.
+
+        获取机械臂的笛卡尔加速度限位。
+        """
+        ...
+    @staticmethod
+    def cartesian_jerk_bound() -> float:
+        """
+        Get the Cartesian jerk limit for the robot arm.
+
+        获取机械臂的笛卡尔加加速度限位。
+        """
+        ...
+    @staticmethod
+    def rotation_vel_bound() -> float:
+        """
+        Get the rotation velocity limit for the robot arm.
+
+        获取机械臂的旋转速度限位。
+        """
+        ...
+    @staticmethod
+    def rotation_acc_bound() -> float:
+        """
+        Get the rotation acceleration limit for the robot arm.
+
+        获取机械臂的旋转加速度限位。
+        """
+        ...
+    @staticmethod
+    def rotation_jerk_bound() -> float:
+        """
+        Get the rotation jerk limit for the robot arm.
+
+        获取机械臂的旋转加加速度限位。
+        """
+        ...
+    @staticmethod
+    def torque_bound() -> list[float]:
+        """
+        Get the torque limits for the robot arm.
+
+        获取机械臂的扭矩限位。
+        """
+        ...
+    @staticmethod
+    def torque_dot_bound() -> list[float]:
+        """
+        Get the torque rate limits for the robot arm.
+
+        获取机械臂的扭矩变化率限位。
+        """
+        ...
+
+    @staticmethod
+    def forward_kinematics(q: list[float]) -> Pose:
+        """
+        Calculate the forward kinematics for the given joint positions.
+
+        计算给定关节位置的正向运动学。
         """
         ...
 
@@ -675,48 +744,6 @@ class ArmPreplannedMotionExt:
         以欧拉角方式惯性异步直线移动。
         """
         ...
-    def move_linear_with_quat(self, target) -> None:
-        """
-        Move linearly using quaternion.
-
-        以四元数方式直线移动。
-        """
-        ...
-    def move_linear_with_quat_async(self, target) -> None:
-        """
-        Move linearly using quaternion asynchronously.
-
-        以四元数方式异步直线移动。
-        """
-        ...
-    def move_linear_with_quat_rel(self, target) -> None:
-        """
-        Move linearly and relatively using quaternion.
-
-        以四元数方式相对直线移动。
-        """
-        ...
-    def move_linear_with_quat_rel_async(self, target) -> None:
-        """
-        Move linearly and relatively using quaternion asynchronously.
-
-        以四元数方式异步相对直线移动。
-        """
-        ...
-    def move_linear_with_quat_int(self, target) -> None:
-        """
-        Move linearly in inertial coordinates using quaternion.
-
-        以四元数方式惯性直线移动。
-        """
-        ...
-    def move_linear_with_quat_int_async(self, target) -> None:
-        """
-        Move linearly in inertial coordinates using quaternion asynchronously.
-
-        以四元数方式惯性异步直线移动。
-        """
-        ...
     def move_linear_with_homo(self, target: list[float]) -> None:
         """
         Move linearly using homogeneous matrix.
@@ -928,14 +955,14 @@ class ArmRealtimeControl:
 
     机械臂实时控制接口，支持基于闭包的实时运动与控制。
     """
-    def move_with_closure(self, closure: callable[['ArmState', float], tuple['MotionType', bool]]) -> None:
+    def move_with_closure(self, closure: Callable[['ArmState', float], tuple['MotionType', bool]]) -> None:
         """
         Real-time motion using a closure, returns (motion target, finished).
 
         以闭包方式实时运动，返回(运动目标, 是否结束)。
         """
         ...
-    def control_with_closure(self, closure: callable[['ArmState', float], tuple['ControlType', bool]]) -> None:
+    def control_with_closure(self, closure: Callable[['ArmState', float], tuple['ControlType', bool]]) -> None:
         """
         Real-time control using a closure, returns (control target, finished).
 
@@ -951,49 +978,49 @@ class ArmRealtimeControlExt:
 
     机械臂实时控制扩展接口，支持基于闭包的关节/笛卡尔/速度控制。
     """
-    def move_joint_with_closure(self, closure: callable[['ArmState', float], tuple[list[float], bool]]) -> None:
+    def move_joint_with_closure(self, closure: Callable[['ArmState', float], tuple[list[float], bool]]) -> None:
         """
         Real-time joint space motion using a closure, returns (joint target, finished).
 
         以闭包方式实时关节空间运动，返回(关节目标, 是否结束)。
         """
         ...
-    def move_joint_vel_with_closure(self, closure: callable[['ArmState', float], tuple[list[float], bool]]) -> None:
+    def move_joint_vel_with_closure(self, closure: Callable[['ArmState', float], tuple[list[float], bool]]) -> None:
         """
         Real-time joint velocity motion using a closure, returns (joint velocity target, finished).
 
         以闭包方式实时关节速度运动，返回(关节速度目标, 是否结束)。
         """
         ...
-    def move_cartesian_with_closure(self, closure: callable[['ArmState', float], tuple['Pose', bool]]) -> None:
+    def move_cartesian_with_closure(self, closure: Callable[['ArmState', float], tuple['Pose', bool]]) -> None:
         """
         Real-time Cartesian space motion using a closure, returns (pose target, finished).
 
         以闭包方式实时笛卡尔空间运动，返回(位姿目标, 是否结束)。
         """
         ...
-    def move_cartesian_vel_with_closure(self, closure: callable[['ArmState', float], tuple[list[float], bool]]) -> None:
+    def move_cartesian_vel_with_closure(self, closure: Callable[['ArmState', float], tuple[list[float], bool]]) -> None:
         """
         Real-time Cartesian velocity motion using a closure, returns (velocity target, finished).
 
         以闭包方式实时笛卡尔速度运动，返回(速度目标, 是否结束)。
         """
         ...
-    def move_cartesian_euler_with_closure(self, closure: callable[['ArmState', float], tuple[list[float], list[float], bool]]) -> None:
+    def move_cartesian_euler_with_closure(self, closure: Callable[['ArmState', float], tuple[list[float], list[float], bool]]) -> None:
         """
         Real-time Euler angle motion using a closure, returns (translation, rotation, finished).
 
         以闭包方式实时欧拉角运动，返回(平移, 旋转, 是否结束)。
         """
         ...
-    def move_cartesian_quat_with_closure(self, closure: callable[['ArmState', float], tuple[object, bool]]) -> None:
+    def move_cartesian_quat_with_closure(self, closure: Callable[['ArmState', float], tuple[object, bool]]) -> None:
         """
         Real-time quaternion motion using a closure, returns (quaternion target, finished).
 
         以闭包方式实时四元数运动，返回(四元数目标, 是否结束)。
         """
         ...
-    def move_cartesian_homo_with_closure(self, closure: callable[['ArmState', float], tuple[list[float], bool]]) -> None:
+    def move_cartesian_homo_with_closure(self, closure: Callable[['ArmState', float], tuple[list[float], bool]]) -> None:
         """
         Real-time homogeneous matrix motion using a closure, returns (homogeneous matrix target, finished).
 

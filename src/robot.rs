@@ -7,7 +7,7 @@ pub trait RobotBehavior {
 
     /// Get the robot version
     /// 获取机器人版本和驱动版本
-    fn version(&self) -> String;
+    fn version() -> String;
 
     /// Initialize the robot
     /// 初始化机器人

@@ -1,6 +1,6 @@
 [package]
 name = "robot_behavior"
-version = "0.4.6"
+version = "0.4.7"
 edition = "2024"
 authors = ["Yixing <yanjizhou312@163.com>"]
 readme = "README.md"

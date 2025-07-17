@@ -3,8 +3,9 @@ macro_rules! py_robot_behavior {
     ($pyname: ident($name: ident)) => {
         #[pyo3::pymethods]
         impl $pyname {
-            fn version(&self) -> String {
-                self.0.version()
+            #[staticmethod]
+            fn version() -> String {
+                $name::version()
             }
             fn init(&mut self) -> pyo3::PyResult<()> {
                 self.0.init().map_err(Into::into)
@@ -121,8 +122,70 @@ macro_rules! py_arm_param {
     ($pyname: ident<{ $dof: expr }>($name: ident)) => {
         #[pyo3::pymethods]
         impl $pyname {
-            fn forward_kinematics(&self, q: [f64; $dof]) -> pyo3::PyResult<$crate::PyPose> {
-                Ok($name::forward_kinematics(&q).into())
+            #[staticmethod]
+            fn dh() -> [[f64; 4]; $dof] {
+                $name::DH
+            }
+            #[staticmethod]
+            fn joint_default() -> [f64; $dof] {
+                $name::JOINT_DEFAULT
+            }
+            #[staticmethod]
+            fn joint_min() -> [f64; $dof] {
+                $name::JOINT_MIN
+            }
+            #[staticmethod]
+            fn joint_max() -> [f64; $dof] {
+                $name::JOINT_MAX
+            }
+            #[staticmethod]
+            fn joint_vel_bound() -> [f64; $dof] {
+                $name::JOINT_VEL_BOUND
+            }
+            #[staticmethod]
+            fn joint_acc_bound() -> [f64; $dof] {
+                $name::JOINT_ACC_BOUND
+            }
+            #[staticmethod]
+            fn joint_jerk_bound() -> [f64; $dof] {
+                $name::JOINT_JERK_BOUND
+            }
+            #[staticmethod]
+            fn cartesian_vel_bound() -> f64 {
+                $name::CARTESIAN_VEL_BOUND
+            }
+            #[staticmethod]
+            fn cartesian_acc_bound() -> f64 {
+                $name::CARTESIAN_ACC_BOUND
+            }
+            #[staticmethod]
+            fn cartesian_jerk_bound() -> f64 {
+                $name::CARTESIAN_JERK_BOUND
+            }
+            #[staticmethod]
+            fn rotation_vel_bound() -> f64 {
+                $name::ROTATION_VEL_BOUND
+            }
+            #[staticmethod]
+            fn rotation_acc_bound() -> f64 {
+                $name::ROTATION_ACC_BOUND
+            }
+            #[staticmethod]
+            fn rotation_jerk_bound() -> f64 {
+                $name::ROTATION_JERK_BOUND
+            }
+            #[staticmethod]
+            fn torque_bound() -> [f64; $dof] {
+                $name::TORQUE_BOUND
+            }
+            #[staticmethod]
+            fn torque_dot_bound() -> [f64; $dof] {
+                $name::TORQUE_DOT_BOUND
+            }
+
+            #[staticmethod]
+            fn forward_kinematics(q: [f64; $dof]) -> $crate::PyPose {
+                $name::forward_kinematics(&q).into()
             }
 
             #[allow(deprecated)]
@@ -515,8 +578,8 @@ mod test {
 
     impl RobotBehavior for TestRobot {
         type State = ();
-        unimpl! {
-            fn version(&self) -> String;
+        fn version() -> String {
+            "TestRobot v0.1.0".to_string()
         }
         unimpl! {
             fn is_moving(&mut self) -> bool;
