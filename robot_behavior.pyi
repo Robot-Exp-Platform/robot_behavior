@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, TypeVar
 
 class LoadState:
     m : float
@@ -290,6 +290,7 @@ class ArmState:
         """
         ...
 
+T = TypeVar('T', bound='Arm')
 class Arm(Robot):
     """
     Arm
@@ -319,7 +320,7 @@ class Arm(Robot):
         设置机械臂的坐标系。
         """
         ...
-    def with_coord(self, coord: str) -> 'Arm':
+    def with_coord(self: T, coord: str) -> T:
         """
         Set the coordinate system for the next motion command.
 
@@ -333,55 +334,56 @@ class Arm(Robot):
         设置机械臂的速度。
         """
         ...
-    def with_speed(self, speed: float) -> 'Arm':
+    def with_speed(self: T, speed: float) -> T:
         """
         Set the speed for the next motion command.
 
         设置下一个运动指令的速度。
         """
         ...
-    def with_velocity(self, joint_vel: list[float]) -> 'Arm':
+    def with_velocity(self: T, joint_vel: list[float]) -> T:
         """
         Set the joint velocity for the next motion command.
 
         设置下一个运动指令的关节速度。
         """
         ...
-    def with_acceleration(self, joint_acc: list[float]) -> 'Arm':
+    def with_acceleration(self: T, joint_acc: list[float]) -> T:
         """
         Set the joint acceleration for the next motion command.
 
         设置下一个运动指令的关节加速度。
         """
         ...
-    def with_jerk(self, joint_jerk: list[float]) -> 'Arm':
+    def with_jerk(self: T, joint_jerk: list[float]) -> T:
         """
         Set the joint jerk for the next motion command.
 
         设置下一个运动指令的关节加加速度。
         """
         ...
-    def with_cartesian_velocity(self, cartesian_vel: float) -> 'Arm':
+    def with_cartesian_velocity(self: T, cartesian_vel: float) -> T:
         """
         Set the Cartesian velocity for the next motion command.
 
         设置下一个运动指令的笛卡尔速度。
         """
         ...
-    def with_cartesian_acceleration(self, cartesian_acc: float) -> 'Arm':
+    def with_cartesian_acceleration(self: T, cartesian_acc: float) -> T:
         """
         Set the Cartesian acceleration for the next motion command.
 
         设置下一个运动指令的笛卡尔加速度。
         """
         ...
-    def with_cartesian_jerk(self, cartesian_jerk: float) -> 'Arm':
+    def with_cartesian_jerk(self: T, cartesian_jerk: float) -> T:
         """
         Set the Cartesian jerk for the next motion command.
 
         设置下一个运动指令的笛卡尔加加速度。
         """
         ...
+        
         
 class ArmParam:
     """

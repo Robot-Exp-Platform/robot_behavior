@@ -32,3 +32,10 @@ pub mod behavior {
     };
     pub use crate::robot::RobotBehavior;
 }
+
+#[cfg(feature = "to_py")]
+#[pyo3::pymodule]
+mod robot_behavior {
+    #[pymodule_export]
+    use super::{LoadState, PyArmState, PyControlType, PyMotionType, PyPose};
+}
