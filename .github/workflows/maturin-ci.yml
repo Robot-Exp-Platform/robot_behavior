@@ -47,7 +47,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libatomic1  # 仅安装主机架构依赖
+          sudo apt-get install -y libatomic1 libfontconfig1-dev
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
