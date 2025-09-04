@@ -11,12 +11,6 @@ use crate::{
     ControlType, Coord, LoadState, MotionType, Pose, RobotBehavior, RobotException, RobotResult,
 };
 
-pub struct ArmRealtimeConfig {
-    pub period: f64,
-    pub timeout: f64,
-    pub realtime_mode: bool,
-}
-
 #[derive(Debug, Clone)]
 pub struct ArmState<const N: usize> {
     pub joint: Option<[f64; N]>,
@@ -304,10 +298,10 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
 impl<const N: usize, T> ArmPreplannedMotionExt<N> for T where T: ArmPreplannedMotion<N> {}
 
 pub trait ArmStreamingHandle<const N: usize> {
-    fn last_motion(&self) -> RobotResult<MotionType<N>>;
+    fn last_motion(&self) -> Option<MotionType<N>>;
     fn move_to(&mut self, target: MotionType<N>) -> RobotResult<()>;
 
-    fn last_control(&self) -> RobotResult<ControlType<N>>;
+    fn last_control(&self) -> Option<ControlType<N>>;
     fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
 }
 

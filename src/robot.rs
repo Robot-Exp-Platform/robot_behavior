@@ -57,3 +57,11 @@ pub trait RobotBehavior {
     /// 获取机器人状态
     fn read_state(&mut self) -> RobotResult<Self::State>;
 }
+
+pub struct ArmRealtimeConfig {
+    pub period: f64,
+    pub timeout: f64,
+    pub realtime_mode: bool,
+}
+
+pub trait Realtime {}

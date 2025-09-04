@@ -1,4 +1,8 @@
 #[cfg(not(feature = "to_py"))]
+/// Load state of the robot. Includes mass, center of mass, and inertia tensor.
+/// - Unit of mass: [kg](https://latex.codecogs.com/png.latex?kg)
+/// - Unit of center of mass: [m](https://latex.codecogs.com/png.latex?m)
+/// - Unit of inertia tensor: [kg·m²](https://latex.codecogs.com/png.latex?kg%5Ccdot%20m%5E2)
 #[derive(Debug, Clone)]
 pub struct LoadState {
     pub m: f64,
@@ -10,6 +14,10 @@ pub struct LoadState {
 use pyo3::{pyclass, pymethods};
 
 #[cfg(feature = "to_py")]
+/// Load state of the robot. Includes mass, center of mass, and inertia tensor.
+/// - Unit of mass: [kg](https://latex.codecogs.com/png.latex?kg)
+/// - Unit of center of mass: [m](https://latex.codecogs.com/png.latex?m)
+/// - Unit of inertia tensor: [kg·m²](https://latex.codecogs.com/png.latex?kg%5Ccdot%20m%5E2)
 #[derive(Debug, Clone)]
 #[pyclass]
 pub struct LoadState {

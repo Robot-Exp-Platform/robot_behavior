@@ -354,15 +354,15 @@ macro_rules! py_arm_streaming_handle {
             fn move_to(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
                 self.0.move_to(target.into()).map_err(Into::into)
             }
-            fn last_motion(&self) -> pyo3::PyResult<$crate::PyMotionType> {
-                self.0.last_motion().map(Into::into).map_err(Into::into)
+            fn last_motion(&self) -> Option<$crate::PyMotionType> {
+                self.0.last_motion().map(Into::into)
             }
 
             fn control_with(&mut self, target: $crate::PyControlType) -> pyo3::PyResult<()> {
                 self.0.control_with(target.into()).map_err(Into::into)
             }
-            fn last_control(&self) -> pyo3::PyResult<$crate::PyControlType> {
-                self.0.last_control().map(Into::into).map_err(Into::into)
+            fn last_control(&self) -> Option<$crate::PyControlType> {
+                self.0.last_control().map(Into::into)
             }
         }
     };
@@ -398,7 +398,7 @@ macro_rules! py_arm_real_time_control {
                     .move_with_closure(move |state, duration| {
                         let state = $crate::PyArmState::from(state);
                         let duration = duration.as_secs_f64();
-                        pyo3::Python::with_gil(|py| {
+                        pyo3::Python::attach(|py| {
                             closure
                                 .call1(py, (state, duration))
                                 .unwrap()
@@ -418,7 +418,7 @@ macro_rules! py_arm_real_time_control {
                     .control_with_closure(move |state, duration| {
                         let state = $crate::PyArmState::from(state);
                         let duration = duration.as_secs_f64();
-                        pyo3::Python::with_gil(|py| {
+                        pyo3::Python::attach(|py| {
                             closure
                                 .call1(py, (state, duration))
                                 .unwrap()
@@ -447,7 +447,7 @@ macro_rules! py_arm_real_time_control_ext {
                     .move_joint_with_closure(move |state, duration| {
                         let state = $crate::PyArmState::from(state);
                         let duration = duration.as_secs_f64();
-                        pyo3::Python::with_gil(|py| {
+                        pyo3::Python::attach(|py| {
                             closure
                                 .call1(py, (state, duration))
                                 .unwrap()
@@ -467,7 +467,7 @@ macro_rules! py_arm_real_time_control_ext {
                     .move_joint_vel_with_closure(move |state, duration| {
                         let state = $crate::PyArmState::from(state);
                         let duration = duration.as_secs_f64();
-                        pyo3::Python::with_gil(|py| {
+                        pyo3::Python::attach(|py| {
                             closure
                                 .call1(py, (state, duration))
                                 .unwrap()
@@ -487,7 +487,7 @@ macro_rules! py_arm_real_time_control_ext {
                     .move_cartesian_with_closure(move |state, duration| {
                         let state = $crate::PyArmState::from(state);
                         let duration = duration.as_secs_f64();
-                        pyo3::Python::with_gil(|py| {
+                        pyo3::Python::attach(|py| {
                             closure
                                 .call1(py, (state, duration))
                                 .unwrap()
@@ -508,7 +508,7 @@ macro_rules! py_arm_real_time_control_ext {
                     .move_cartesian_vel_with_closure(move |state, duration| {
                         let state = $crate::PyArmState::from(state);
                         let duration = duration.as_secs_f64();
-                        pyo3::Python::with_gil(|py| {
+                        pyo3::Python::attach(|py| {
                             closure
                                 .call1(py, (state, duration))
                                 .unwrap()
