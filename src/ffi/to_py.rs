@@ -1,11 +1,11 @@
 #[macro_export]
 macro_rules! py_robot_behavior {
-    ($pyname: ident($name: ident)) => {
+    ($pyname: ident($name: ty)) => {
         #[pyo3::pymethods]
         impl $pyname {
             #[staticmethod]
             fn version() -> String {
-                $name::version()
+                <$name>::version()
             }
             fn init(&mut self) -> pyo3::PyResult<()> {
                 self.0.init().map_err(Into::into)
@@ -46,7 +46,7 @@ macro_rules! py_robot_behavior {
 
 #[macro_export]
 macro_rules! py_arm_behavior {
-    ($pyname: ident<{$dof: expr}>($name: ident)) => {
+    ($pyname: ident<{$dof: expr}>($name: ty)) => {
         #[pyo3::pymethods]
         impl $pyname {
             fn state(&mut self) -> pyo3::PyResult<$crate::PyArmState> {
@@ -119,79 +119,79 @@ macro_rules! py_arm_behavior {
 
 #[macro_export]
 macro_rules! py_arm_param {
-    ($pyname: ident<{ $dof: expr }>($name: ident)) => {
+    ($pyname: ident<{ $dof: expr }>($name: ty)) => {
         #[pyo3::pymethods]
         impl $pyname {
             #[staticmethod]
             fn dh() -> [[f64; 4]; $dof] {
-                $name::DH
+                <$name>::DH
             }
             #[staticmethod]
             fn joint_default() -> [f64; $dof] {
-                $name::JOINT_DEFAULT
+                <$name>::JOINT_DEFAULT
             }
             #[staticmethod]
             fn joint_min() -> [f64; $dof] {
-                $name::JOINT_MIN
+                <$name>::JOINT_MIN
             }
             #[staticmethod]
             fn joint_max() -> [f64; $dof] {
-                $name::JOINT_MAX
+                <$name>::JOINT_MAX
             }
             #[staticmethod]
             fn joint_vel_bound() -> [f64; $dof] {
-                $name::JOINT_VEL_BOUND
+                <$name>::JOINT_VEL_BOUND
             }
             #[staticmethod]
             fn joint_acc_bound() -> [f64; $dof] {
-                $name::JOINT_ACC_BOUND
+                <$name>::JOINT_ACC_BOUND
             }
             #[staticmethod]
             fn joint_jerk_bound() -> [f64; $dof] {
-                $name::JOINT_JERK_BOUND
+                <$name>::JOINT_JERK_BOUND
             }
             #[staticmethod]
             fn cartesian_vel_bound() -> f64 {
-                $name::CARTESIAN_VEL_BOUND
+                <$name>::CARTESIAN_VEL_BOUND
             }
             #[staticmethod]
             fn cartesian_acc_bound() -> f64 {
-                $name::CARTESIAN_ACC_BOUND
+                <$name>::CARTESIAN_ACC_BOUND
             }
             #[staticmethod]
             fn cartesian_jerk_bound() -> f64 {
-                $name::CARTESIAN_JERK_BOUND
+                <$name>::CARTESIAN_JERK_BOUND
             }
             #[staticmethod]
             fn rotation_vel_bound() -> f64 {
-                $name::ROTATION_VEL_BOUND
+                <$name>::ROTATION_VEL_BOUND
             }
             #[staticmethod]
             fn rotation_acc_bound() -> f64 {
-                $name::ROTATION_ACC_BOUND
+                <$name>::ROTATION_ACC_BOUND
             }
             #[staticmethod]
             fn rotation_jerk_bound() -> f64 {
-                $name::ROTATION_JERK_BOUND
+                <$name>::ROTATION_JERK_BOUND
             }
             #[staticmethod]
             fn torque_bound() -> [f64; $dof] {
-                $name::TORQUE_BOUND
+                <$name>::TORQUE_BOUND
             }
             #[staticmethod]
             fn torque_dot_bound() -> [f64; $dof] {
-                $name::TORQUE_DOT_BOUND
+                <$name>::TORQUE_DOT_BOUND
             }
 
             #[staticmethod]
             fn forward_kinematics(q: [f64; $dof]) -> $crate::PyPose {
-                $name::forward_kinematics(&q).into()
+                <$name>::forward_kinematics(&q).into()
             }
 
             #[allow(deprecated)]
             fn inverse_kinematics(&self, pose: $crate::PyPose) -> pyo3::PyResult<[f64; $dof]> {
                 let pose: $crate::Pose = pose.into();
-                $name::inverse_kinematics(pose).map_err(Into::into)
+                <$name>::inverse_kinematics(pose).map_err(Into::into)
             }
         }
     };
@@ -199,7 +199,7 @@ macro_rules! py_arm_param {
 
 #[macro_export]
 macro_rules! py_arm_preplanned_motion_impl {
-    ($pyname: ident<{ $dof: literal }>($name: ident)) => {
+    ($pyname: ident<{ $dof: literal }>($name: ty)) => {
         #[pyo3::pymethods]
         impl $pyname {
             fn move_joint(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
@@ -223,7 +223,7 @@ macro_rules! py_arm_preplanned_motion_impl {
 
 #[macro_export]
 macro_rules! py_arm_preplanned_motion {
-    ($pyname: ident<{ $dof: literal }>($name: ident)) => {
+    ($pyname: ident<{ $dof: literal }>($name: ty)) => {
         #[pyo3::pymethods]
         impl $pyname {
             fn move_to(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
@@ -268,7 +268,7 @@ macro_rules! py_arm_preplanned_motion {
 
 #[macro_export]
 macro_rules! py_arm_preplanned_motion_ext {
-    ($pyname: ident<{ $dof: expr }>($name: ident)) => {
+    ($pyname: ident<{ $dof: expr }>($name: ty)) => {
         #[pyo3::pymethods]
         impl $pyname {
             fn move_joint_rel(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
@@ -348,7 +348,7 @@ macro_rules! py_arm_preplanned_motion_ext {
 
 #[macro_export]
 macro_rules! py_arm_streaming_handle {
-    ($pyname: ident<{ $dof: expr }>($name: ident)) => {
+    ($pyname: ident<{ $dof: expr }>($name: ty)) => {
         #[pyo3::pymethods]
         impl $pyname {
             fn move_to(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
@@ -370,7 +370,7 @@ macro_rules! py_arm_streaming_handle {
 
 #[macro_export]
 macro_rules! py_arm_streaming_motion {
-    ($pyname: ident<{ $dof: expr }>($name: ident) -> $handle_name: ident) => {
+    ($pyname: ident<{ $dof: expr }>($name: ty) -> $handle_name: ident) => {
         #[pyo3::pymethods]
         impl $pyname {
             fn start_streaming(&mut self) -> pyo3::PyResult<$handle_name> {
@@ -385,12 +385,12 @@ macro_rules! py_arm_streaming_motion {
 
 #[macro_export]
 macro_rules! py_arm_streaming_motion_ext {
-    ($pyname: ident<{ $dof: expr }>($name: ident)) => {};
+    ($pyname: ident<{ $dof: expr }>($name: ty)) => {};
 }
 
 #[macro_export]
 macro_rules! py_arm_real_time_control {
-    ($pyname: ident<{ $dof: expr }>($name: ident)) => {
+    ($pyname: ident<{ $dof: expr }>($name: ty)) => {
         #[pyo3::pymethods]
         impl $pyname {
             fn move_with_closure(&mut self, closure: pyo3::Py<pyo3::PyAny>) -> pyo3::PyResult<()> {
@@ -436,7 +436,7 @@ macro_rules! py_arm_real_time_control {
 
 #[macro_export]
 macro_rules! py_arm_real_time_control_ext {
-    ($pyname: ident<{ $dof: expr }>($name: ident)) => {
+    ($pyname: ident<{ $dof: expr }>($name: ty)) => {
         #[pyo3::pymethods]
         impl $pyname {
             fn move_joint_with_closure(

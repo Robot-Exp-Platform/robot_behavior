@@ -555,3 +555,44 @@ mod to_py {
 
 #[cfg(feature = "to_py")]
 pub use to_py::*;
+
+#[cfg(feature = "to_cxx")]
+mod to_cxx {
+    use crate::ArmState;
+
+    pub struct CxxArmState {
+        pub joint: Option<Vec<f64>>,
+        pub joint_vel: Option<Vec<f64>>,
+        pub joint_acc: Option<Vec<f64>>,
+        pub tau: Option<Vec<f64>>,
+        pub pose_o_to_ee: Option<crate::Pose>,
+        pub pose_ee_to_k: Option<crate::Pose>,
+        pub cartesian_vel: Option<Vec<f64>>,
+        pub load: Option<crate::LoadState>,
+    }
+
+    impl<const N: usize> From<ArmState<N>> for CxxArmState {
+        fn from(value: ArmState<N>) -> Self {
+            CxxArmState {
+                joint: value.joint.map(|j| j.to_vec()),
+                joint_vel: value.joint_vel.map(|j| j.to_vec()),
+                joint_acc: value.joint_acc.map(|j| j.to_vec()),
+                tau: value.tau.map(|t| t.to_vec()),
+                pose_o_to_ee: value.pose_o_to_ee,
+                pose_ee_to_k: value.pose_ee_to_k,
+                cartesian_vel: value.cartesian_vel.map(|c| c.to_vec()),
+                load: value.load,
+            }
+        }
+    }
+
+    #[cxx::bridge]
+    mod cxx_bridge {
+        extern "Rust" {
+            type CxxArmState;
+        }
+    }
+}
+
+#[cfg(feature = "to_cxx")]
+pub use to_cxx::*;

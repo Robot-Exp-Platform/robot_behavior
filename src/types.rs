@@ -1,9 +1,8 @@
-use std::{array::TryFromSliceError, ops::Div};
+use std::ops::Div;
 
 use nalgebra as na;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use thiserror::Error;
 
 use crate::utils::{combine_array, homo_to_isometry};
 
@@ -25,14 +24,15 @@ pub enum Pose {
 }
 
 #[serde_as]
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default)]
 pub enum ControlType<const N: usize> {
+    #[default]
     Zero,
     Torque(#[serde_as(as = "[_; N]")] [f64; N]),
 }
 
 #[serde_as]
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default)]
 pub enum MotionType<const N: usize> {
     Joint(#[serde_as(as = "[_; N]")] [f64; N]),
     JointVel(#[serde_as(as = "[_; N]")] [f64; N]),
@@ -40,6 +40,7 @@ pub enum MotionType<const N: usize> {
     CartesianVel([f64; 6]),
     Position([f64; 3]),
     PositionVel([f64; 3]),
+    #[default]
     Stop,
 }
 
@@ -255,6 +256,32 @@ impl From<[f64; 16]> for Pose {
     }
 }
 
+impl From<&[f64]> for Pose {
+    fn from(value: &[f64]) -> Self {
+        value.to_vec().into()
+    }
+}
+
+impl From<Vec<f64>> for Pose {
+    fn from(value: Vec<f64>) -> Self {
+        match value.len() {
+            3 => Pose::Position(value.try_into().unwrap()),
+            6 => Pose::Euler(
+                [value[0], value[1], value[2]],
+                [value[3], value[4], value[5]],
+            ),
+            7 => Pose::Quat(na::Isometry3::from_parts(
+                na::Translation3::new(value[0], value[1], value[2]),
+                na::UnitQuaternion::from_quaternion(na::Quaternion::from([
+                    value[3], value[4], value[5], value[6],
+                ])),
+            )),
+            16 => Pose::Homo(value.try_into().unwrap()),
+            _ => panic!("Invalid Vec length for Pose"),
+        }
+    }
+}
+
 impl From<Pose> for [f64; 3] {
     fn from(value: Pose) -> Self {
         value.position()
@@ -274,26 +301,30 @@ impl From<Pose> for [f64; 16] {
     }
 }
 
-#[derive(Error, Debug)]
-#[error("could not convert slice to Pose")]
-pub struct TryIntoPoseError(());
-
-impl From<TryFromSliceError> for TryIntoPoseError {
-    fn from(_: TryFromSliceError) -> Self {
-        TryIntoPoseError(())
-    }
-}
-
-impl TryFrom<&[f64]> for Pose {
-    type Error = TryIntoPoseError;
-
-    fn try_from(value: &[f64]) -> Result<Self, Self::Error> {
-        match value.len() {
-            3 => Ok(Pose::Position(value.try_into()?)),
-            6 => Ok(From::<[f64; 6]>::from(value.try_into()?)),
-            7 => Ok(From::<[f64; 7]>::from(value.try_into()?)),
-            16 => Ok(Pose::Homo(value.try_into()?)),
-            _ => Err(TryIntoPoseError(())),
+impl From<Pose> for Vec<f64> {
+    fn from(value: Pose) -> Self {
+        match value {
+            Pose::Euler(tran, rot) => {
+                let mut vec = Vec::with_capacity(6);
+                vec.extend_from_slice(&tran);
+                vec.extend_from_slice(&rot);
+                vec
+            }
+            Pose::Quat(pose) => {
+                let mut vec = Vec::with_capacity(7);
+                vec.extend_from_slice(&pose.translation.vector.as_slice());
+                vec.extend_from_slice(&pose.rotation.vector().as_slice());
+                vec
+            }
+            Pose::Homo(pose) => pose.as_slice().to_vec(),
+            Pose::AxisAngle(tran, axis, angle) => {
+                let mut vec = Vec::with_capacity(7);
+                vec.extend_from_slice(&tran);
+                vec.extend_from_slice(&axis);
+                vec.push(angle);
+                vec
+            }
+            Pose::Position(tran) => tran.as_slice().to_vec(),
         }
     }
 }
@@ -525,3 +556,118 @@ mod to_py {
 
 #[cfg(feature = "to_py")]
 pub use to_py::*;
+
+#[cfg(feature = "to_cxx")]
+mod to_cxx {
+    use super::*;
+
+    #[cxx::bridge]
+    mod to_cxx_bridge {
+        pub struct CxxMotionType {
+            pub mode: CxxMotionTypeMode,
+            pub values: Vec<f64>,
+        }
+        pub enum CxxMotionTypeMode {
+            Joint,
+            JointVel,
+            Cartesian,
+            CartesianVel,
+            Position,
+            PositionVel,
+        }
+        pub struct CxxControlType {
+            pub mode: CxxControlTypeMode,
+            pub values: Vec<f64>,
+        }
+        pub enum CxxControlTypeMode {
+            Zero,
+            Torque,
+        }
+        extern "Rust" {
+            type CxxPose;
+            #[Self = "CxxPose"]
+            fn Euler(tran: [f64; 3], rot: [f64; 3]) -> Box<CxxPose>;
+            #[Self = "CxxPose"]
+            fn Quat(tran: [f64; 3], rot: [f64; 4]) -> Box<CxxPose>;
+            #[Self = "CxxPose"]
+            fn Homo(pose: [f64; 16]) -> Box<CxxPose>;
+            #[Self = "CxxPose"]
+            fn AxisAngle(tran: [f64; 3], axis: [f64; 3], angle: f64) -> Box<CxxPose>;
+            #[Self = "CxxPose"]
+            fn Position(tran: [f64; 3]) -> Box<CxxPose>;
+            fn to_vec(&self) -> Vec<f64>;
+            #[Self = "CxxPose"]
+            fn from_vec(vec: Vec<f64>) -> Box<CxxPose>;
+        }
+    }
+
+    pub use to_cxx_bridge::*;
+
+    struct CxxPose(Pose);
+
+    impl CxxPose {
+        #[allow(non_snake_case)]
+        fn Euler(tran: [f64; 3], rot: [f64; 3]) -> Box<Self> {
+            Box::new(CxxPose(Pose::Euler(tran, rot)))
+        }
+        #[allow(non_snake_case)]
+        fn Quat(tran: [f64; 3], rot: [f64; 4]) -> Box<Self> {
+            Box::new(CxxPose(Pose::Quat(na::Isometry3::from_parts(
+                na::Translation3::new(tran[0], tran[1], tran[2]),
+                na::UnitQuaternion::from_quaternion(na::Quaternion::from(rot)),
+            ))))
+        }
+        #[allow(non_snake_case)]
+        fn Homo(pose: [f64; 16]) -> Box<Self> {
+            Box::new(CxxPose(Pose::Homo(pose)))
+        }
+        #[allow(non_snake_case)]
+        fn AxisAngle(tran: [f64; 3], axis: [f64; 3], angle: f64) -> Box<Self> {
+            Box::new(CxxPose(Pose::AxisAngle(tran, axis, angle)))
+        }
+        #[allow(non_snake_case)]
+        fn Position(tran: [f64; 3]) -> Box<Self> {
+            Box::new(CxxPose(Pose::Position(tran)))
+        }
+
+        fn to_vec(&self) -> Vec<f64> {
+            self.0.into()
+        }
+        fn from_vec(vec: Vec<f64>) -> Box<Self> {
+            Box::new(CxxPose(vec.into()))
+        }
+    }
+
+    impl<const N: usize> From<CxxMotionType> for MotionType<N> {
+        fn from(cxx: CxxMotionType) -> Self {
+            match cxx.mode {
+                CxxMotionTypeMode::Joint => MotionType::Joint(cxx.values.try_into().unwrap()),
+                CxxMotionTypeMode::JointVel => MotionType::JointVel(cxx.values.try_into().unwrap()),
+                CxxMotionTypeMode::Cartesian => {
+                    MotionType::Cartesian(cxx.values.try_into().unwrap())
+                }
+                CxxMotionTypeMode::CartesianVel => {
+                    MotionType::CartesianVel(cxx.values.try_into().unwrap())
+                }
+                CxxMotionTypeMode::Position => MotionType::Position(cxx.values.try_into().unwrap()),
+                CxxMotionTypeMode::PositionVel => {
+                    MotionType::PositionVel(cxx.values.try_into().unwrap())
+                }
+                _ => panic!("Invalid mode for MotionType"),
+            }
+        }
+    }
+
+    impl<const N: usize> From<CxxControlType> for ControlType<N> {
+        fn from(cxx: CxxControlType) -> Self {
+            match cxx.mode {
+                CxxControlTypeMode::Zero => ControlType::Zero,
+                CxxControlTypeMode::Torque => ControlType::Torque(cxx.values.try_into().unwrap()),
+                _ => panic!("Invalid mode for ControlType"),
+            }
+        }
+    }
+}
+
+#[cfg(feature = "to_cxx")]
+pub use to_cxx::*;

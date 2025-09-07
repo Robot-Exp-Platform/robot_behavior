@@ -1,6 +1,6 @@
 use std::ffi::{CString, c_char};
 
-use crate::{ControlType, MotionType, RobotResult, behavior::*};
+use crate::{ControlType, MotionType, RobotResult};
 
 #[repr(C)]
 pub struct CError {
@@ -67,11 +67,7 @@ impl<const N: usize> Into<ControlType<N>> for (CControlType, [f64; N]) {
 }
 
 #[cxx::bridge]
-pub mod ffi {
-    extern "Rust" {
-        type Pose;
-    }
-}
+pub mod ffi {}
 
 #[macro_export]
 macro_rules! impl_self {
@@ -171,26 +167,58 @@ macro_rules! c_arm_behavior {
 #[macro_export]
 macro_rules! c_arm_param {
     ($cname: ident<{ $dof: expr }>($name: ident)) => {
-        impl_self! {
-            fn dh(&self) -> [[f64; 4]; $dof];
-            fn joint_default(&self) -> [f64; $dof];
-            fn joint_min(&self) -> [f64; $dof];
-            fn joint_max(&self) -> [f64; $dof];
-            fn joint_vel_bound(&self) -> [f64; $dof];
-            fn joint_acc_bound(&self) -> [f64; $dof];
-            fn joint_jerk_bound(&self) -> [f64; $dof];
-            fn cartesian_vel_bound(&self) -> f64;
-            fn cartesian_acc_bound(&self) -> f64;
-            fn torque_bound(&self) -> [f64; $dof];
-            fn torque_dot_bound(&self) -> [f64; $dof];
+        fn dh() -> [[f64; 4]; $dof] {
+            $name::DH
+        }
+        fn joint_default() -> [f64; $dof] {
+            $name::JOINT_DEFAULT
+        }
+        fn joint_min() -> [f64; $dof] {
+            $name::JOINT_MIN
+        }
+        fn joint_max() -> [f64; $dof] {
+            $name::JOINT_MAX
+        }
+        fn joint_vel_max() -> [f64; $dof] {
+            $name::JOINT_VEL_MAX
+        }
+        fn joint_acc_max() -> [f64; $dof] {
+            $name::JOINT_ACC_MAX
+        }
+        fn joint_jerk_max() -> [f64; $dof] {
+            $name::JOINT_JERK_MAX
+        }
+        fn cartesian_vel_max() -> f64 {
+            $name::CARTESIAN_VEL_MAX
+        }
+        fn cartesian_acc_max() -> f64 {
+            $name::CARTESIAN_ACC_MAX
+        }
+        fn cartesian_jerk_max() -> f64 {
+            $name::CARTESIAN_JERK_MAX
+        }
+        fn rotation_vel_max() -> f64 {
+            $name::ROTATION_VEL_MAX
+        }
+        fn rotation_acc_max() -> f64 {
+            $name::ROTATION_ACC_MAX
+        }
+        fn rotation_jerk_max() -> f64 {
+            $name::ROTATION_JERK_MAX
+        }
+        fn torque_bound() -> [f64; $dof] {
+            $name::TORQUE_BOUND
+        }
+        fn torque_dot_bound() -> [f64; $dof] {
+            $name::TORQUE_DOT_BOUND
         }
 
         fn forward_kinematics(q: &[f64; $dof]) -> Pose {
             $name::forward_kinematics(q)
         }
-        // fn inverse_kinematics(pose: Pose) -> RobotResult<[f64; $dof]> {
-        //     $name::inverse_kinematics(pose)
-        // }
+        fn inverse_kinematics(pose: Pose) -> RobotResult<[f64; $dof]> {
+            $name::inverse_kinematics(pose)
+        }
     };
 }
 
@@ -301,8 +329,9 @@ macro_rules! c_arm_realtime_control {
     };
 }
 
-#[cfg(all(test, feature = "to_cxx"))]
+#[cfg(all(test, feature = "to_c"))]
 mod test {
+    use crate::behavior::*;
     struct TestRobot;
     struct CTestRobot(TestRobot);
 
@@ -342,8 +371,8 @@ mod test {
 
     impl RobotBehavior for TestRobot {
         type State = ();
-        unimpl! {
-            fn version(&self) -> String;
+        fn version() -> String {
+            "TestRobot v0.1.0".to_string()
         }
         unimpl! {
             fn is_moving(&mut self) -> bool;
@@ -373,9 +402,14 @@ mod test {
             fn with_speed(&mut self, _speed: f64) -> &mut Self;
 
             fn with_velocity(&mut self, _joint_vel: &[f64; 0]) -> &mut Self;
-            fn with_cartesian_velocity(&mut self, _cartesian_vel: f64) -> &mut Self;
             fn with_acceleration(&mut self, _joint_acc: &[f64; 0]) -> &mut Self;
             fn with_jerk(&mut self, _joint_jerk: &[f64; 0]) -> &mut Self;
+            fn with_cartesian_velocity(&mut self, _cartesian_vel: f64) -> &mut Self;
+            fn with_cartesian_acceleration(&mut self, _cartesian_acc: f64) -> &mut Self;
+            fn with_cartesian_jerk(&mut self, _cartesian_jerk: f64) -> &mut Self;
+            fn with_rotation_velocity(&mut self, _rotation_vel: f64) -> &mut Self;
+            fn with_rotation_acceleration(&mut self, _rotation_acc: f64) -> &mut Self;
+            fn with_rotation_jerk(&mut self, _rotation_jerk: f64) -> &mut Self;
         );
     }
 
