@@ -31,17 +31,28 @@ pub trait ArmBehavior<const N: usize>: RobotBehavior {
     /// Set the coordinate system for next motion command.
     fn with_coord(&mut self, coord: Coord) -> &mut Self;
 
+    /// Set the speed ratio (0.0 ~ 1.0)
     fn set_speed(&mut self, speed: f64) -> RobotResult<()>;
+    /// Set the speed ratio (0.0 ~ 1.0) for next motion command.
     fn with_speed(&mut self, speed: f64) -> &mut Self;
 
+    /// Set the velocity for next motion command. [rad/s]()
     fn with_velocity(&mut self, joint_vel: &[f64; N]) -> &mut Self;
+    /// Set the acceleration for next motion command. [rad/s^2]()
     fn with_acceleration(&mut self, joint_acc: &[f64; N]) -> &mut Self;
+    /// Set the jerk for next motion command. [rad/s^3]()
     fn with_jerk(&mut self, joint_jerk: &[f64; N]) -> &mut Self;
+    /// Set the cartesian velocity for next motion command. [m/s, rad/s]()
     fn with_cartesian_velocity(&mut self, cartesian_vel: f64) -> &mut Self;
+    /// Set the cartesian acceleration for next motion command. [m/s^2, rad/s^2]()
     fn with_cartesian_acceleration(&mut self, cartesian_acc: f64) -> &mut Self;
+    /// Set the cartesian jerk for next motion command. [m/s^3, rad/s^3]()
     fn with_cartesian_jerk(&mut self, cartesian_jerk: f64) -> &mut Self;
+    /// Set the rotation velocity for next motion command. [rad/s]()
     fn with_rotation_velocity(&mut self, rotation_vel: f64) -> &mut Self;
+    /// Set the rotation acceleration for next motion command. [rad/s^2]()
     fn with_rotation_acceleration(&mut self, rotation_acc: f64) -> &mut Self;
+    /// Set the rotation jerk for next motion command. [rad/s^3]()
     fn with_rotation_jerk(&mut self, rotation_jerk: f64) -> &mut Self;
 }
 
