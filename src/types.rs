@@ -1,10 +1,13 @@
-use std::ops::Div;
+use std::ops::{Div, Mul};
 
 use nalgebra as na;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::utils::{combine_array, homo_to_isometry};
+use crate::{
+    ArmState,
+    utils::{combine_array, homo_to_isometry},
+};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
 pub enum Coord {
@@ -348,6 +351,43 @@ impl Div for &Pose {
             .zip(rhs.position().iter())
             .map(|(a, b)| (a - b).exp2())
             .sum()
+    }
+}
+
+impl Mul for Pose {
+    type Output = Self;
+    fn mul(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Pose::Homo(pose1), Pose::Homo(pose2)) => Pose::Homo(
+                (na::Matrix4::from_column_slice(&pose1) * na::Matrix4::from_column_slice(&pose2))
+                    .as_slice()
+                    .try_into()
+                    .unwrap(),
+            ),
+            _ => Pose::Quat(self.quat() * rhs.quat()),
+        }
+    }
+}
+
+impl<const N: usize> MotionType<N> {
+    pub fn with_coord(self, coord: &Coord, state: &ArmState<N>) -> MotionType<N> {
+        match (self, coord) {
+            (_, Coord::OCS) => self,
+            (MotionType::Joint(joint), _) => {
+                let mut result = [0.0; N];
+                for i in 0..N {
+                    result[i] = joint[i] + state.joint.unwrap()[i]
+                }
+                MotionType::Joint(result)
+            }
+            (MotionType::Cartesian(pose), Coord::Shot) => {
+                MotionType::Cartesian(state.pose_o_to_ee.unwrap() * pose)
+            }
+            (MotionType::Cartesian(pose), Coord::Interial) => {
+                MotionType::Cartesian(Pose::Position(state.pose_o_to_ee.unwrap().position()) * pose)
+            }
+            _ => self,
+        }
     }
 }
 
