@@ -9,8 +9,9 @@ use crate::{
     utils::{combine_array, homo_to_isometry},
 };
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone, Copy)]
 pub enum Coord {
+    #[default]
     OCS,
     Shot,
     Interial,
