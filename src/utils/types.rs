@@ -21,3 +21,7 @@ pub fn combine_array<T: Copy, const N: usize, const M: usize>(
     result[N..].copy_from_slice(v2);
     result
 }
+
+pub fn rad_to_deg<const N: usize>(arr: [f64; N]) -> [f64; N] {
+    arr.map(|x| x.to_degrees())
+}

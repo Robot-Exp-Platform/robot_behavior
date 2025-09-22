@@ -7,9 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::{fs::File, time::Duration};
 
 use crate::utils::limit::*;
-use crate::{
-    ControlType, Coord, LoadState, MotionType, Pose, RobotBehavior, RobotException, RobotResult,
-};
+use crate::{ControlType, Coord, LoadState, MotionType, Pose, RobotException, RobotResult};
 
 #[derive(Debug, Clone)]
 pub struct ArmState<const N: usize> {
@@ -23,7 +21,7 @@ pub struct ArmState<const N: usize> {
     pub load: Option<LoadState>,
 }
 
-pub trait ArmBehavior<const N: usize>: RobotBehavior {
+pub trait ArmBehavior<const N: usize> {
     fn state(&mut self) -> RobotResult<ArmState<N>>;
     fn set_load(&mut self, load: LoadState) -> RobotResult<()>;
     /// Set the coordinate system for arm
