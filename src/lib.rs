@@ -26,7 +26,7 @@ pub use types::*;
 
 pub mod behavior {
     pub use crate::arm::{
-        ArmBehavior, ArmParam, ArmPreplannedMotion, ArmPreplannedMotionExt,
+        ArmBehavior, ArmDOF, ArmParam, ArmPreplannedMotion, ArmPreplannedMotionExt,
         ArmPreplannedMotionImpl, ArmRealtimeControl, ArmRealtimeControlExt, ArmStreamingHandle,
         ArmStreamingMotion, ArmStreamingMotionExt,
     };

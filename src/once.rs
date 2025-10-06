@@ -1,3 +1,4 @@
+#[derive(Default)]
 pub struct OverrideOnce<T> {
     once: Option<T>,
     default: T,
@@ -25,5 +26,14 @@ impl<T: Clone> OverrideOnce<T> {
 
     pub fn get(&mut self) -> T {
         self.once.take().unwrap_or(self.default.clone())
+    }
+}
+
+impl<T> From<T> for OverrideOnce<T> {
+    fn from(default: T) -> Self {
+        Self {
+            once: None,
+            default,
+        }
     }
 }

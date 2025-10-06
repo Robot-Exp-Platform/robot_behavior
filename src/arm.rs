@@ -21,6 +21,10 @@ pub struct ArmState<const N: usize> {
     pub load: Option<LoadState>,
 }
 
+pub trait ArmDOF {
+    const N: usize;
+}
+
 pub trait ArmBehavior<const N: usize> {
     fn state(&mut self) -> RobotResult<ArmState<N>>;
     fn set_load(&mut self, load: LoadState) -> RobotResult<()>;
