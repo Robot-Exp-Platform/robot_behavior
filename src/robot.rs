@@ -59,8 +59,7 @@ pub trait Robot {
 }
 
 pub trait RobotFile {
-    fn urdf_collision_file() -> &'static str;
-    fn urdf_visual_file() -> &'static str;
+    const URDF: &'static str;
 }
 
 pub struct ArmRealtimeConfig {

@@ -37,7 +37,7 @@ pub mod behavior {
     };
     pub use crate::robot::{Robot, RobotFile};
 
-    pub use crate::physics_engine::PhysicsEngine;
+    pub use crate::physics_engine::{PhysicsEngine, PhysicsEngineRobot, RobotBuilder};
     pub use crate::renderer::Renderer;
 }
 

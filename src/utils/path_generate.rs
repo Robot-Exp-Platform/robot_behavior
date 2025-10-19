@@ -114,6 +114,35 @@ fn trapezoid_min_time(para: ((&f64, &f64), &f64)) -> f64 {
     }
 }
 
+pub fn t_curve(
+    delta: f64,
+    v_max: f64,
+    a_max: f64,
+) -> (f64, Arc<dyn Fn(Duration) -> f64 + Send + Sync>) {
+    if delta.abs() < 1e-6 {
+        return (0., Arc::new(|_| 0.));
+    }
+    let delta = delta.abs();
+    // Adjust v_max for degenerate case (triangular profile if delta is small)
+    let v_max = v_max.min((2. * delta * a_max).sqrt());
+    let t_acc = v_max / a_max;
+    let s_acc = 0.5 * a_max * t_acc * t_acc;
+    let s_cruise = delta - 2. * s_acc;
+    let t_cruise = if s_cruise > 0. { s_cruise / v_max } else { 0. };
+    let t_total = 2. * t_acc + t_cruise;
+    let f = move |t: Duration| {
+        let t = t.as_secs_f64().min(t_total);
+        if t < t_acc {
+            0.5 * a_max * t * t
+        } else if t < t_acc + t_cruise {
+            s_acc + v_max * (t - t_acc)
+        } else {
+            delta - 0.5 * a_max * (t_total - t).powi(2)
+        }
+    };
+    (t_total, Arc::new(f))
+}
+
 pub fn joint_s_curve<const N: usize>(
     start: &[f64; N],
     end: &[f64; N],
@@ -154,6 +183,9 @@ fn s_curve(
     a_max: f64,
     j_max: f64,
 ) -> (f64, Arc<dyn Fn(Duration) -> f64 + Send + Sync>) {
+    if j_max == f64::MAX {
+        return t_curve(delta, v_max, a_max);
+    }
     let d2 = 2. * a_max.powi(3) / j_max.powi(2);
     let d1 = v_max * (a_max / j_max + v_max / a_max);
 
