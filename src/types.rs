@@ -292,6 +292,17 @@ impl From<Pose> for [f64; 3] {
     }
 }
 
+impl From<Pose> for ([f64; 3], [f64; 4]) {
+    fn from(value: Pose) -> Self {
+        let pose = value.quat();
+        let rotation = pose.rotation;
+        (
+            pose.translation.into(),
+            [rotation.i, rotation.j, rotation.k, rotation.w],
+        )
+    }
+}
+
 impl From<Pose> for [f64; 6] {
     fn from(value: Pose) -> Self {
         let euler = value.euler();

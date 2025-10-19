@@ -1,3 +1,5 @@
+use crate::Coord;
+
 #[derive(Default)]
 pub struct OverrideOnce<T> {
     once: Option<T>,
@@ -36,4 +38,29 @@ impl<T> From<T> for OverrideOnce<T> {
             default,
         }
     }
+}
+
+#[derive(Default)]
+pub struct RobotBound {
+    pub coord: OverrideOnce<Coord>,
+    pub joint_max_vel: OverrideOnce<Vec<f64>>,
+    pub joint_max_acc: OverrideOnce<Vec<f64>>,
+    pub joint_max_jerk: OverrideOnce<Vec<f64>>,
+}
+
+#[derive(Default)]
+pub struct ArmBound<const N: usize>
+where
+    [f64; N]: Default,
+{
+    pub coord: OverrideOnce<Coord>,
+    pub max_vel: OverrideOnce<[f64; N]>,
+    pub max_acc: OverrideOnce<[f64; N]>,
+    pub max_jerk: OverrideOnce<[f64; N]>,
+    pub max_cartesian_vel: OverrideOnce<f64>,
+    pub max_cartesian_acc: OverrideOnce<f64>,
+    pub max_cartesian_jerk: OverrideOnce<f64>,
+    pub max_rotation_vel: OverrideOnce<f64>,
+    pub max_rotation_acc: OverrideOnce<f64>,
+    pub max_rotation_jerk: OverrideOnce<f64>,
 }

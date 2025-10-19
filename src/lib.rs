@@ -10,27 +10,35 @@ mod load;
 mod logger;
 mod once;
 mod params;
+mod physics_engine;
 mod realtime;
+mod renderer;
 mod robot;
 mod types;
 pub mod utils;
+mod world;
 
 pub use arm::*;
 pub use exception::*;
 pub use load::*;
 pub use once::*;
 pub use params::*;
+pub use physics_engine::*;
 pub use realtime::*;
+pub use renderer::*;
 pub use robot::*;
 pub use types::*;
 
 pub mod behavior {
     pub use crate::arm::{
-        ArmBehavior, ArmDOF, ArmParam, ArmPreplannedMotion, ArmPreplannedMotionExt,
+        Arm, ArmDOF, ArmParam, ArmPreplannedMotion, ArmPreplannedMotionExt,
         ArmPreplannedMotionImpl, ArmRealtimeControl, ArmRealtimeControlExt, ArmStreamingHandle,
         ArmStreamingMotion, ArmStreamingMotionExt,
     };
-    pub use crate::robot::RobotBehavior;
+    pub use crate::robot::{Robot, RobotFile};
+
+    pub use crate::physics_engine::PhysicsEngine;
+    pub use crate::renderer::Renderer;
 }
 
 #[cfg(feature = "to_py")]

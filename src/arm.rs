@@ -14,7 +14,7 @@ pub struct ArmState<const N: usize> {
     pub joint: Option<[f64; N]>,
     pub joint_vel: Option<[f64; N]>,
     pub joint_acc: Option<[f64; N]>,
-    pub tau: Option<[f64; N]>,
+    pub torque: Option<[f64; N]>,
     pub pose_o_to_ee: Option<Pose>,
     pub pose_ee_to_k: Option<Pose>,
     pub cartesian_vel: Option<[f64; 6]>,
@@ -25,7 +25,7 @@ pub trait ArmDOF {
     const N: usize;
 }
 
-pub trait ArmBehavior<const N: usize> {
+pub trait Arm<const N: usize> {
     fn state(&mut self) -> RobotResult<ArmState<N>>;
     fn set_load(&mut self, load: LoadState) -> RobotResult<()>;
     /// Set the coordinate system for arm
@@ -189,7 +189,7 @@ pub trait ArmPreplannedMotion<const N: usize>: ArmPreplannedMotionImpl<N> {
     fn move_path_start(&mut self, start: MotionType<N>) -> RobotResult<()>;
 }
 
-pub trait ArmPreplannedMotionImpl<const N: usize>: ArmBehavior<N> {
+pub trait ArmPreplannedMotionImpl<const N: usize>: Arm<N> {
     fn move_joint(&mut self, target: &[f64; N]) -> RobotResult<()>;
     fn move_joint_async(&mut self, target: &[f64; N]) -> RobotResult<()>;
 
@@ -318,7 +318,7 @@ pub trait ArmStreamingHandle<const N: usize> {
     fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
 }
 
-pub trait ArmStreamingMotion<const N: usize>: ArmBehavior<N> {
+pub trait ArmStreamingMotion<const N: usize>: Arm<N> {
     type Handle: ArmStreamingHandle<N>;
     fn start_streaming(&mut self) -> RobotResult<Self::Handle>;
     fn end_streaming(&mut self) -> RobotResult<()>;
@@ -339,7 +339,7 @@ pub trait ArmStreamingMotionExt<const N: usize>: ArmStreamingMotion<N> {
     fn control_tau_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
 }
 
-pub trait ArmRealtimeControl<const N: usize>: ArmBehavior<N> {
+pub trait ArmRealtimeControl<const N: usize>: Arm<N> {
     fn move_with_closure<FM>(&mut self, closure: FM) -> RobotResult<()>
     where
         FM: FnMut(ArmState<N>, Duration) -> (MotionType<N>, bool) + Send + 'static;
@@ -426,7 +426,7 @@ impl<const N: usize> Default for ArmState<N> {
             joint: Some([0.; N]),
             joint_vel: Some([0.; N]),
             joint_acc: Some([0.; N]),
-            tau: Some([0.; N]),
+            torque: Some([0.; N]),
             pose_o_to_ee: Some(Pose::default()),
             pose_ee_to_k: Some(Pose::default()),
             cartesian_vel: Some([0.; 6]),
@@ -460,7 +460,7 @@ impl<const N: usize> PartialEq<MotionType<N>> for ArmState<N> {
 
 impl<const N: usize> PartialEq<ControlType<N>> for ArmState<N> {
     fn eq(&self, other: &ControlType<N>) -> bool {
-        if let (ControlType::Torque(torque_target), Some(force_state)) = (other, self.tau) {
+        if let (ControlType::Torque(torque_target), Some(force_state)) = (other, self.torque) {
             return force_state == *torque_target;
         }
         false
@@ -475,9 +475,9 @@ impl<const N: usize> Display for ArmState<N> {
     | q: {:?},
     | dq: {:?},
     | ddq: {:?},
-    | tau: {:?},
+    | torque: {:?},
     | pose_o_to_ee: {:?},"#,
-            self.joint, self.joint_vel, self.joint_acc, self.tau, self.pose_o_to_ee
+            self.joint, self.joint_vel, self.joint_acc, self.torque, self.pose_o_to_ee
         )
     }
 }

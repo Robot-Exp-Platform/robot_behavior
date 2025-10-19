@@ -1,8 +1,8 @@
 use crate::RobotResult;
 
-/// # Robot Behavior
+/// # Robot
 /// 机器人行为特征
-pub trait RobotBehavior {
+pub trait Robot {
     type State;
 
     /// Get the robot version
@@ -56,6 +56,11 @@ pub trait RobotBehavior {
     /// Get the robot state
     /// 获取机器人状态
     fn read_state(&mut self) -> RobotResult<Self::State>;
+}
+
+pub trait RobotFile {
+    fn urdf_collision_file() -> &'static str;
+    fn urdf_visual_file() -> &'static str;
 }
 
 pub struct ArmRealtimeConfig {
