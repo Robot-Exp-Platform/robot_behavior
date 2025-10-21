@@ -60,6 +60,12 @@ impl From<io::Error> for RobotException {
     }
 }
 
+impl From<anyhow::Error> for RobotException {
+    fn from(e: anyhow::Error) -> Self {
+        RobotException::CommandException(e.to_string())
+    }
+}
+
 pub fn deserialize_error<T, E>(data: &str) -> impl FnOnce(E) -> RobotException {
     move |_| {
         RobotException::DeserializeError(format!("exception {}, find {}", type_name::<T>(), data))
@@ -89,4 +95,19 @@ pub enum PhysicsEngineException {
     Other(String),
 }
 
+#[derive(Error, Debug)]
+pub enum RendererException {
+    #[error("none")]
+    NoException,
+    #[error("the renderer is not responsive: {0}")]
+    ServerUnavailable(&'static str),
+    #[error("command failed: {0} ")]
+    CommandFailed(&'static str),
+    #[error("unknown type: {0}")]
+    UnknownType(&'static str),
+    #[error("other error: {0}")]
+    Other(String),
+}
+
 pub type PhysicsEngineResult<T> = Result<T, PhysicsEngineException>;
+pub type RendererResult<T> = Result<T, RendererException>;
