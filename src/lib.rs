@@ -37,8 +37,8 @@ pub mod behavior {
     };
     pub use crate::robot::{Robot, RobotFile};
 
-    pub use crate::physics_engine::{PhysicsEngine, PhysicsEngineRobot, RobotBuilder};
-    pub use crate::renderer::{AttachFrom, Renderer, RendererRobot};
+    pub use crate::physics_engine::{AddRobot, PhysicsEngine, RobotBuilder};
+    pub use crate::renderer::{AttachFrom, Renderer};
 }
 
 #[cfg(feature = "to_py")]

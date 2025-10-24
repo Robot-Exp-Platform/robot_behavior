@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::{RendererResult, RobotBuilder, RobotFile};
+use crate::RendererResult;
 use anyhow::Result;
 
 pub trait Renderer {
@@ -8,14 +8,6 @@ pub trait Renderer {
     // fn shutdown(&mut self) {} // 收尾
 
     fn set_additional_search_path(&mut self, path: impl AsRef<Path>) -> RendererResult<&mut Self>;
-}
-
-pub trait RendererRobot {
-    type RR<R>;
-    type RB<'a, R: RobotFile>: RobotBuilder<'a, R, Self::RR<R>>
-    where
-        Self: 'a;
-    fn robot_builder<'a, R: RobotFile>(&'a mut self, name: impl ToString) -> Self::RB<'a, R>;
 }
 
 pub trait AttachFrom<T> {

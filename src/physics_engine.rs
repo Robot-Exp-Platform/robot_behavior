@@ -16,7 +16,7 @@ pub trait PhysicsEngine {
     ) -> PhysicsEngineResult<&mut Self>;
 }
 
-pub trait PhysicsEngineRobot {
+pub trait AddRobot {
     type PR<R>;
     type RB<'a, R: RobotFile>: RobotBuilder<'a, R, Self::PR<R>>
     where
