@@ -54,44 +54,32 @@ pub enum Entity<'a> {
         indices: &'a [i32],
         scale: [f64; 3],
     },
-    HeightfieldFile {
-        file: &'a str,
-        mesh_scale: [f64; 3],
-        texture_scaling: f64,
-    },
-    HeightfieldData {
-        mesh_scale: [f64; 3],
-        texture_scaling: f64,
-        samples: &'a [f32],
-        rows: i32,
-        columns: i32,
-        replace_index: Option<i32>,
-    },
 }
 
-pub trait EntityBuilder<'a, E> {
+pub trait EntityBuilder<'a> {
+    type EntityId: Copy + Eq;
     fn name(self, name: String) -> Self;
     fn base(self, base: impl Into<na::Isometry3<f64>>) -> Self;
     fn base_fixed(self, base_fixed: bool) -> Self;
     fn scaling(self, scaling: f64) -> Self;
-    fn load(self) -> E;
+    fn load(self) -> Result<Self::EntityId>;
 }
 
 pub type Collision<'a> = Entity<'a>;
-pub type Render<'a> = Entity<'a>;
+pub type Visual<'a> = Entity<'a>;
 
 pub trait AddCollision {
-    type E;
-    type CB<'a>: EntityBuilder<'a, Self::E>
+    type EntityId: Copy + Eq;
+    type CB<'a>: EntityBuilder<'a, EntityId = Self::EntityId>
     where
         Self: 'a;
-    fn collision<'a>(&'a mut self, collision: Collision) -> Self::CB<'a>;
+    fn collision<'a>(&'a mut self, collision: Collision<'a>) -> Self::CB<'a>;
 }
 
-pub trait AddRender {
-    type E;
-    type RB<'a>: EntityBuilder<'a, Self::E>
+pub trait AddVisual {
+    type EntityId: Copy + Eq;
+    type VB<'a>: EntityBuilder<'a, EntityId = Self::EntityId>
     where
         Self: 'a;
-    fn render<'a>(&'a mut self, render: Render) -> Self::RB<'a>;
+    fn visual<'a>(&'a mut self, visual: Visual<'a>) -> Self::VB<'a>;
 }
