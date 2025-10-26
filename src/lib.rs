@@ -28,6 +28,7 @@ pub use realtime::*;
 pub use renderer::*;
 pub use robot::*;
 pub use types::*;
+pub use world::*;
 
 pub mod behavior {
     pub use crate::arm::{
@@ -37,8 +38,9 @@ pub mod behavior {
     };
     pub use crate::robot::{Robot, RobotFile};
 
-    pub use crate::physics_engine::{AddRobot, PhysicsEngine, RobotBuilder};
+    pub use crate::physics_engine::{AddSearchPath, PhysicsEngine};
     pub use crate::renderer::{AttachFrom, Renderer};
+    pub use crate::world::{AddRobot, RobotBuilder};
 }
 
 #[cfg(feature = "to_py")]
