@@ -40,7 +40,7 @@ pub mod behavior {
 
     pub use crate::physics_engine::{AddSearchPath, PhysicsEngine};
     pub use crate::renderer::{AttachFrom, Renderer};
-    pub use crate::world::{AddCollision, AddRobot, AddVisual, EntityBuilder, RobotBuilder};
+    pub use crate::world::{AddCollision, AddRobot, AddVisual, EntityBuilder};
 }
 
 #[cfg(feature = "to_py")]
