@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex};
 use std::{fs::File, time::Duration};
 
 use crate::utils::limit::*;
-use crate::{ControlType, Coord, LoadState, MotionType, Pose, RobotException, RobotResult};
+use crate::{
+    ControlType, Coord, JointType, LoadState, MotionType, Pose, RobotException, RobotResult,
+};
 
 #[derive(Debug, Clone)]
 pub struct ArmState<const N: usize> {
@@ -59,8 +61,9 @@ pub trait Arm<const N: usize> {
 }
 
 pub trait ArmParam<const N: usize> {
-    const DH: [[f64; 4]; N];
-    const JOINT_DEFAULT: [f64; N] = [f64::MAX; N];
+    const JOINT_TYPES: [JointType; N] = [JointType::Revolute; N];
+
+    const JOINT_DEFAULT: [f64; N] = [0.; N];
     const JOINT_MIN: [f64; N];
     const JOINT_MAX: [f64; N];
     const JOINT_VEL_BOUND: [f64; N] = [f64::MAX; N];
@@ -74,29 +77,6 @@ pub trait ArmParam<const N: usize> {
     const ROTATION_JERK_BOUND: f64 = f64::MAX;
     const TORQUE_BOUND: [f64; N] = [f64::MAX; N];
     const TORQUE_DOT_BOUND: [f64; N] = [f64::MAX; N];
-
-    #[inline(always)]
-    fn forward_kinematics(q: &[f64; N]) -> Pose {
-        let mut isometry = na::Isometry3::identity();
-        for (dh, q) in Self::DH.iter().zip(q) {
-            let (s, c) = dh[3].sin_cos();
-            let translation = na::Translation3::new(dh[2], -dh[1] * s, dh[1] * c);
-            let rotation = na::UnitQuaternion::from_euler_angles(*q, 0.0, dh[3]);
-            let isometry_increment = na::Isometry::from_parts(translation, rotation);
-            isometry *= isometry_increment;
-        }
-        Pose::Quat(isometry)
-    }
-
-    #[deprecated(
-        note = "inverse kinematics is not implemented because the representation method of the robotic arm configuration has not been determined"
-    )]
-    #[inline(always)]
-    fn inverse_kinematics(_pose: Pose) -> RobotResult<[f64; N]> {
-        unimplemented!(
-            "inverse kinematics is not implemented because the representation method of the robotic arm configuration has not been determined"
-        )
-    }
 
     #[inline(always)]
     fn limit_joint_jerk(q_dddot: &mut [f64; N]) -> &mut [f64; N] {
@@ -171,16 +151,16 @@ pub trait ArmPreplannedMotion<const N: usize>: ArmPreplannedMotionImpl<N> {
         }
     }
     fn move_rel(&mut self, target: MotionType<N>) -> RobotResult<()> {
-        self.with_coord(Coord::Shot).move_to(target)
+        self.with_coord(Coord::Relative).move_to(target)
     }
     fn move_rel_async(&mut self, target: MotionType<N>) -> RobotResult<()> {
-        self.with_coord(Coord::Shot).move_to_async(target)
+        self.with_coord(Coord::Relative).move_to_async(target)
     }
     fn move_int(&mut self, target: MotionType<N>) -> RobotResult<()> {
-        self.with_coord(Coord::Interial).move_to(target)
+        self.with_coord(Coord::Inertial).move_to(target)
     }
     fn move_int_async(&mut self, target: MotionType<N>) -> RobotResult<()> {
-        self.with_coord(Coord::Interial).move_to_async(target)
+        self.with_coord(Coord::Inertial).move_to_async(target)
     }
 
     fn move_path(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
@@ -199,31 +179,32 @@ pub trait ArmPreplannedMotionImpl<const N: usize>: Arm<N> {
 
 pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
     fn move_joint_rel(&mut self, target: &[f64; N]) -> RobotResult<()> {
-        self.with_coord(Coord::Shot).move_joint(target)
+        self.with_coord(Coord::Relative).move_joint(target)
     }
     fn move_joint_rel_async(&mut self, target: &[f64; N]) -> RobotResult<()> {
-        self.with_coord(Coord::Shot).move_joint_async(target)
+        self.with_coord(Coord::Relative).move_joint_async(target)
     }
     fn move_joint_path(&mut self, path: Vec<[f64; N]>) -> RobotResult<()> {
-        self.with_coord(Coord::Shot)
+        self.with_coord(Coord::Relative)
             .move_path(path.into_iter().map(MotionType::Joint).collect())
     }
 
     fn move_cartesian_rel(&mut self, target: &Pose) -> RobotResult<()> {
-        self.with_coord(Coord::Shot).move_cartesian(target)
+        self.with_coord(Coord::Relative).move_cartesian(target)
     }
     fn move_cartesian_rel_async(&mut self, target: &Pose) -> RobotResult<()> {
-        self.with_coord(Coord::Shot).move_cartesian_async(target)
+        self.with_coord(Coord::Relative)
+            .move_cartesian_async(target)
     }
     fn move_cartesian_int(&mut self, target: &Pose) -> RobotResult<()> {
-        self.with_coord(Coord::Interial).move_cartesian(target)
+        self.with_coord(Coord::Inertial).move_cartesian(target)
     }
     fn move_cartesian_int_async(&mut self, target: &Pose) -> RobotResult<()> {
-        self.with_coord(Coord::Interial)
+        self.with_coord(Coord::Inertial)
             .move_cartesian_async(target)
     }
     fn move_cartesian_path(&mut self, path: Vec<Pose>) -> RobotResult<()> {
-        self.with_coord(Coord::Shot)
+        self.with_coord(Coord::Relative)
             .move_path(path.into_iter().map(MotionType::Cartesian).collect())
     }
 
@@ -234,18 +215,19 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
         self.move_cartesian_async(&pose.into())
     }
     fn move_linear_with_euler_rel(&mut self, pose: [f64; 6]) -> RobotResult<()> {
-        self.with_coord(Coord::Shot).move_cartesian(&pose.into())
+        self.with_coord(Coord::Relative)
+            .move_cartesian(&pose.into())
     }
     fn move_linear_with_euler_rel_async(&mut self, pose: [f64; 6]) -> RobotResult<()> {
-        self.with_coord(Coord::Shot)
+        self.with_coord(Coord::Relative)
             .move_cartesian_async(&pose.into())
     }
     fn move_linear_with_euler_int(&mut self, pose: [f64; 6]) -> RobotResult<()> {
-        self.with_coord(Coord::Interial)
+        self.with_coord(Coord::Inertial)
             .move_cartesian(&pose.into())
     }
     fn move_linear_with_euler_int_async(&mut self, pose: [f64; 6]) -> RobotResult<()> {
-        self.with_coord(Coord::Interial)
+        self.with_coord(Coord::Inertial)
             .move_cartesian_async(&pose.into())
     }
 
@@ -256,19 +238,19 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
         self.move_cartesian_async(&Pose::Quat(*target))
     }
     fn move_linear_with_quat_rel(&mut self, target: &na::Isometry3<f64>) -> RobotResult<()> {
-        self.with_coord(Coord::Shot)
+        self.with_coord(Coord::Relative)
             .move_cartesian(&Pose::Quat(*target))
     }
     fn move_linear_with_quat_rel_async(&mut self, target: &na::Isometry3<f64>) -> RobotResult<()> {
-        self.with_coord(Coord::Shot)
+        self.with_coord(Coord::Relative)
             .move_cartesian_async(&Pose::Quat(*target))
     }
     fn move_linear_with_quat_int(&mut self, target: &na::Isometry3<f64>) -> RobotResult<()> {
-        self.with_coord(Coord::Interial)
+        self.with_coord(Coord::Inertial)
             .move_cartesian(&Pose::Quat(*target))
     }
     fn move_linear_with_quat_int_async(&mut self, target: &na::Isometry3<f64>) -> RobotResult<()> {
-        self.with_coord(Coord::Interial)
+        self.with_coord(Coord::Inertial)
             .move_cartesian_async(&Pose::Quat(*target))
     }
 
@@ -279,18 +261,19 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
         self.move_cartesian_async(&target.into())
     }
     fn move_linear_with_homo_rel(&mut self, target: [f64; 16]) -> RobotResult<()> {
-        self.with_coord(Coord::Shot).move_cartesian(&target.into())
+        self.with_coord(Coord::Relative)
+            .move_cartesian(&target.into())
     }
     fn move_linear_with_homo_rel_async(&mut self, target: [f64; 16]) -> RobotResult<()> {
-        self.with_coord(Coord::Shot)
+        self.with_coord(Coord::Relative)
             .move_cartesian_async(&target.into())
     }
     fn move_linear_with_homo_int(&mut self, target: [f64; 16]) -> RobotResult<()> {
-        self.with_coord(Coord::Interial)
+        self.with_coord(Coord::Inertial)
             .move_cartesian(&target.into())
     }
     fn move_linear_with_homo_int_async(&mut self, target: [f64; 16]) -> RobotResult<()> {
-        self.with_coord(Coord::Interial)
+        self.with_coord(Coord::Inertial)
             .move_cartesian_async(&target.into())
     }
 
@@ -430,11 +413,7 @@ impl<const N: usize> Default for ArmState<N> {
             pose_o_to_ee: Some(Pose::default()),
             pose_ee_to_k: Some(Pose::default()),
             cartesian_vel: Some([0.; 6]),
-            load: Some(LoadState {
-                m: 0.,
-                x: [0.; 3],
-                i: [0.; 9],
-            }),
+            load: Some(LoadState { m: 0., x: [0.; 3], i: [0.; 9] }),
         }
     }
 }
@@ -499,7 +478,7 @@ mod to_py {
         #[pyo3(get, set)]
         pub joint_acc: Option<Vec<f64>>,
         #[pyo3(get, set)]
-        pub tau: Option<Vec<f64>>,
+        pub torque: Option<Vec<f64>>,
         #[pyo3(get, set)]
         pub pose_o_to_ee: Option<PyPose>,
         #[pyo3(get, set)]
@@ -516,7 +495,7 @@ mod to_py {
                 joint: state.joint.map(|j| j.to_vec()),
                 joint_vel: state.joint_vel.map(|j| j.to_vec()),
                 joint_acc: state.joint_acc.map(|j| j.to_vec()),
-                tau: state.tau.map(|t| t.to_vec()),
+                torque: state.torque.map(|t| t.to_vec()),
                 pose_o_to_ee: state.pose_o_to_ee.map(Into::into),
                 pose_ee_to_k: state.pose_ee_to_k.map(Into::into),
                 cartesian_vel: state.cartesian_vel,
@@ -531,7 +510,7 @@ mod to_py {
                 joint: value.joint.map(|j| j.try_into().unwrap_or([0.; N])),
                 joint_vel: value.joint_vel.map(|j| j.try_into().unwrap_or([0.; N])),
                 joint_acc: value.joint_acc.map(|j| j.try_into().unwrap_or([0.; N])),
-                tau: value.tau.map(|t| t.try_into().unwrap_or([0.; N])),
+                torque: value.torque.map(|t| t.try_into().unwrap_or([0.; N])),
                 pose_o_to_ee: value.pose_o_to_ee.map(Into::into),
                 pose_ee_to_k: value.pose_ee_to_k.map(Into::into),
                 cartesian_vel: value.cartesian_vel,
@@ -548,7 +527,7 @@ mod to_py {
     |> joint: {:?},
     |> joint_vel: {:?},
     |> joint_acc: {:?},
-    |> tau: {:?},
+    |> torque: {:?},
     |> pose_o_to_ee: {:?},
     |> pose_ee_to_k: {:?},
     |> cartesian_vel: {:?},
@@ -556,7 +535,7 @@ mod to_py {
                 self.joint,
                 self.joint_vel,
                 self.joint_acc,
-                self.tau,
+                self.torque,
                 self.pose_o_to_ee,
                 self.pose_ee_to_k,
                 self.cartesian_vel,

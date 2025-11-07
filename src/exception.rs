@@ -47,6 +47,10 @@ pub enum RobotException {
     #[error("Deserialize error: {0}")]
     DeserializeError(String),
 
+    /// InvalidFFIData error
+    #[error("Invalid FFI data error: {0}")]
+    InvalidFFIData(String),
+
     /// unwarp error
     #[error("UnWarp error: {0}")]
     UnWarpError(String),
@@ -70,6 +74,10 @@ pub fn deserialize_error<T, E>(data: &str) -> impl FnOnce(E) -> RobotException {
     move |_| {
         RobotException::DeserializeError(format!("exception {}, find {}", type_name::<T>(), data))
     }
+}
+
+pub fn invalid_ffi<T: std::fmt::Debug>(data: T) -> RobotException {
+    RobotException::InvalidFFIData(format!("exception {}, find {:?}", type_name::<T>(), data))
 }
 
 #[cfg(feature = "to_py")]

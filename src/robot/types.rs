@@ -13,8 +13,8 @@ use crate::{
 pub enum Coord {
     #[default]
     OCS,
-    Shot,
-    Interial,
+    Relative,
+    Inertial,
     Other(Pose),
 }
 
@@ -52,8 +52,8 @@ impl From<&str> for Coord {
     fn from(s: &str) -> Self {
         match s {
             "OCS" => Coord::OCS,
-            "Shot" => Coord::Shot,
-            "Interial" => Coord::Interial,
+            "Shot" => Coord::Relative,
+            "Inertial" => Coord::Inertial,
             _ => Coord::Other(serde_json::from_str(s).unwrap()),
         }
     }
@@ -392,10 +392,10 @@ impl<const N: usize> MotionType<N> {
                 }
                 MotionType::Joint(result)
             }
-            (MotionType::Cartesian(pose), Coord::Shot) => {
+            (MotionType::Cartesian(pose), Coord::Relative) => {
                 MotionType::Cartesian(state.pose_o_to_ee.unwrap() * pose)
             }
-            (MotionType::Cartesian(pose), Coord::Interial) => {
+            (MotionType::Cartesian(pose), Coord::Inertial) => {
                 MotionType::Cartesian(Pose::Position(state.pose_o_to_ee.unwrap().position()) * pose)
             }
             _ => self,
@@ -405,8 +405,9 @@ impl<const N: usize> MotionType<N> {
 
 #[cfg(feature = "to_py")]
 mod to_py {
+
     use super::*;
-    use pyo3::{Bound, FromPyObject, IntoPyObject, PyAny, PyErr, pyclass, pymethods};
+    use pyo3::{pyclass, pymethods};
 
     #[derive(Debug, Clone)]
     #[pyclass(name = "Desc")]
@@ -493,32 +494,6 @@ mod to_py {
         }
     }
 
-    impl<'py> IntoPyObject<'py> for Pose {
-        type Target = PyPose;
-        type Output = Bound<'py, Self::Target>;
-        type Error = PyErr;
-
-        fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
-            Into::<PyPose>::into(self).into_pyobject(py)
-        }
-    }
-
-    impl<'py> IntoPyObject<'py> for &Pose {
-        type Target = PyPose;
-        type Output = Bound<'py, Self::Target>;
-        type Error = PyErr;
-
-        fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
-            Into::<PyPose>::into(*self).into_pyobject(py)
-        }
-    }
-
-    impl<'py> FromPyObject<'py> for Pose {
-        fn extract_bound(ob: &Bound<'py, PyAny>) -> pyo3::PyResult<Self> {
-            Ok(PyPose::extract_bound(ob)?.into())
-        }
-    }
-
     #[derive(Debug, Clone)]
     #[pyclass(name = "MotionType")]
     pub enum PyMotionType {
@@ -556,25 +531,22 @@ mod to_py {
         }
     }
 
-    impl<const N: usize> From<PyMotionType> for MotionType<N> {
-        fn from(value: PyMotionType) -> Self {
-            match value {
-                PyMotionType::Joint(joint) => MotionType::Joint(joint.try_into().unwrap()),
-                PyMotionType::JointVel(joint_vel) => {
-                    MotionType::JointVel(joint_vel.try_into().unwrap())
-                }
+    impl<const N: usize> TryFrom<PyMotionType> for MotionType<N> {
+        type Error = Vec<f64>;
+        fn try_from(value: PyMotionType) -> Result<Self, Self::Error> {
+            Ok(match value {
+                PyMotionType::Joint(joint) => MotionType::Joint(joint.try_into()?),
+                PyMotionType::JointVel(joint_vel) => MotionType::JointVel(joint_vel.try_into()?),
                 PyMotionType::Cartesian(pose) => MotionType::Cartesian(pose.into()),
                 PyMotionType::CartesianVel(cartesian_vel) => {
-                    MotionType::CartesianVel(cartesian_vel.try_into().unwrap())
+                    MotionType::CartesianVel(cartesian_vel.try_into()?)
                 }
-                PyMotionType::Position(position) => {
-                    MotionType::Position(position.try_into().unwrap())
-                }
+                PyMotionType::Position(position) => MotionType::Position(position.try_into()?),
                 PyMotionType::PositionVel(position_vel) => {
-                    MotionType::PositionVel(position_vel.try_into().unwrap())
+                    MotionType::PositionVel(position_vel.try_into()?)
                 }
                 PyMotionType::Stop() => MotionType::Stop,
-            }
+            })
         }
     }
 
@@ -596,12 +568,13 @@ mod to_py {
         }
     }
 
-    impl<const N: usize> From<PyControlType> for ControlType<N> {
-        fn from(value: PyControlType) -> Self {
-            match value {
+    impl<const N: usize> TryFrom<PyControlType> for ControlType<N> {
+        type Error = Vec<f64>;
+        fn try_from(value: PyControlType) -> Result<Self, Self::Error> {
+            Ok(match value {
                 PyControlType::Zero() => ControlType::Zero,
-                PyControlType::Torque(torque) => ControlType::Torque(torque.try_into().unwrap()),
-            }
+                PyControlType::Torque(torque) => ControlType::Torque(torque.try_into()?),
+            })
         }
     }
 }

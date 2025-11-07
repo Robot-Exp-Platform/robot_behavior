@@ -227,22 +227,22 @@ macro_rules! py_arm_preplanned_motion {
         #[pyo3::pymethods]
         impl $pyname {
             fn move_to(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_to(target.into()).map_err(Into::into)
+                self.0.move_to(target.try_into()).map_err(Into::into)
             }
             fn move_to_async(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_to_async(target.into()).map_err(Into::into)
+                self.0.move_to_async(target.try_into()).map_err(Into::into)
             }
             fn move_rel(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
                 self.0.move_rel(target.into()).map_err(Into::into)
             }
             fn move_rel_async(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_rel_async(target.into()).map_err(Into::into)
+                self.0.move_rel_async(target.try_into()).map_err(Into::into)
             }
             fn move_int(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_int(target.into()).map_err(Into::into)
+                self.0.move_int(target.try_into()).map_err(Into::into)
             }
             fn move_int_async(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_int_async(target.into()).map_err(Into::into)
+                self.0.move_int_async(target.try_into()).map_err(Into::into)
             }
             fn move_path(&mut self, path: Vec<$crate::PyMotionType>) -> pyo3::PyResult<()> {
                 self.0
@@ -404,7 +404,7 @@ macro_rules! py_arm_real_time_control {
                                 .unwrap()
                                 .bind(py)
                                 .extract::<($crate::PyMotionType, bool)>()
-                                .map(|(motion, stop)| (motion.into(), stop))
+                                .map(|(motion, stop)| (motion.try_into().unwrap(), stop))
                                 .unwrap()
                         })
                     })
@@ -424,7 +424,7 @@ macro_rules! py_arm_real_time_control {
                                 .unwrap()
                                 .bind(py)
                                 .extract::<($crate::PyControlType, bool)>()
-                                .map(|(control, stop)| (control.into(), stop))
+                                .map(|(control, stop)| (control.try_into().unwrap(), stop))
                                 .unwrap()
                         })
                     })
@@ -528,7 +528,7 @@ mod test {
     use pyo3::types::PyAnyMethods;
     use std::sync::{Arc, Mutex};
 
-    use crate::{LoadState, RobotResult, arm::*, behavior::*, types::*};
+    use crate::{LoadState, RobotResult, behavior::*, robot::*};
 
     struct TestRobot;
 
