@@ -65,3 +65,13 @@ pub fn isometry_write_to_frame(transform: &na::Isometry3<f64>, frame: &mut [f64;
     frame[..3].copy_from_slice(&position);
     frame[3..7].copy_from_slice(&orientation);
 }
+
+pub const fn to_radians_array<const N: usize>(arr: [f64; N]) -> [f64; N] {
+    let mut result = [0.0; N];
+    let mut i = 0;
+    while i < N {
+        result[i] = arr[i].to_radians();
+        i += 1;
+    }
+    result
+}

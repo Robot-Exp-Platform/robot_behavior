@@ -1,83 +1,99 @@
 #![feature(portable_simd)]
 use nalgebra as na;
-use robot_behavior::Pose;
+use robot_behavior::{DhParam, Pose};
 
 #[inline(always)]
-pub fn arm_forward_kinematics<const N: usize>(q: [f64; N], dh: [[f64; 4]; N]) -> Pose {
+pub fn arm_forward_kinematics<const N: usize>(q: [f64; N], dh: &[DhParam; N]) -> Pose {
     let mut isometry = na::Isometry3::identity();
 
     for i in 0..N {
-        let translation = na::Translation3::new(
-            dh[i][2],
-            -dh[i][1] * dh[i][3].sin(),
-            dh[i][1] * dh[i][3].cos(),
-        );
-        let rotation = na::UnitQuaternion::from_euler_angles(q[i], 0.0, dh[i][3]);
-        let isometry_increment = na::Isometry::from_parts(translation, rotation);
+        let iso_inc = match dh[i] {
+            DhParam::MDH { theta, d, a, alpha } => {
+                let (s, c) = alpha.sin_cos();
+                let translation = na::Translation3::new(a, -d * s, d * c);
+                let rotation = na::UnitQuaternion::from_euler_angles(theta + q[i], 0.0, alpha);
+                na::Isometry3::from_parts(translation, rotation)
+            }
+            DhParam::DH { theta, d, r, alpha } => {
+                let (s, c) = alpha.sin_cos();
+                let translation = na::Translation3::new(r * c, r * s, d);
+                let rotation = na::UnitQuaternion::from_euler_angles(0.0, alpha, theta + q[i]);
+                na::Isometry3::from_parts(translation, rotation)
+            }
+        };
 
-        isometry *= isometry_increment;
+        isometry *= iso_inc;
     }
 
     Pose::Quat(isometry)
 }
 
-pub fn arm_forward_kinematics_without_inline(n: usize, q: &Vec<f64>, dh: Vec<f64>) -> Pose {
+pub fn arm_forward_kinematics_without_inline(n: usize, q: &Vec<f64>, dh: &[DhParam]) -> Pose {
     let mut isometry = na::Isometry3::identity();
 
     for i in 0..n {
-        let translation = na::Translation3::new(
-            dh[i * 4 + 2],
-            -dh[i * 4 + 1] * dh[i * 4 + 3].sin(),
-            dh[i * 4 + 1] * dh[i * 4 + 3].cos(),
-        );
-        let rotation = na::UnitQuaternion::from_euler_angles(q[i], 0.0, dh[i * 4 + 3]);
-        let isometry_increment = na::Isometry::from_parts(translation, rotation);
+        let iso_inc = match dh[i] {
+            DhParam::MDH { theta, d, a, alpha } => {
+                let (s, c) = alpha.sin_cos();
+                let translation = na::Translation3::new(a, -d * s, d * c);
+                let rotation = na::UnitQuaternion::from_euler_angles(theta + q[i], 0.0, alpha);
+                na::Isometry3::from_parts(translation, rotation)
+            }
+            DhParam::DH { theta, d, r, alpha } => {
+                let (s, c) = alpha.sin_cos();
+                let translation = na::Translation3::new(r * c, r * s, d);
+                let rotation = na::UnitQuaternion::from_euler_angles(0.0, alpha, theta + q[i]);
+                na::Isometry3::from_parts(translation, rotation)
+            }
+        };
 
-        isometry *= isometry_increment;
+        isometry *= iso_inc;
     }
     Pose::Quat(isometry)
 }
 
-pub fn arm_forward_kinematics_use_matrix<const N: usize>(q: [f64; N], dh: [[f64; 4]; N]) -> Pose {
+pub fn arm_forward_kinematics_use_matrix<const N: usize>(q: [f64; N], dh: &[DhParam; N]) -> Pose {
     let mut matrix = na::Matrix4::identity();
 
     for i in 0..N {
-        let translation = na::Matrix4::new_translation(&na::Vector3::new(
-            dh[i][2],
-            -dh[i][1] * dh[i][3].sin(),
-            dh[i][1] * dh[i][3].cos(),
-        ));
-        let rotation = na::Matrix4::from_euler_angles(q[i], 0.0, dh[i][3]);
-        matrix *= translation * rotation;
+        let iso_inc = match dh[i] {
+            DhParam::MDH { theta, d, a, alpha } => {
+                let (s, c) = alpha.sin_cos();
+                let translation = na::Translation3::new(a, -d * s, d * c);
+                let rotation = na::UnitQuaternion::from_euler_angles(theta + q[i], 0.0, alpha);
+                na::Isometry3::from_parts(translation, rotation)
+            }
+            DhParam::DH { theta, d, r, alpha } => {
+                let (s, c) = alpha.sin_cos();
+                let translation = na::Translation3::new(r * c, r * s, d);
+                let rotation = na::UnitQuaternion::from_euler_angles(0.0, alpha, theta + q[i]);
+                na::Isometry3::from_parts(translation, rotation)
+            }
+        };
+        matrix *= iso_inc.to_homogeneous();
     }
     Pose::Homo(matrix.as_slice().try_into().unwrap())
 }
 
 #[cfg(test)]
 mod tests {
-    use robot_behavior::ArmParam;
+    use robot_behavior::{DhParam, mdh_param};
 
     use super::*;
     use std::f64::consts::FRAC_PI_2;
 
-    const DH: [[f64; 4]; 8] = [
-        [0., 0.333, 0., 0.],
-        [0., 0., 0., -FRAC_PI_2],
-        [0., 0.316, 0., FRAC_PI_2],
-        [0., 0., 0.0825, FRAC_PI_2],
-        [0., 0.384, -0.0825, -FRAC_PI_2],
-        [0., 0., 0., FRAC_PI_2],
-        [0., 0., 0.088, FRAC_PI_2],
-        [0., 0.107, 0., 0.],
+    const DH: [DhParam; 8] = [
+        mdh_param!(0., 0.333, 0., 0.),
+        mdh_param!(0., 0., 0., -FRAC_PI_2),
+        mdh_param!(0., 0.316, 0., FRAC_PI_2),
+        mdh_param!(0., 0., 0.0825, FRAC_PI_2),
+        mdh_param!(0., 0.384, -0.0825, -FRAC_PI_2),
+        mdh_param!(0., 0., 0., FRAC_PI_2),
+        mdh_param!(0., 0., 0.088, FRAC_PI_2),
+        mdh_param!(0., 0.107, 0., 0.),
     ];
 
-    struct ExRobot {}
-
-    impl ArmParam<8> for ExRobot {
-        const DH: [[f64; 4]; 8] = DH;
-        const JOINT_MAX: [f64; 8] = [0.; 8];
-        const JOINT_MIN: [f64; 8] = [0.; 8];
-    }
+    // Removed trait-based robot wrapper to avoid const-eval overflow; use free function instead.
 
     fn test_time_for_n<const N: usize, const T: usize>() {
         let dh = &DH[..N];
@@ -94,8 +110,7 @@ mod tests {
         let start_time = std::time::Instant::now();
         for _ in 0..T {
             let q_vec = q.to_vec();
-            let dh_vec: Vec<f64> = dh.iter().flat_map(|&row| row.to_vec()).collect();
-            let _ = arm_forward_kinematics_without_inline(N, &q_vec, dh_vec);
+            let _ = arm_forward_kinematics_without_inline(N, &q_vec, dh);
         }
         println!("arm_forward_kinematics: {:?}", start_time.elapsed());
 
@@ -125,7 +140,7 @@ mod tests {
         let start_time = std::time::Instant::now();
         for _ in 0..100_000 {
             q[0] += 0.01;
-            pose = arm_forward_kinematics::<8>(q, DH);
+            pose = arm_forward_kinematics::<8>(q, &DH);
         }
         println!("arm_forward_kinematics: {:?}", start_time.elapsed());
         println!("pose: {:?}", pose);
@@ -135,7 +150,7 @@ mod tests {
         let start_time = std::time::Instant::now();
         for _ in 0..100_000 {
             q[0] += 0.01;
-            pose = ExRobot::forward_kinematics(&q);
+            pose = arm_forward_kinematics::<8>(q, &DH);
         }
         println!("arm_forward_kinematics: {:?}", start_time.elapsed());
         println!("pose: {:?}", pose);

@@ -129,7 +129,10 @@ where
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AnalyticFamily {
-    SphericalWrist6R, // 3R 臂 + 球腕（PUMA/UR等常见）
+    Planar2R,
+    Planar3R,
+    ScaraRRPR,
+    Spherical6R,
     Scara,
     Custom, // 你有自定义解析实现
 }
@@ -165,7 +168,7 @@ pub trait ArmInverseKinematics<const N: usize>: ArmForwardKinematics<N> + ArmPar
 where
     [(); N + 1]:,
 {
-    const ANALYTIC_FAMILY: Option<AnalyticFamily>;
+    const ANALYTIC_FAMILY: Option<AnalyticFamily> = None;
 
     fn ik_analytic_all(target: &Pose) -> Option<Vec<JVec<N>>> {
         let _ = target;
@@ -209,11 +212,10 @@ where
     {
         match method {
             IKMethod::Analytic { fallback } => {
-                if Self::ANALYTIC_FAMILY.is_some() {
-                    if let Some(sol) = Self::ik_analytic_best(q, target) {
+                if Self::ANALYTIC_FAMILY.is_some()
+                    && let Some(sol) = Self::ik_analytic_best(q, target) {
                         return sol;
                     }
-                }
                 Self::ik_step(q, target, fallback)
             }
             IKMethod::DLS { lambda, stop } => {
@@ -247,7 +249,7 @@ where
                 // 经典 LM：Δq = (JᵀJ + λ I)^{-1} Jᵀ e
                 let (e, j) = Self::task_error_and_jacobian(q, target);
                 let jt = j.transpose();
-                let h = jt.clone() * j.clone() + na::SMatrix::<f64, N, N>::identity() * (*lambda0);
+                let h = jt * j + na::SMatrix::<f64, N, N>::identity() * (*lambda0);
                 let mut dq = h.lu().solve(&(jt * e)).unwrap_or(JVec::<N>::zeros());
                 clip_step(&mut dq, stop.step_clip);
                 project_to_limits(q + dq, Self::JOINT_MIN, Self::JOINT_MAX)
@@ -261,13 +263,11 @@ where
         na::Const<N>: na::DimMin<na::Const<N>, Output = na::Const<N>> + na::ToTypenum,
     {
         // 优先解析（当 method=Analytic 且支持时）
-        if let IKMethod::Analytic { .. } = method {
-            if Self::ANALYTIC_FAMILY.is_some() {
-                if let Some(sol) = Self::ik_analytic_best(q0, target) {
+        if let IKMethod::Analytic { .. } = method
+            && Self::ANALYTIC_FAMILY.is_some()
+                && let Some(sol) = Self::ik_analytic_best(q0, target) {
                     return sol;
                 }
-            }
-        }
         // 迭代
         let stop = match &method {
             IKMethod::DLS { stop, .. }

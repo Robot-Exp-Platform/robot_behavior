@@ -11,8 +11,8 @@ use nalgebra as na;
 ///  - d: link offset
 ///  - a: link length
 ///  - alpha: link twist
-/// you can use the macros `dh_param!` and `mdh_param!` to create instances of this enum.
-/// omitting the field names in the macro invocation is supported.
+///    you can use the macros `dh_param!` and `mdh_param!` to create instances of this enum.
+///    omitting the field names in the macro invocation is supported.
 /// ```rust
 /// use robot_behavior::robot::DhParam;
 /// let dh = dh_param! {theta: 0.0, d: 0.5, r: 0.3, alpha: std::f64::consts::FRAC_PI_2};

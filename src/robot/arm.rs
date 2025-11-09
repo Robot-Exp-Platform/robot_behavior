@@ -64,6 +64,7 @@ pub trait ArmParam<const N: usize> {
     const JOINT_TYPES: [JointType; N] = [JointType::Revolute; N];
 
     const JOINT_DEFAULT: [f64; N] = [0.; N];
+    const JOINT_PACKED: [f64; N] = [0.; N];
     const JOINT_MIN: [f64; N];
     const JOINT_MAX: [f64; N];
     const JOINT_VEL_BOUND: [f64; N] = [f64::MAX; N];
@@ -130,8 +131,13 @@ pub trait ArmParam<const N: usize> {
             .pipe_mut(|t| limit(t, &Self::TORQUE_BOUND))
     }
 }
+pub trait ArmPreplannedMotion<const N: usize>: Arm<N> {
+    fn move_joint(&mut self, target: &[f64; N]) -> RobotResult<()>;
+    fn move_joint_async(&mut self, target: &[f64; N]) -> RobotResult<()>;
 
-pub trait ArmPreplannedMotion<const N: usize>: ArmPreplannedMotionImpl<N> {
+    fn move_cartesian(&mut self, target: &Pose) -> RobotResult<()>;
+    fn move_cartesian_async(&mut self, target: &Pose) -> RobotResult<()>;
+
     fn move_to(&mut self, target: MotionType<N>) -> RobotResult<()> {
         match target {
             MotionType::Joint(target) => self.move_joint(&target),
@@ -162,31 +168,42 @@ pub trait ArmPreplannedMotion<const N: usize>: ArmPreplannedMotionImpl<N> {
     fn move_int_async(&mut self, target: MotionType<N>) -> RobotResult<()> {
         self.with_coord(Coord::Inertial).move_to_async(target)
     }
-
-    fn move_path(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
-    fn move_path_async(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
-    fn move_path_prepare(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()>;
-    fn move_path_start(&mut self, start: MotionType<N>) -> RobotResult<()>;
 }
 
-pub trait ArmPreplannedMotionImpl<const N: usize>: Arm<N> {
-    fn move_joint(&mut self, target: &[f64; N]) -> RobotResult<()>;
-    fn move_joint_async(&mut self, target: &[f64; N]) -> RobotResult<()>;
+pub trait ArmPreplannedPath<const N: usize> {
+    fn move_traj(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()> {
+        unimplemented!("move_traj is not implemented yet {path:?}");
+    }
+    fn move_traj_async(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()> {
+        unimplemented!("move_traj_async is not implemented yet {path:?}");
+    }
 
-    fn move_cartesian(&mut self, target: &Pose) -> RobotResult<()>;
-    fn move_cartesian_async(&mut self, target: &Pose) -> RobotResult<()>;
+    fn move_waypoints(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()> {
+        unimplemented!("move_waypoints is not implemented yet {path:?}");
+    }
+    fn move_waypoints_async(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()> {
+        unimplemented!("move_waypoints_async is not implemented yet {path:?}");
+    }
+    fn move_waypoints_prepare(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()> {
+        unimplemented!("move_waypoints_prepare is not implemented yet {path:?}");
+    }
+    fn move_waypoints_start(&mut self, start: MotionType<N>) -> RobotResult<()> {
+        unimplemented!("move_waypoints_start is not implemented yet {start:?}");
+    }
 }
 
-pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
+pub trait ArmPreplannedMotionExt<const N: usize>:
+    ArmPreplannedMotion<N> + ArmPreplannedPath<N>
+{
     fn move_joint_rel(&mut self, target: &[f64; N]) -> RobotResult<()> {
         self.with_coord(Coord::Relative).move_joint(target)
     }
     fn move_joint_rel_async(&mut self, target: &[f64; N]) -> RobotResult<()> {
         self.with_coord(Coord::Relative).move_joint_async(target)
     }
-    fn move_joint_path(&mut self, path: Vec<[f64; N]>) -> RobotResult<()> {
+    fn move_joint_traj(&mut self, path: Vec<[f64; N]>) -> RobotResult<()> {
         self.with_coord(Coord::Relative)
-            .move_path(path.into_iter().map(MotionType::Joint).collect())
+            .move_traj(path.into_iter().map(MotionType::Joint).collect())
     }
 
     fn move_cartesian_rel(&mut self, target: &Pose) -> RobotResult<()> {
@@ -203,9 +220,9 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
         self.with_coord(Coord::Inertial)
             .move_cartesian_async(target)
     }
-    fn move_cartesian_path(&mut self, path: Vec<Pose>) -> RobotResult<()> {
+    fn move_cartesian_traj(&mut self, path: Vec<Pose>) -> RobotResult<()> {
         self.with_coord(Coord::Relative)
-            .move_path(path.into_iter().map(MotionType::Cartesian).collect())
+            .move_traj(path.into_iter().map(MotionType::Cartesian).collect())
     }
 
     fn move_linear_with_euler(&mut self, pose: [f64; 6]) -> RobotResult<()> {
@@ -277,21 +294,30 @@ pub trait ArmPreplannedMotionExt<const N: usize>: ArmPreplannedMotion<N> {
             .move_cartesian_async(&target.into())
     }
 
-    fn move_path_prepare_from_file(&mut self, path: &str) -> RobotResult<()> {
+    fn move_waypoints_prepare_from_file(&mut self, path: &str) -> RobotResult<()> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
         let path: Vec<MotionType<N>> = from_reader(reader).unwrap();
-        self.move_path_prepare(path)
+        self.move_waypoints_prepare(path)
     }
-    fn move_path_from_file(&mut self, path: &str) -> RobotResult<()> {
+    fn move_traj_from_file(&mut self, path: &str) -> RobotResult<()> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
         let path: Vec<MotionType<N>> = from_reader(reader).unwrap();
-        self.move_path(path)
+        self.move_traj(path)
+    }
+    fn move_waypoints_from_file(&mut self, path: &str) -> RobotResult<()> {
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+        let path: Vec<MotionType<N>> = from_reader(reader).unwrap();
+        self.move_waypoints(path)
     }
 }
 
-impl<const N: usize, T> ArmPreplannedMotionExt<N> for T where T: ArmPreplannedMotion<N> {}
+impl<const N: usize, T> ArmPreplannedMotionExt<N> for T where
+    T: ArmPreplannedMotion<N> + ArmPreplannedPath<N>
+{
+}
 
 pub trait ArmStreamingHandle<const N: usize> {
     fn last_motion(&self) -> Option<MotionType<N>>;

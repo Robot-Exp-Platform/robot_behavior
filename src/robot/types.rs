@@ -327,8 +327,8 @@ impl From<Pose> for Vec<f64> {
             }
             Pose::Quat(pose) => {
                 let mut vec = Vec::with_capacity(7);
-                vec.extend_from_slice(&pose.translation.vector.as_slice());
-                vec.extend_from_slice(&pose.rotation.vector().as_slice());
+                vec.extend_from_slice(pose.translation.vector.as_slice());
+                vec.extend_from_slice(pose.rotation.vector().as_slice());
                 vec
             }
             Pose::Homo(pose) => pose.as_slice().to_vec(),
