@@ -1,6 +1,6 @@
 [package]
 name = "robot_behavior"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 authors = ["Yixing <yanjizhou312@163.com>"]
 readme = "README.md"
@@ -18,31 +18,31 @@ crate-type = ["cdylib", "rlib"]
 opt-level = 3
 
 [dependencies]
-pyo3 = { version = "0.26", optional = true, features = [
+pyo3 = { version = "0.27.1", optional = true, features = [
     "extension-module",
     "multiple-pymethods",
 ] }
-cxx = { version = "1.0", optional = true }
-nalgebra = { version = "0.34", features = ["serde-serialize"] }
-serde = { version = "1.0", features = ["derive", "alloc"] }
-serde_with = "3.13"
-serde_json = "1.0"
-thiserror = "2.0"
-anyhow = "1.0"
-paste = "1.0"
+cxx = { version = "1.0.188", optional = true }
+nalgebra = { version = "0.34.1", features = ["serde-serialize"] }
+serde = { version = "1.0.228", features = ["derive", "alloc"] }
+serde_with = "3.16.0"
+serde_json = "1.0.145"
+thiserror = "2.0.17"
+anyhow = "1.0.100"
+paste = "1.0.15"
 pipe-trait = "0.4.0"
-typenum = "1.19"
+typenum = "1.19.0"
 
 [build-dependencies]
-cxx-build = "1.0.187"
+cxx-build = "1.0.188"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-libc = "0.2.174"
-plotters = "0.3"
+libc = "0.2.177"
+plotters = "0.3.7"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winapi = { version = "0.3", features = ["processthreadsapi", "winbase"] }
-plotters = "0.3"
+winapi = { version = "0.3.9", features = ["processthreadsapi", "winbase"] }
+plotters = "0.3.7"
 
 [features]
 default = []

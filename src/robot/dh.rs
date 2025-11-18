@@ -25,6 +25,7 @@ use nalgebra as na;
 pub enum DhParam {
     DH { theta: f64, d: f64, r: f64, alpha: f64 },
     MDH { alpha: f64 ,a: f64,theta: f64, d: f64,  },
+    Isometry3(na::Isometry3<f64>),
 }
 
 #[macro_export]
@@ -63,6 +64,7 @@ impl DhParam {
                 let rotation = na::UnitQuaternion::from_euler_angles(theta + q, 0.0, *alpha);
                 na::Isometry::from_parts(translation, rotation)
             }
+            DhParam::Isometry3(iso) => *iso,
         }
     }
 
