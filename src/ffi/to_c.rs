@@ -11,10 +11,7 @@ pub struct CError {
 impl<T> From<RobotResult<T>> for CError {
     fn from(result: RobotResult<T>) -> Self {
         match result {
-            Ok(_) => CError {
-                code: 0,
-                message: CString::new("".to_string()).unwrap(),
-            },
+            Ok(_) => CError { code: 0, message: CString::new("".to_string()).unwrap() },
             Err(e) => {
                 let message = CString::new(e.to_string()).unwrap();
                 let mut c_message = [0; 256];

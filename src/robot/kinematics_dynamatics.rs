@@ -213,9 +213,10 @@ where
         match method {
             IKMethod::Analytic { fallback } => {
                 if Self::ANALYTIC_FAMILY.is_some()
-                    && let Some(sol) = Self::ik_analytic_best(q, target) {
-                        return sol;
-                    }
+                    && let Some(sol) = Self::ik_analytic_best(q, target)
+                {
+                    return sol;
+                }
                 Self::ik_step(q, target, fallback)
             }
             IKMethod::DLS { lambda, stop } => {
@@ -265,9 +266,10 @@ where
         // 优先解析（当 method=Analytic 且支持时）
         if let IKMethod::Analytic { .. } = method
             && Self::ANALYTIC_FAMILY.is_some()
-                && let Some(sol) = Self::ik_analytic_best(q0, target) {
-                    return sol;
-                }
+            && let Some(sol) = Self::ik_analytic_best(q0, target)
+        {
+            return sol;
+        }
         // 迭代
         let stop = match &method {
             IKMethod::DLS { stop, .. }

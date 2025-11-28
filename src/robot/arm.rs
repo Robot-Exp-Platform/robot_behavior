@@ -27,6 +27,7 @@ pub trait ArmDOF {
     const N: usize;
 }
 
+#[roplat::interface]
 pub trait Arm<const N: usize> {
     fn state(&mut self) -> RobotResult<ArmState<N>>;
     fn set_load(&mut self, load: LoadState) -> RobotResult<()>;
@@ -131,6 +132,7 @@ pub trait ArmParam<const N: usize> {
             .pipe_mut(|t| limit(t, &Self::TORQUE_BOUND))
     }
 }
+#[roplat::interface]
 pub trait ArmPreplannedMotion<const N: usize>: Arm<N> {
     fn move_joint(&mut self, target: &[f64; N]) -> RobotResult<()>;
     fn move_joint_async(&mut self, target: &[f64; N]) -> RobotResult<()>;
@@ -170,6 +172,7 @@ pub trait ArmPreplannedMotion<const N: usize>: Arm<N> {
     }
 }
 
+#[roplat::interface]
 pub trait ArmPreplannedPath<const N: usize> {
     fn move_traj(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()> {
         unimplemented!("move_traj is not implemented yet {path:?}");
@@ -192,6 +195,7 @@ pub trait ArmPreplannedPath<const N: usize> {
     }
 }
 
+#[roplat::interface]
 pub trait ArmPreplannedMotionExt<const N: usize>:
     ArmPreplannedMotion<N> + ArmPreplannedPath<N>
 {
@@ -319,6 +323,7 @@ impl<const N: usize, T> ArmPreplannedMotionExt<N> for T where
 {
 }
 
+#[roplat::interface]
 pub trait ArmStreamingHandle<const N: usize> {
     fn last_motion(&self) -> Option<MotionType<N>>;
     fn move_to(&mut self, target: MotionType<N>) -> RobotResult<()>;
@@ -327,6 +332,7 @@ pub trait ArmStreamingHandle<const N: usize> {
     fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
 }
 
+#[roplat::interface]
 pub trait ArmStreamingMotion<const N: usize>: Arm<N> {
     type Handle: ArmStreamingHandle<N>;
     fn start_streaming(&mut self) -> RobotResult<Self::Handle>;
@@ -336,6 +342,7 @@ pub trait ArmStreamingMotion<const N: usize>: Arm<N> {
     fn control_with_target(&mut self) -> Arc<Mutex<Option<ControlType<N>>>>;
 }
 
+#[roplat::interface]
 pub trait ArmStreamingMotionExt<const N: usize>: ArmStreamingMotion<N> {
     fn move_joint_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
     fn move_joint_vel_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;

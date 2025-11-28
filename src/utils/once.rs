@@ -8,10 +8,7 @@ pub struct OverrideOnce<T> {
 
 impl<T: Clone> OverrideOnce<T> {
     pub fn new(default: T) -> Self {
-        Self {
-            once: None,
-            default,
-        }
+        Self { once: None, default }
     }
 
     pub fn set(&mut self, default: T) {
@@ -33,10 +30,7 @@ impl<T: Clone> OverrideOnce<T> {
 
 impl<T> From<T> for OverrideOnce<T> {
     fn from(default: T) -> Self {
-        Self {
-            once: None,
-            default,
-        }
+        Self { once: None, default }
     }
 }
 
