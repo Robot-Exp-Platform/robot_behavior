@@ -32,9 +32,11 @@ pub const ROPLAT_ASCII: &str = r#"
 
 pub mod behavior {
     pub use crate::robot::{
-        Arm, ArmDOF, ArmForwardKinematics, ArmInverseKinematics, ArmParam, ArmPreplannedMotion,
-        ArmPreplannedMotionExt, ArmRealtimeControl, ArmRealtimeControlExt, ArmStreamingHandle,
-        ArmStreamingMotion, ArmStreamingMotionExt, Robot, RobotFile,
+        Arm, ArmDOF, ArmForwardKinematics, ArmImpedance, ArmInverseKinematics, ArmParam,
+        ArmPreplannedMotion, ArmPreplannedMotionExt, ArmPreplannedPath, ArmRealtimeControl,
+        ArmRealtimeControlExt, ArmStreamingHandle, ArmStreamingMotion, ArmStreamingMotionExt,
+        CartesianImpedance, CartesianImpedanceHandle, JointImpedance, JointImpedanceHandle, Robot,
+        RobotFile,
     };
 
     pub use crate::physics_engine::{AddSearchPath, PhysicsEngine};

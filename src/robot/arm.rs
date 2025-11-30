@@ -1,8 +1,10 @@
+use futures::future::BoxFuture;
 use nalgebra as na;
 use pipe_trait::*;
 use serde_json::from_reader;
 use std::fmt::Display;
 use std::io::BufReader;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::{fs::File, time::Duration};
 
@@ -27,7 +29,6 @@ pub trait ArmDOF {
     const N: usize;
 }
 
-#[roplat::interface]
 pub trait Arm<const N: usize> {
     fn state(&mut self) -> RobotResult<ArmState<N>>;
     fn set_load(&mut self, load: LoadState) -> RobotResult<()>;
@@ -132,7 +133,6 @@ pub trait ArmParam<const N: usize> {
             .pipe_mut(|t| limit(t, &Self::TORQUE_BOUND))
     }
 }
-#[roplat::interface]
 pub trait ArmPreplannedMotion<const N: usize>: Arm<N> {
     fn move_joint(&mut self, target: &[f64; N]) -> RobotResult<()>;
     fn move_joint_async(&mut self, target: &[f64; N]) -> RobotResult<()>;
@@ -172,7 +172,6 @@ pub trait ArmPreplannedMotion<const N: usize>: Arm<N> {
     }
 }
 
-#[roplat::interface]
 pub trait ArmPreplannedPath<const N: usize> {
     fn move_traj(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()> {
         unimplemented!("move_traj is not implemented yet {path:?}");
@@ -195,7 +194,6 @@ pub trait ArmPreplannedPath<const N: usize> {
     }
 }
 
-#[roplat::interface]
 pub trait ArmPreplannedMotionExt<const N: usize>:
     ArmPreplannedMotion<N> + ArmPreplannedPath<N>
 {
@@ -323,7 +321,105 @@ impl<const N: usize, T> ArmPreplannedMotionExt<N> for T where
 {
 }
 
-#[roplat::interface]
+#[derive(Clone, Debug)]
+pub struct JointImpedanceHandle<const N: usize> {
+    pub stiffness: Arc<Mutex<[f64; N]>>,
+    pub damping: Arc<Mutex<[f64; N]>>,
+    pub target: Arc<Mutex<Option<[f64; N]>>>,
+    pub is_finished: Arc<AtomicBool>,
+}
+
+pub trait JointImpedance<const N: usize> {
+    fn set_stiffness(&self, stiffness: [f64; N]);
+    fn set_damping(&self, damping: [f64; N]);
+    fn set_target(&self, target: Option<[f64; N]>);
+    fn finish(&self);
+}
+
+impl<const N: usize> JointImpedance<N> for JointImpedanceHandle<N> {
+    fn set_stiffness(&self, stiffness: [f64; N]) {
+        let mut s = self.stiffness.lock().unwrap();
+        *s = stiffness;
+    }
+    fn set_damping(&self, damping: [f64; N]) {
+        let mut d = self.damping.lock().unwrap();
+        *d = damping;
+    }
+    fn set_target(&self, target: Option<[f64; N]>) {
+        let mut t = self.target.lock().unwrap();
+        *t = target;
+    }
+    fn finish(&self) {
+        self.is_finished
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CartesianImpedanceHandle {
+    pub stiffness: Arc<Mutex<(f64, f64)>>,
+    pub damping: Arc<Mutex<(f64, f64)>>,
+    pub target: Arc<Mutex<Option<Pose>>>,
+    pub is_finished: Arc<AtomicBool>,
+}
+
+pub trait CartesianImpedance {
+    fn set_stiffness(&self, stiffness: (f64, f64));
+    fn set_damping(&self, damping: (f64, f64));
+    fn set_target(&self, target: Option<Pose>);
+    fn finish(&self);
+}
+
+impl CartesianImpedance for CartesianImpedanceHandle {
+    fn set_stiffness(&self, stiffness: (f64, f64)) {
+        let mut s = self.stiffness.lock().unwrap();
+        *s = stiffness;
+    }
+    fn set_damping(&self, damping: (f64, f64)) {
+        let mut d = self.damping.lock().unwrap();
+        *d = damping;
+    }
+    fn set_target(&self, target: Option<Pose>) {
+        let mut t = self.target.lock().unwrap();
+        *t = target;
+    }
+    fn finish(&self) {
+        self.is_finished
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+pub trait ArmImpedance<const N: usize> {
+    fn joint_impedance_async(
+        &mut self,
+        stiffness: &[f64; N],
+        damping: &[f64; N],
+    ) -> RobotResult<JointImpedanceHandle<N>>;
+    fn cartesian_impedance_async(
+        &mut self,
+        stiffness: (f64, f64),
+        damping: (f64, f64),
+    ) -> RobotResult<CartesianImpedanceHandle>;
+
+    fn joint_impedance_control(
+        &mut self,
+        stiffness: &[f64; N],
+        damping: &[f64; N],
+    ) -> RobotResult<(
+        JointImpedanceHandle<N>,
+        Box<dyn FnMut() -> BoxFuture<'static, RobotResult<()>> + Send + 'static>,
+    )>;
+
+    fn cartesian_impedance_control(
+        &mut self,
+        stiffness: (f64, f64),
+        damping: (f64, f64),
+    ) -> RobotResult<(
+        CartesianImpedanceHandle,
+        Box<dyn FnMut() -> BoxFuture<'static, RobotResult<()>> + Send + 'static>,
+    )>;
+}
+
 pub trait ArmStreamingHandle<const N: usize> {
     fn last_motion(&self) -> Option<MotionType<N>>;
     fn move_to(&mut self, target: MotionType<N>) -> RobotResult<()>;
@@ -332,7 +428,6 @@ pub trait ArmStreamingHandle<const N: usize> {
     fn control_with(&mut self, control: ControlType<N>) -> RobotResult<()>;
 }
 
-#[roplat::interface]
 pub trait ArmStreamingMotion<const N: usize>: Arm<N> {
     type Handle: ArmStreamingHandle<N>;
     fn start_streaming(&mut self) -> RobotResult<Self::Handle>;
@@ -342,7 +437,6 @@ pub trait ArmStreamingMotion<const N: usize>: Arm<N> {
     fn control_with_target(&mut self) -> Arc<Mutex<Option<ControlType<N>>>>;
 }
 
-#[roplat::interface]
 pub trait ArmStreamingMotionExt<const N: usize>: ArmStreamingMotion<N> {
     fn move_joint_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;
     fn move_joint_vel_target(&mut self) -> Arc<Mutex<Option<[f64; N]>>>;

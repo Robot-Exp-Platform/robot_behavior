@@ -2,7 +2,6 @@ use crate::RobotResult;
 
 /// # Robot
 /// 机器人行为特征
-#[roplat::interface]
 pub trait Robot {
     type State;
 

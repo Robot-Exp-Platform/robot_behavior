@@ -48,7 +48,6 @@ macro_rules! mdh_param {
     };
 }
 
-#[roplat::interface]
 impl DhParam {
     #[inline(always)]
     pub fn to_se3(&self, q: f64) -> na::Isometry3<f64> {

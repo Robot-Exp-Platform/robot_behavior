@@ -20,6 +20,7 @@ pub fn arm_forward_kinematics<const N: usize>(q: [f64; N], dh: &[DhParam; N]) ->
                 let rotation = na::UnitQuaternion::from_euler_angles(0.0, alpha, theta + q[i]);
                 na::Isometry3::from_parts(translation, rotation)
             }
+            DhParam::Isometry3(pose) => pose,
         };
 
         isometry *= iso_inc;
@@ -45,6 +46,7 @@ pub fn arm_forward_kinematics_without_inline(n: usize, q: &Vec<f64>, dh: &[DhPar
                 let rotation = na::UnitQuaternion::from_euler_angles(0.0, alpha, theta + q[i]);
                 na::Isometry3::from_parts(translation, rotation)
             }
+            DhParam::Isometry3(pose) => pose,
         };
 
         isometry *= iso_inc;
@@ -69,6 +71,7 @@ pub fn arm_forward_kinematics_use_matrix<const N: usize>(q: [f64; N], dh: &[DhPa
                 let rotation = na::UnitQuaternion::from_euler_angles(0.0, alpha, theta + q[i]);
                 na::Isometry3::from_parts(translation, rotation)
             }
+            DhParam::Isometry3(pose) => pose,
         };
         matrix *= iso_inc.to_homogeneous();
     }
