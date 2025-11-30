@@ -38,9 +38,9 @@ pub trait Arm<const N: usize> {
     fn with_coord(&mut self, coord: Coord) -> &mut Self;
 
     /// Set the speed ratio (0.0 ~ 1.0)
-    fn set_speed(&mut self, speed: f64) -> RobotResult<()>;
+    fn set_scale(&mut self, scale: f64) -> RobotResult<()>;
     /// Set the speed ratio (0.0 ~ 1.0) for next motion command.
-    fn with_speed(&mut self, speed: f64) -> &mut Self;
+    fn with_scale(&mut self, scale: f64) -> &mut Self;
 
     /// Set the velocity for next motion command. [rad/s]()
     fn with_velocity(&mut self, joint_vel: &[f64; N]) -> &mut Self;

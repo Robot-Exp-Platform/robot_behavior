@@ -33,6 +33,8 @@ pub trait Robot {
     /// 检查机器人是否在运动
     fn is_moving(&mut self) -> bool;
 
+    fn waiting_for_finish(&mut self) -> RobotResult<()>;
+
     /// stop the current action
     /// 停止当前动作，不可恢复
     fn stop(&mut self) -> RobotResult<()>;
