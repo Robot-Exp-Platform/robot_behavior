@@ -31,7 +31,7 @@ pub trait Robot {
 
     /// Check if the robot is moving
     /// 检查机器人是否在运动
-    fn is_moving(&mut self) -> bool;
+    fn is_moving(&mut self) -> RobotResult<bool>;
 
     fn waiting_for_finish(&mut self) -> RobotResult<()>;
 
