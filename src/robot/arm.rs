@@ -407,7 +407,7 @@ pub trait ArmImpedance<const N: usize> {
         damping: &[f64; N],
     ) -> RobotResult<(
         JointImpedanceHandle<N>,
-        Box<dyn FnMut() -> BoxFuture<'static, RobotResult<()>> + Send + 'static>,
+        impl FnMut() -> BoxFuture<'static, RobotResult<()>> + Send + 'static,
     )>;
 
     fn cartesian_impedance_control(
@@ -416,7 +416,7 @@ pub trait ArmImpedance<const N: usize> {
         damping: (f64, f64),
     ) -> RobotResult<(
         CartesianImpedanceHandle,
-        Box<dyn FnMut() -> BoxFuture<'static, RobotResult<()>> + Send + 'static>,
+        impl FnMut() -> BoxFuture<'static, RobotResult<()>> + Send + 'static,
     )>;
 }
 
