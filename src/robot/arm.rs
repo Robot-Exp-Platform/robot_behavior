@@ -530,6 +530,8 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
     }
 }
 
+// pub struct ArmControlRhythm<I, O>;
+
 impl<const N: usize> Default for ArmState<N> {
     fn default() -> Self {
         ArmState {

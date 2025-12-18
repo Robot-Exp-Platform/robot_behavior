@@ -25,7 +25,8 @@ use nalgebra as na;
 pub enum DhParam {
     DH { theta: f64, d: f64, r: f64, alpha: f64 },
     MDH { alpha: f64 ,a: f64,theta: f64, d: f64,  },
-    Isometry3(na::Isometry3<f64>),
+    Iso3Quat { pos: [f64; 3], quat: [f64; 4] },
+    Iso3RPY { pos: [f64; 3], rpy: [f64; 3] },
 }
 
 #[macro_export]
@@ -64,7 +65,22 @@ impl DhParam {
                 let rotation = na::UnitQuaternion::from_euler_angles(theta + q, 0.0, *alpha);
                 na::Isometry::from_parts(translation, rotation)
             }
-            DhParam::Isometry3(iso) => *iso,
+            DhParam::Iso3Quat { pos, quat } => {
+                let translation = na::Translation3::new(pos[0], pos[1], pos[2]);
+                let rotation = na::UnitQuaternion::from_quaternion(na::Quaternion::new(
+                    quat[0], quat[1], quat[2], quat[3],
+                ));
+                let joint_rotation = na::UnitQuaternion::from_euler_angles(0.0, 0.0, q);
+                na::Isometry::from_parts(translation, rotation)
+                    * na::Isometry::from_parts(na::Translation3::identity(), joint_rotation)
+            }
+            DhParam::Iso3RPY { pos, rpy } => {
+                let translation = na::Translation3::new(pos[0], pos[1], pos[2]);
+                let rotation = na::UnitQuaternion::from_euler_angles(rpy[0], rpy[1], rpy[2]);
+                let joint_rotation = na::UnitQuaternion::from_euler_angles(0.0, 0.0, q);
+                na::Isometry::from_parts(translation, rotation)
+                    * na::Isometry::from_parts(na::Translation3::identity(), joint_rotation)
+            }
         }
     }
 
