@@ -1,4 +1,4 @@
-use std::simd::{LaneCount, Simd, SupportedLaneCount};
+// use std::simd::{LaneCount, Simd, SupportedLaneCount};
 
 #[inline(always)]
 pub fn limit<'a, const N: usize>(q: &'a mut [f64; N], q_bound: &[f64; N]) -> &'a mut [f64; N] {
@@ -51,17 +51,17 @@ pub fn difference<const N: usize>(q: &[f64; N], q_last: &[f64; N], time: f64) ->
     q_diff
 }
 
-#[inline(always)]
-pub fn difference_simd<const N: usize>(
-    q: Simd<f64, N>,
-    q_last: Simd<f64, N>,
-    time: Simd<f64, N>,
-) -> Simd<f64, N>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
-    (q - q_last) / time
-}
+// #[inline(always)]
+// pub fn difference_simd<const N: usize>(
+//     q: Simd<f64, N>,
+//     q_last: Simd<f64, N>,
+//     time: Simd<f64, N>,
+// ) -> Simd<f64, N>
+// where
+//     LaneCount<N>: SupportedLaneCount,
+// {
+//     (q - q_last) / time
+// }
 
 #[inline(always)]
 pub fn update<'a, const N: usize>(
@@ -75,16 +75,16 @@ pub fn update<'a, const N: usize>(
     q
 }
 
-#[inline(always)]
-pub fn update_simd<const N: usize>(q: [f64; N], q_dot: &[f64; N], time: f64) -> [f64; N]
-where
-    LaneCount<N>: SupportedLaneCount,
-{
-    let q = Simd::from_array(q);
-    let q_dot = Simd::from_array(*q_dot);
-    let time = Simd::splat(time);
-    (q + q_dot * time).to_array()
-}
+// #[inline(always)]
+// pub fn update_simd<const N: usize>(q: [f64; N], q_dot: &[f64; N], time: f64) -> [f64; N]
+// where
+//     LaneCount<N>: SupportedLaneCount,
+// {
+//     let q = Simd::from_array(q);
+//     let q_dot = Simd::from_array(*q_dot);
+//     let time = Simd::splat(time);
+//     (q + q_dot * time).to_array()
+// }
 
 #[cfg(test)]
 mod tests {
@@ -101,14 +101,14 @@ mod tests {
             let _ = difference(&mut q, &q_last, time);
         }
         println!("difference: {:?}", start_time.elapsed());
-        let q = Simd::from_array(q);
-        let q_last = Simd::from_array(q_last);
-        let time = Simd::splat(time);
+        // let q = Simd::from_array(q);
+        // let q_last = Simd::from_array(q_last);
+        // let time = Simd::splat(time);
 
-        let start_time = std::time::Instant::now();
-        for _ in 0..100_000 {
-            let _ = difference_simd(q, q_last, time);
-        }
-        println!("difference_simd: {:?}", start_time.elapsed());
+        // let start_time = std::time::Instant::now();
+        // for _ in 0..100_000 {
+        //     let _ = difference_simd(q, q_last, time);
+        // }
+        // println!("difference_simd: {:?}", start_time.elapsed());
     }
 }
