@@ -34,12 +34,14 @@ pub const ROPLAT_ASCII: &str = r#"
 
 pub mod behavior {
     pub use crate::robot::{
-        Arm, ArmDOF, ArmForwardKinematics, ArmImpedance, ArmInverseKinematics, ArmParam,
-        ArmPreplannedMotion, ArmPreplannedMotionExt, ArmPreplannedPath, ArmRealtimeControl,
-        ArmRealtimeControlExt, ArmStreamingHandle, ArmStreamingMotion, ArmStreamingMotionExt,
-        CartesianImpedance, CartesianImpedanceHandle, JointImpedance, JointImpedanceHandle, Robot,
-        RobotFile,
+        Arm, ArmControlRhythm, ArmDOF, ArmForwardKinematics, ArmImpedance, ArmInverseKinematics,
+        ArmMotionRhythm, ArmParam, ArmPreplannedMotion, ArmPreplannedMotionExt, ArmPreplannedPath,
+        ArmRealtimeControl, ArmRealtimeControlExt, ArmStreamingHandle, ArmStreamingMotion,
+        ArmStreamingMotionExt, CartesianImpedance, CartesianImpedanceHandle,
+        CartesianImpedanceRhythm, JointImpedance, JointImpedanceHandle, JointImpedanceRhythm,
+        JointStateEntry, JointStateMap, JointStateSync, Robot, RobotFile,
     };
+    pub use crate::robot::{joint_state_map_from_arm_state, update_joint_state_map};
 
     pub use crate::physics_engine::{AddSearchPath, PhysicsEngine};
     pub use crate::renderer::{AttachFrom, Renderer};
@@ -54,24 +56,27 @@ mod robot_behavior {
 }
 
 pub fn roplat_data_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
     {
-        env::var_os("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .or_else(|| env::var_os("USERPROFILE").map(PathBuf::from))
-    }
+        #[cfg(target_os = "windows")]
+        {
+            env::var_os("LOCALAPPDATA")
+                .map(PathBuf::from)
+                .or_else(|| env::var_os("USERPROFILE").map(PathBuf::from))
+        }
 
-    #[cfg(target_os = "macos")]
-    {
-        env::var_os("HOME")
-            .map(PathBuf::from)
-            .map(|home| home.join("Library").join("Application Support"))
-    }
+        #[cfg(target_os = "macos")]
+        {
+            env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| home.join("Library").join("Application Support"))
+        }
 
-    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-    {
-        env::var_os("HOME")
-            .map(PathBuf::from)
-            .map(|home| home.join(".local").join("share"))
+        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+        {
+            env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| home.join(".local").join("share"))
+        }
     }
+    .map(|path| path.join("roplat").join("assets"))
 }
