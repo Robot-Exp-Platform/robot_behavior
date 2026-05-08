@@ -19,6 +19,7 @@ opt-level = 3
 
 [dependencies]
 roplat = { version = "0.1.0", path = "../../roplat/roplat" }
+copp = { version = "0.1.0", path = "../utils/copp" }
 pyo3 = { version = "0.27.1", optional = true, features = [
     "extension-module",
     "multiple-pymethods",

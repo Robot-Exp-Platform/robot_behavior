@@ -28,6 +28,12 @@ where
     pub t_prefix: [na::Isometry3<f64>; N + 1],
     pub origins: [na::Vector3<f64>; N + 1],
     pub z_axes: [na::Vector3<f64>; N + 1],
+    /// Per-joint revolute axis in the WORLD frame, evaluated at the
+    /// pre-actuation point (between the constant link transform and the
+    /// `Rz(θ+q)` actuation). Independent of DH/MDH convention.
+    pub joint_z: [na::Vector3<f64>; N],
+    /// Per-joint axis origin in the WORLD frame.
+    pub joint_p: [na::Vector3<f64>; N],
 }
 
 impl<const N: usize> ArmKineCache<N>
@@ -39,14 +45,19 @@ where
         let mut t_prefix = [na::Isometry3::identity(); N + 1];
         let mut origins = [na::Vector3::zeros(); N + 1];
         let mut z_axes = [na::Vector3::z(); N + 1];
+        let mut joint_z = [na::Vector3::z(); N];
+        let mut joint_p = [na::Vector3::zeros(); N];
 
         for i in 0..N {
+            let t_pre = t_prefix[i] * dh[i].pre_actuation();
+            joint_z[i] = t_pre.rotation * na::Vector3::z();
+            joint_p[i] = t_pre.translation.vector;
             t_prefix[i + 1] = t_prefix[i] * dh[i].to_se3(q[i]);
             origins[i + 1] = t_prefix[i + 1].translation.vector;
             z_axes[i + 1] = t_prefix[i + 1].rotation * na::Vector3::z();
         }
 
-        Self { q_dot: *q_dot, t_prefix, origins, z_axes }
+        Self { q_dot: *q_dot, t_prefix, origins, z_axes, joint_z, joint_p }
     }
 
     #[inline(always)]
@@ -76,8 +87,8 @@ where
         let mut j = na::SMatrix::<f64, 6, N>::zeros();
         let p_n = self.origins[N];
         for i in 0..N {
-            let z = self.z_axes[i]; // z_{i-1}
-            let p = self.origins[i]; // p_{i-1}
+            let z = self.joint_z[i];
+            let p = self.joint_p[i];
             let jv = z.cross(&(p_n - p));
             j.fixed_view_mut::<3, 1>(0, i).copy_from(&jv);
             j.fixed_view_mut::<3, 1>(3, i).copy_from(&z);
@@ -94,8 +105,8 @@ where
         let mut j = na::SMatrix::<f64, 6, N>::zeros();
         let p_n = self.origins[link_index];
         for i in 0..link_index {
-            let z = self.z_axes[i]; // z_{i-1}
-            let p = self.origins[i]; // p_{i-1}
+            let z = self.joint_z[i];
+            let p = self.joint_p[i];
             let jv = z.cross(&(p_n - p));
             j.fixed_view_mut::<3, 1>(0, i).copy_from(&jv);
             j.fixed_view_mut::<3, 1>(3, i).copy_from(&z);
@@ -195,11 +206,11 @@ where
         let cur = k.end_effector_pose();
         let tgt = target.quat();
         let dp = tgt.translation.vector - cur.translation.vector;
-        let rrel = cur.rotation.inverse() * tgt.rotation;
-        let drot = rrel
-            .axis()
-            .map(|ax| ax.into_inner() * rrel.angle())
-            .unwrap_or(na::Vector3::zeros());
+        // rrel must be expressed in the BASE frame to match the geometric
+        // Jacobian's angular rows; `cur^{-1} * tgt` is the EE-frame variant
+        // and would mix coordinate systems with `dp`.
+        let rrel = tgt.rotation * cur.rotation.inverse();
+        let drot = rrel.scaled_axis();
 
         let e = Twist::from_row_slice(&[dp.x, dp.y, dp.z, drot.x, drot.y, drot.z]);
         (e, k.jacobian())
@@ -239,7 +250,9 @@ where
             IKMethod::Newton { stop } => {
                 let (e, j) = Self::task_error_and_jacobian(q, target);
                 // 伪逆牛顿：Δq = J^+ e
-                let j_dyn = na::DMatrix::from_row_slice(6, N, j.as_slice());
+                // SMatrix::as_slice() is column-major, so we MUST use
+                // from_column_slice; the previous from_row_slice produced J^T.
+                let j_dyn = na::DMatrix::from_column_slice(6, N, j.as_slice());
                 let pinv = j_dyn.pseudo_inverse(1e-9).unwrap();
                 let pinv = na::SMatrix::<f64, N, 6>::from_column_slice(pinv.as_slice());
                 let mut dq = pinv * e;

@@ -81,6 +81,12 @@ pub trait ArmParam<const N: usize> {
     const TORQUE_BOUND: [f64; N] = [f64::MAX; N];
     const TORQUE_DOT_BOUND: [f64; N] = [f64::MAX; N];
 
+    /// Control loop period in seconds. Used by trajectory-planning default
+    /// implementations (e.g. `ArmPreplannedPath::move_waypoints`) to lay down
+    /// a uniform time grid. Override this to match the actual realtime rate
+    /// of the underlying driver.
+    const CONTROL_PERIOD: f64;
+
     #[inline(always)]
     fn limit_joint_jerk(q_dddot: &mut [f64; N]) -> &mut [f64; N] {
         limit(q_dddot, &Self::JOINT_JERK_BOUND)
@@ -172,7 +178,7 @@ pub trait ArmPreplannedMotion<const N: usize>: Arm<N> {
     }
 }
 
-pub trait ArmPreplannedPath<const N: usize> {
+pub trait ArmPreplannedPath<const N: usize>: ArmParam<N> {
     fn move_traj(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()> {
         unimplemented!("move_traj is not implemented yet {path:?}");
     }
@@ -180,11 +186,57 @@ pub trait ArmPreplannedPath<const N: usize> {
         unimplemented!("move_traj_async is not implemented yet {path:?}");
     }
 
+    fn move_path<F>(&mut self, path: F) -> RobotResult<()>
+    where
+        F: Fn(f64) -> Option<MotionType<N>>,
+    {
+        let traj = plan_path_traj_via_copp::<Self, F, N>(&path)?;
+        self.move_traj(traj)
+    }
+
+    fn move_path_async<F>(&mut self, path: F) -> RobotResult<()>
+    where
+        F: Fn(f64) -> Option<MotionType<N>>,
+    {
+        let traj = plan_path_traj_via_copp::<Self, F, N>(&path)?;
+        self.move_traj_async(traj)
+    }
+
     fn move_waypoints(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()> {
-        unimplemented!("move_waypoints is not implemented yet {path:?}");
+        match path.first() {
+            Some(MotionType::Joint(_)) => {
+                let waypoints: Vec<[f64; N]> = path
+                    .iter()
+                    .map(|m| match m {
+                        MotionType::Joint(q) => *q,
+                        _ => unreachable!(),
+                    })
+                    .collect();
+                let traj = plan_waypoints_traj_via_copp::<Self, N>(&waypoints)?;
+                self.move_traj(traj)
+            }
+            _ => unimplemented!(
+                "default move_waypoints only supports MotionType::Joint waypoints {path:?}"
+            ),
+        }
     }
     fn move_waypoints_async(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()> {
-        unimplemented!("move_waypoints_async is not implemented yet {path:?}");
+        match path.first() {
+            Some(MotionType::Joint(_)) => {
+                let waypoints: Vec<[f64; N]> = path
+                    .iter()
+                    .map(|m| match m {
+                        MotionType::Joint(q) => *q,
+                        _ => unreachable!(),
+                    })
+                    .collect();
+                let traj = plan_waypoints_traj_via_copp::<Self, N>(&waypoints)?;
+                self.move_traj_async(traj)
+            }
+            _ => unimplemented!(
+                "default move_waypoints_async only supports MotionType::Joint waypoints {path:?}"
+            ),
+        }
     }
     fn move_waypoints_prepare(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()> {
         unimplemented!("move_waypoints_prepare is not implemented yet {path:?}");
@@ -192,6 +244,302 @@ pub trait ArmPreplannedPath<const N: usize> {
     fn move_waypoints_start(&mut self, start: MotionType<N>) -> RobotResult<()> {
         unimplemented!("move_waypoints_start is not implemented yet {start:?}");
     }
+}
+
+/// Number of `s` samples used to discretise the geometric path for copp.
+const COPP_PATH_SAMPLES: usize = 1001;
+
+/// Run copp's TOPP2-RA → TOPP3-SOCP (2-iteration SCP) pipeline on a discretised
+/// joint-space path and return the time-uniform `s(t)` grid (sample period is
+/// `P::CONTROL_PERIOD`).
+///
+/// The caller supplies the path samples on a uniform `s ∈ [0, 1]` grid:
+///   - `q_grid`    : positions, shape `(N, COPP_PATH_SAMPLES)`
+///   - `dq_grid`   : 1st derivative w.r.t. `s`
+///   - `ddq_grid`  : 2nd derivative w.r.t. `s`
+///   - `dddq_grid` : optional 3rd derivative (jerk constraints inactive when `None`)
+fn plan_s_t_via_copp<R, const N: usize>(
+    q_grid: &na::DMatrix<f64>,
+    dq_grid: &na::DMatrix<f64>,
+    ddq_grid: &na::DMatrix<f64>,
+    dddq_grid: Option<&na::DMatrix<f64>>,
+) -> RobotResult<Vec<f64>>
+where
+    R: ArmParam<N> + ?Sized,
+{
+    use copp::InterpolationMode;
+    use copp::robot::Robot;
+    use copp::solver::topp2_ra::{ReachSet2OptionsBuilder, Topp2ProblemBuilder, topp2_ra};
+    use copp::solver::topp3_socp::{
+        ClarabelOptionsBuilder, Topp3ProblemBuilder, s_to_t_topp3, t_to_s_topp3, topp3_socp,
+    };
+
+    let dt = R::CONTROL_PERIOD;
+    if !(dt.is_finite() && dt > 0.0) {
+        return Err(RobotException::UnprocessableInstructionError(format!(
+            "ArmParam::CONTROL_PERIOD must be a positive finite number, got {dt}"
+        )));
+    }
+
+    fn map_err<E: Display>(e: E) -> RobotException {
+        RobotException::UnprocessableInstructionError(format!("copp planning failed: {e}"))
+    }
+
+    let n = COPP_PATH_SAMPLES;
+    let s: Vec<f64> = (0..n).map(|j| j as f64 / (n - 1) as f64).collect();
+
+    let mut robot = Robot::with_capacity(N, n);
+    robot.with_s(s.as_slice()).map_err(map_err)?;
+    robot
+        .with_q(
+            &q_grid.as_view(),
+            &dq_grid.as_view(),
+            &ddq_grid.as_view(),
+            dddq_grid.map(|m| m.as_view()).as_ref(),
+            0,
+        )
+        .map_err(map_err)?;
+    robot
+        .with_axial_velocity(
+            (R::JOINT_VEL_BOUND.as_slice(), n),
+            (R::JOINT_VEL_BOUND.map(|v| -v).as_slice(), n),
+            0,
+        )
+        .map_err(map_err)?;
+    robot
+        .with_axial_acceleration(
+            (R::JOINT_ACC_BOUND.as_slice(), n),
+            (R::JOINT_ACC_BOUND.map(|v| -v).as_slice(), n),
+            0,
+        )
+        .map_err(map_err)?;
+    robot
+        .with_axial_jerk(
+            (R::JOINT_JERK_BOUND.as_slice(), n),
+            (R::JOINT_JERK_BOUND.map(|v| -v).as_slice(), n),
+            0,
+        )
+        .map_err(map_err)?;
+
+    let idx_s_interval = (0, n - 1);
+    let a_boundary = (0.0, 0.0);
+    let a_ra0 = {
+        let prob = Topp2ProblemBuilder::new(&robot, idx_s_interval, a_boundary)
+            .build()
+            .map_err(map_err)?;
+        let opts = ReachSet2OptionsBuilder::new().build().map_err(map_err)?;
+        topp2_ra(&prob, &opts).map_err(map_err)?
+    };
+    // The reach-set can return tiny negative values from numerical noise; the
+    // downstream linearization rejects any negative entry.
+    let a_ra0: Vec<f64> = a_ra0.into_iter().map(|a| a.max(0.0)).collect();
+    robot
+        .constraints
+        .amax_substitute(&a_ra0, 0)
+        .map_err(map_err)?;
+
+    let opts_socp = ClarabelOptionsBuilder::new()
+        .allow_almost_solved(true)
+        .allow_insufficient_progress(true)
+        .allow_max_iterations(true)
+        .build()
+        .map_err(map_err)?;
+
+    // SCP: linearise once at TOPP2-RA seed, then refine at the QP solution.
+    let (a_qp1, _b_qp1, _ns1) = {
+        let prob =
+            Topp3ProblemBuilder::new(&mut robot, idx_s_interval.0, &a_ra0, (0.0, 0.0), (0.0, 0.0))
+                .build_with_linearization()
+                .map_err(map_err)?;
+        topp3_socp(&prob, &opts_socp).map_err(map_err)?
+    };
+    // Clarabel under `allow_almost_solved` may return tiny negative `a` values
+    // (~1e-12) at near-stationary samples; the next linearization rejects any
+    // negative entry, so clamp the seed before feeding it back.
+    let a_qp1: Vec<f64> = a_qp1.into_iter().map(|a| a.max(0.0)).collect();
+    // Second SCP refinement is best-effort: on hard paths Clarabel may report
+    // InsufficientProgress, in which case `(a_qp1, b_qp1)` is already a
+    // feasible TOPP3 profile and we use it as-is.
+    let (a_qp2, b_qp2, ns2) = {
+        let prob =
+            Topp3ProblemBuilder::new(&mut robot, idx_s_interval.0, &a_qp1, (0.0, 0.0), (0.0, 0.0))
+                .build_with_linearization()
+                .map_err(map_err)?;
+        match topp3_socp(&prob, &opts_socp) {
+            Ok(res) => res,
+            Err(_) => {
+                // Re-run iteration 1 to recover (a, b, num_stationary); the
+                // first solve only kept `a_qp1`. Cheaper than restructuring.
+                let prob = Topp3ProblemBuilder::new(
+                    &mut robot,
+                    idx_s_interval.0,
+                    &a_ra0,
+                    (0.0, 0.0),
+                    (0.0, 0.0),
+                )
+                .build_with_linearization()
+                .map_err(map_err)?;
+                topp3_socp(&prob, &opts_socp).map_err(map_err)?
+            }
+        }
+    };
+
+    let (_t_final, t_s) = s_to_t_topp3(&s, &a_qp2, &b_qp2, ns2, 0.0);
+    let s_t = t_to_s_topp3(
+        &s,
+        &a_qp2,
+        &b_qp2,
+        ns2,
+        &t_s,
+        InterpolationMode::UniformTimeGrid(0.0, dt, true),
+    );
+    if s_t.is_empty() {
+        return Err(RobotException::UnprocessableInstructionError(
+            "copp t_to_s_topp3 produced an empty time grid".to_string(),
+        ));
+    }
+    Ok(s_t)
+}
+
+/// Plan a time-uniform joint trajectory through discrete `waypoints` via copp.
+///
+/// The geometry is reconstructed by `Path::from_waypoints` (Hermite spline);
+/// both the constraint discretisation **and** the final `q(t)` come from the
+/// same spline — there is no second analytic ground truth to fall back on.
+fn plan_waypoints_traj_via_copp<R, const N: usize>(
+    waypoints: &[[f64; N]],
+) -> RobotResult<Vec<MotionType<N>>>
+where
+    R: ArmParam<N> + ?Sized,
+{
+    use copp::path::{Path, SplineConfig};
+
+    if waypoints.len() < 2 {
+        return Err(RobotException::UnprocessableInstructionError(
+            "joint waypoint planning requires at least 2 waypoints".to_string(),
+        ));
+    }
+
+    let n_pts = waypoints.len();
+    let wp_mat = na::DMatrix::<f64>::from_fn(N, n_pts, |i, j| waypoints[j][i]);
+    let path = Path::from_waypoints(&wp_mat, SplineConfig::default()).map_err(|e| {
+        RobotException::UnprocessableInstructionError(format!(
+            "copp Path::from_waypoints failed: {e}"
+        ))
+    })?;
+
+    let n = COPP_PATH_SAMPLES;
+    let s: Vec<f64> = (0..n).map(|j| j as f64 / (n - 1) as f64).collect();
+    let derivs = path.evaluate_up_to_3rd(&s).map_err(|e| {
+        RobotException::UnprocessableInstructionError(format!("path.evaluate_up_to_3rd: {e}"))
+    })?;
+
+    let s_t = plan_s_t_via_copp::<R, N>(
+        &derivs.q,
+        derivs.dq.as_ref().unwrap(),
+        derivs.ddq.as_ref().unwrap(),
+        derivs.dddq.as_ref(),
+    )?;
+
+    // Final q(t) comes from the same spline used for planning — no extra
+    // approximation source available.
+    let q_t = path.evaluate_q(&s_t).map_err(|e| {
+        RobotException::UnprocessableInstructionError(format!("path.evaluate_q: {e}"))
+    })?;
+    Ok(q_grid_to_traj::<N>(&q_t.q))
+}
+
+/// Plan a time-uniform joint trajectory along a continuous user-supplied path
+/// `s -> Option<MotionType::Joint>` via copp.
+///
+/// Why two helpers? The geometric path here is *already* given as an analytic
+/// closure — only its discrete derivatives are missing. So we:
+///   1. sample `q(s)` from the user closure on a fine `s` grid;
+///   2. fit a Hermite spline ONLY to estimate `dq/ddq/dddq` for copp's
+///      constraint discretisation (this is the unavoidable approximation);
+///   3. solve TOPP3-SOCP to get the time-uniform `s(t)` grid;
+///   4. evaluate the **user closure** (not the spline) at each `s(t)` to
+///      produce the final `q(t)` — preserving full tracking fidelity for any
+///      shape the user can express analytically.
+fn plan_path_traj_via_copp<P, F, const N: usize>(path_fn: &F) -> RobotResult<Vec<MotionType<N>>>
+where
+    P: ArmParam<N> + ?Sized,
+    F: Fn(f64) -> Option<MotionType<N>>,
+{
+    use copp::path::{Path, SplineConfig};
+
+    // 1) Sample the user closure on the fine s grid that copp will discretise on.
+    let n = COPP_PATH_SAMPLES;
+    let mut q_samples: Vec<[f64; N]> = Vec::with_capacity(n);
+    for i in 0..n {
+        let s = i as f64 / (n - 1) as f64;
+        match path_fn(s) {
+            Some(MotionType::Joint(q)) => q_samples.push(q),
+            Some(other) => {
+                return Err(RobotException::ConflictingInstruction(format!(
+                    "default move_path only supports MotionType::Joint, got {other:?}"
+                )));
+            }
+            None => {
+                return Err(RobotException::UnprocessableInstructionError(format!(
+                    "move_path closure returned None at s={}; must be defined on [0, 1]",
+                    s
+                )));
+            }
+        }
+    }
+
+    // 2) Fit a spline only to recover dq/ddq/dddq for copp constraints.
+    let wp_mat = na::DMatrix::<f64>::from_fn(N, n, |i, j| q_samples[j][i]);
+    let spline = Path::from_waypoints(&wp_mat, SplineConfig::default()).map_err(|e| {
+        RobotException::UnprocessableInstructionError(format!(
+            "copp Path::from_waypoints (closure derivative estimate) failed: {e}"
+        ))
+    })?;
+    let s_grid: Vec<f64> = (0..n).map(|j| j as f64 / (n - 1) as f64).collect();
+    let derivs = spline.evaluate_up_to_3rd(&s_grid).map_err(|e| {
+        RobotException::UnprocessableInstructionError(format!("path.evaluate_up_to_3rd: {e}"))
+    })?;
+
+    // 3) Solve TOPP3-SOCP → time-uniform s(t).
+    let s_t = plan_s_t_via_copp::<P, N>(
+        &derivs.q,
+        derivs.dq.as_ref().unwrap(),
+        derivs.ddq.as_ref().unwrap(),
+        derivs.dddq.as_ref(),
+    )?;
+
+    // 4) Final q(t) comes from the user closure directly — no spline loss.
+    let mut traj = Vec::with_capacity(s_t.len());
+    for &s in &s_t {
+        match path_fn(s) {
+            Some(MotionType::Joint(q)) => traj.push(MotionType::Joint(q)),
+            Some(other) => {
+                return Err(RobotException::ConflictingInstruction(format!(
+                    "default move_path only supports MotionType::Joint, got {other:?}"
+                )));
+            }
+            None => {
+                return Err(RobotException::UnprocessableInstructionError(format!(
+                    "move_path closure returned None at s={s} during final resampling"
+                )));
+            }
+        }
+    }
+    Ok(traj)
+}
+
+/// Convert a column-major `(N, M)` joint matrix to `Vec<MotionType::Joint>`.
+fn q_grid_to_traj<const N: usize>(q: &na::DMatrix<f64>) -> Vec<MotionType<N>> {
+    let mut traj = Vec::with_capacity(q.ncols());
+    for j in 0..q.ncols() {
+        let mut joint = [0.0f64; N];
+        for (i, slot) in joint.iter_mut().enumerate().take(N) {
+            *slot = q[(i, j)];
+        }
+        traj.push(MotionType::Joint(joint));
+    }
+    traj
 }
 
 pub trait ArmPreplannedMotionExt<const N: usize>:
