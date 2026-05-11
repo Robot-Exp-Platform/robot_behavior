@@ -39,6 +39,10 @@ pub trait Arm<const N: usize> {
 
     /// Set the speed ratio (0.0 ~ 1.0)
     fn set_scale(&mut self, scale: f64) -> RobotResult<()>;
+    /// Get the speed ratio used by default trajectory planning.
+    fn get_scale(&self) -> f64 {
+        1.0
+    }
     /// Set the speed ratio (0.0 ~ 1.0) for next motion command.
     fn with_scale(&mut self, scale: f64) -> &mut Self;
 
@@ -178,7 +182,7 @@ pub trait ArmPreplannedMotion<const N: usize>: Arm<N> {
     }
 }
 
-pub trait ArmPreplannedPath<const N: usize>: ArmParam<N> {
+pub trait ArmPreplannedPath<const N: usize>: ArmParam<N> + Arm<N> {
     fn move_traj(&mut self, path: Vec<MotionType<N>>) -> RobotResult<()> {
         unimplemented!("move_traj is not implemented yet {path:?}");
     }
@@ -190,7 +194,7 @@ pub trait ArmPreplannedPath<const N: usize>: ArmParam<N> {
     where
         F: Fn(f64) -> Option<MotionType<N>>,
     {
-        let traj = plan_path_traj_via_copp::<Self, F, N>(&path)?;
+        let traj = plan_path_traj_via_copp::<Self, F, N>(&path, self.get_scale())?;
         self.move_traj(traj)
     }
 
@@ -198,7 +202,7 @@ pub trait ArmPreplannedPath<const N: usize>: ArmParam<N> {
     where
         F: Fn(f64) -> Option<MotionType<N>>,
     {
-        let traj = plan_path_traj_via_copp::<Self, F, N>(&path)?;
+        let traj = plan_path_traj_via_copp::<Self, F, N>(&path, self.get_scale())?;
         self.move_traj_async(traj)
     }
 
@@ -212,7 +216,7 @@ pub trait ArmPreplannedPath<const N: usize>: ArmParam<N> {
                         _ => unreachable!(),
                     })
                     .collect();
-                let traj = plan_waypoints_traj_via_copp::<Self, N>(&waypoints)?;
+                let traj = plan_waypoints_traj_via_copp::<Self, N>(&waypoints, self.get_scale())?;
                 self.move_traj(traj)
             }
             _ => unimplemented!(
@@ -230,7 +234,7 @@ pub trait ArmPreplannedPath<const N: usize>: ArmParam<N> {
                         _ => unreachable!(),
                     })
                     .collect();
-                let traj = plan_waypoints_traj_via_copp::<Self, N>(&waypoints)?;
+                let traj = plan_waypoints_traj_via_copp::<Self, N>(&waypoints, self.get_scale())?;
                 self.move_traj_async(traj)
             }
             _ => unimplemented!(
@@ -263,6 +267,7 @@ fn plan_s_t_via_copp<R, const N: usize>(
     dq_grid: &na::DMatrix<f64>,
     ddq_grid: &na::DMatrix<f64>,
     dddq_grid: Option<&na::DMatrix<f64>>,
+    scale: f64,
 ) -> RobotResult<Vec<f64>>
 where
     R: ArmParam<N> + ?Sized,
@@ -280,6 +285,15 @@ where
             "ArmParam::CONTROL_PERIOD must be a positive finite number, got {dt}"
         )));
     }
+    if !(scale.is_finite() && scale > 0.0) {
+        return Err(RobotException::UnprocessableInstructionError(format!(
+            "Arm::get_scale must return a positive finite number, got {scale}"
+        )));
+    }
+
+    let joint_vel_bound = R::JOINT_VEL_BOUND.map(|v| v * scale);
+    let joint_acc_bound = R::JOINT_ACC_BOUND.map(|v| v * scale);
+    let joint_jerk_bound = R::JOINT_JERK_BOUND.map(|v| v * scale);
 
     fn map_err<E: Display>(e: E) -> RobotException {
         RobotException::UnprocessableInstructionError(format!("copp planning failed: {e}"))
@@ -301,22 +315,22 @@ where
         .map_err(map_err)?;
     robot
         .with_axial_velocity(
-            (R::JOINT_VEL_BOUND.as_slice(), n),
-            (R::JOINT_VEL_BOUND.map(|v| -v).as_slice(), n),
+            (joint_vel_bound.as_slice(), n),
+            (joint_vel_bound.map(|v| -v).as_slice(), n),
             0,
         )
         .map_err(map_err)?;
     robot
         .with_axial_acceleration(
-            (R::JOINT_ACC_BOUND.as_slice(), n),
-            (R::JOINT_ACC_BOUND.map(|v| -v).as_slice(), n),
+            (joint_acc_bound.as_slice(), n),
+            (joint_acc_bound.map(|v| -v).as_slice(), n),
             0,
         )
         .map_err(map_err)?;
     robot
         .with_axial_jerk(
-            (R::JOINT_JERK_BOUND.as_slice(), n),
-            (R::JOINT_JERK_BOUND.map(|v| -v).as_slice(), n),
+            (joint_jerk_bound.as_slice(), n),
+            (joint_jerk_bound.map(|v| -v).as_slice(), n),
             0,
         )
         .map_err(map_err)?;
@@ -408,6 +422,7 @@ where
 /// same spline — there is no second analytic ground truth to fall back on.
 fn plan_waypoints_traj_via_copp<R, const N: usize>(
     waypoints: &[[f64; N]],
+    scale: f64,
 ) -> RobotResult<Vec<MotionType<N>>>
 where
     R: ArmParam<N> + ?Sized,
@@ -439,6 +454,7 @@ where
         derivs.dq.as_ref().unwrap(),
         derivs.ddq.as_ref().unwrap(),
         derivs.dddq.as_ref(),
+        scale,
     )?;
 
     // Final q(t) comes from the same spline used for planning — no extra
@@ -461,7 +477,10 @@ where
 ///   4. evaluate the **user closure** (not the spline) at each `s(t)` to
 ///      produce the final `q(t)` — preserving full tracking fidelity for any
 ///      shape the user can express analytically.
-fn plan_path_traj_via_copp<P, F, const N: usize>(path_fn: &F) -> RobotResult<Vec<MotionType<N>>>
+fn plan_path_traj_via_copp<P, F, const N: usize>(
+    path_fn: &F,
+    scale: f64,
+) -> RobotResult<Vec<MotionType<N>>>
 where
     P: ArmParam<N> + ?Sized,
     F: Fn(f64) -> Option<MotionType<N>>,
@@ -507,6 +526,7 @@ where
         derivs.dq.as_ref().unwrap(),
         derivs.ddq.as_ref().unwrap(),
         derivs.dddq.as_ref(),
+        scale,
     )?;
 
     // 4) Final q(t) comes from the user closure directly — no spline loss.
