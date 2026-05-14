@@ -16,7 +16,7 @@ pub fn joint_traj_pid_control<const N: usize>(
             return (ControlType::Zero, true);
         }
         if duration == Duration::ZERO && step == 0 {
-            return (ControlType::Zero, false);
+            return (ControlType::Torque([0.0; N]), false);
         }
 
         let last_index = traj.len() - 1;
