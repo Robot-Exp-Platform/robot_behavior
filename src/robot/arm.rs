@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct ArmState<const N: usize> {
+pub struct ArmStateSample<const N: usize> {
     pub joint: Option<[f64; N]>,
     pub joint_vel: Option<[f64; N]>,
     pub joint_acc: Option<[f64; N]>,
@@ -22,7 +22,20 @@ pub struct ArmState<const N: usize> {
     pub pose_o_to_ee: Option<Pose>,
     pub pose_ee_to_k: Option<Pose>,
     pub cartesian_vel: Option<[f64; 6]>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArmState<const N: usize> {
+    pub measured: ArmStateSample<N>,
+    pub commanded: ArmStateSample<N>,
+    pub desired: ArmStateSample<N>,
     pub load: Option<LoadState>,
+}
+
+impl<const N: usize> ArmState<N> {
+    pub fn from_measured(measured: ArmStateSample<N>, load: Option<LoadState>) -> Self {
+        Self { measured, load, ..Default::default() }
+    }
 }
 
 pub trait ArmDOF {
@@ -900,9 +913,9 @@ pub trait ArmRealtimeControlExt<const N: usize>: ArmRealtimeControl<N> {
 
 // pub struct ArmControlRhythm<I, O>;
 
-impl<const N: usize> Default for ArmState<N> {
+impl<const N: usize> Default for ArmStateSample<N> {
     fn default() -> Self {
-        ArmState {
+        ArmStateSample {
             joint: Some([0.; N]),
             joint_vel: Some([0.; N]),
             joint_acc: Some([0.; N]),
@@ -910,6 +923,16 @@ impl<const N: usize> Default for ArmState<N> {
             pose_o_to_ee: Some(Pose::default()),
             pose_ee_to_k: Some(Pose::default()),
             cartesian_vel: Some([0.; 6]),
+        }
+    }
+}
+
+impl<const N: usize> Default for ArmState<N> {
+    fn default() -> Self {
+        ArmState {
+            measured: ArmStateSample::default(),
+            commanded: ArmStateSample::default(),
+            desired: ArmStateSample::default(),
             load: Some(LoadState { m: 0., x: [0.; 3], i: [0.; 9] }),
         }
     }
@@ -917,16 +940,21 @@ impl<const N: usize> Default for ArmState<N> {
 
 impl<const N: usize> PartialEq<MotionType<N>> for ArmState<N> {
     fn eq(&self, other: &MotionType<N>) -> bool {
-        if let (MotionType::Joint(joint_target), Some(joint_state)) = (other, self.joint) {
+        if let (MotionType::Joint(joint_target), Some(joint_state)) = (other, self.measured.joint) {
             return joint_state == *joint_target;
         }
-        if let (MotionType::JointVel(vel_target), Some(vel_state)) = (other, self.joint_vel) {
+        if let (MotionType::JointVel(vel_target), Some(vel_state)) =
+            (other, self.measured.joint_vel)
+        {
             return vel_state == *vel_target;
         }
-        if let (MotionType::Cartesian(pose_target), Some(pose_state)) = (other, self.pose_o_to_ee) {
+        if let (MotionType::Cartesian(pose_target), Some(pose_state)) =
+            (other, self.measured.pose_o_to_ee)
+        {
             return pose_state == *pose_target;
         }
-        if let (MotionType::CartesianVel(vel_target), Some(vel_state)) = (other, self.cartesian_vel)
+        if let (MotionType::CartesianVel(vel_target), Some(vel_state)) =
+            (other, self.measured.cartesian_vel)
         {
             return vel_state == *vel_target;
         }
@@ -936,7 +964,9 @@ impl<const N: usize> PartialEq<MotionType<N>> for ArmState<N> {
 
 impl<const N: usize> PartialEq<ControlType<N>> for ArmState<N> {
     fn eq(&self, other: &ControlType<N>) -> bool {
-        if let (ControlType::Torque(torque_target), Some(force_state)) = (other, self.torque) {
+        if let (ControlType::Torque(torque_target), Some(force_state)) =
+            (other, self.measured.torque)
+        {
             return force_state == *torque_target;
         }
         false
@@ -953,7 +983,11 @@ impl<const N: usize> Display for ArmState<N> {
     | ddq: {:?},
     | torque: {:?},
     | pose_o_to_ee: {:?},"#,
-            self.joint, self.joint_vel, self.joint_acc, self.torque, self.pose_o_to_ee
+            self.measured.joint,
+            self.measured.joint_vel,
+            self.measured.joint_acc,
+            self.measured.torque,
+            self.measured.pose_o_to_ee
         )
     }
 }
@@ -989,13 +1023,13 @@ mod to_py {
     impl<const N: usize> From<ArmState<N>> for PyArmState {
         fn from(state: ArmState<N>) -> Self {
             PyArmState {
-                joint: state.joint.map(|j| j.to_vec()),
-                joint_vel: state.joint_vel.map(|j| j.to_vec()),
-                joint_acc: state.joint_acc.map(|j| j.to_vec()),
-                torque: state.torque.map(|t| t.to_vec()),
-                pose_o_to_ee: state.pose_o_to_ee.map(Into::into),
-                pose_ee_to_k: state.pose_ee_to_k.map(Into::into),
-                cartesian_vel: state.cartesian_vel,
+                joint: state.measured.joint.map(|j| j.to_vec()),
+                joint_vel: state.measured.joint_vel.map(|j| j.to_vec()),
+                joint_acc: state.measured.joint_acc.map(|j| j.to_vec()),
+                torque: state.measured.torque.map(|t| t.to_vec()),
+                pose_o_to_ee: state.measured.pose_o_to_ee.map(Into::into),
+                pose_ee_to_k: state.measured.pose_ee_to_k.map(Into::into),
+                cartesian_vel: state.measured.cartesian_vel,
                 load: state.load,
             }
         }
@@ -1004,14 +1038,17 @@ mod to_py {
     impl<const N: usize> From<PyArmState> for ArmState<N> {
         fn from(value: PyArmState) -> Self {
             ArmState {
-                joint: value.joint.map(|j| j.try_into().unwrap_or([0.; N])),
-                joint_vel: value.joint_vel.map(|j| j.try_into().unwrap_or([0.; N])),
-                joint_acc: value.joint_acc.map(|j| j.try_into().unwrap_or([0.; N])),
-                torque: value.torque.map(|t| t.try_into().unwrap_or([0.; N])),
-                pose_o_to_ee: value.pose_o_to_ee.map(Into::into),
-                pose_ee_to_k: value.pose_ee_to_k.map(Into::into),
-                cartesian_vel: value.cartesian_vel,
+                measured: ArmStateSample {
+                    joint: value.joint.map(|j| j.try_into().unwrap_or([0.; N])),
+                    joint_vel: value.joint_vel.map(|j| j.try_into().unwrap_or([0.; N])),
+                    joint_acc: value.joint_acc.map(|j| j.try_into().unwrap_or([0.; N])),
+                    torque: value.torque.map(|t| t.try_into().unwrap_or([0.; N])),
+                    pose_o_to_ee: value.pose_o_to_ee.map(Into::into),
+                    pose_ee_to_k: value.pose_ee_to_k.map(Into::into),
+                    cartesian_vel: value.cartesian_vel,
+                },
                 load: value.load,
+                ..Default::default()
             }
         }
     }
@@ -1063,13 +1100,13 @@ mod to_cxx {
     impl<const N: usize> From<ArmState<N>> for CxxArmState {
         fn from(value: ArmState<N>) -> Self {
             CxxArmState {
-                joint: value.joint.map(|j| j.to_vec()),
-                joint_vel: value.joint_vel.map(|j| j.to_vec()),
-                joint_acc: value.joint_acc.map(|j| j.to_vec()),
-                tau: value.tau.map(|t| t.to_vec()),
-                pose_o_to_ee: value.pose_o_to_ee,
-                pose_ee_to_k: value.pose_ee_to_k,
-                cartesian_vel: value.cartesian_vel.map(|c| c.to_vec()),
+                joint: value.measured.joint.map(|j| j.to_vec()),
+                joint_vel: value.measured.joint_vel.map(|j| j.to_vec()),
+                joint_acc: value.measured.joint_acc.map(|j| j.to_vec()),
+                tau: value.measured.torque.map(|t| t.to_vec()),
+                pose_o_to_ee: value.measured.pose_o_to_ee,
+                pose_ee_to_k: value.measured.pose_ee_to_k,
+                cartesian_vel: value.measured.cartesian_vel.map(|c| c.to_vec()),
                 load: value.load,
             }
         }

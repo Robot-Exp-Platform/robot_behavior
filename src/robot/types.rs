@@ -388,16 +388,16 @@ impl<const N: usize> MotionType<N> {
             (MotionType::Joint(joint), _) => {
                 let mut result = [0.0; N];
                 for i in 0..N {
-                    result[i] = joint[i] + state.joint.unwrap()[i]
+                    result[i] = joint[i] + state.measured.joint.unwrap()[i]
                 }
                 MotionType::Joint(result)
             }
             (MotionType::Cartesian(pose), Coord::Relative) => {
-                MotionType::Cartesian(state.pose_o_to_ee.unwrap() * pose)
+                MotionType::Cartesian(state.measured.pose_o_to_ee.unwrap() * pose)
             }
-            (MotionType::Cartesian(pose), Coord::Inertial) => {
-                MotionType::Cartesian(Pose::Position(state.pose_o_to_ee.unwrap().position()) * pose)
-            }
+            (MotionType::Cartesian(pose), Coord::Inertial) => MotionType::Cartesian(
+                Pose::Position(state.measured.pose_o_to_ee.unwrap().position()) * pose,
+            ),
             _ => self,
         }
     }

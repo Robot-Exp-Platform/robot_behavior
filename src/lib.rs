@@ -1,6 +1,7 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
+pub mod controller;
 mod exception;
 #[cfg(feature = "ffi")]
 pub mod ffi;
@@ -14,6 +15,7 @@ mod world;
 use std::env;
 use std::path::PathBuf;
 
+pub use controller::*;
 pub use exception::*;
 pub use physics_engine::*;
 pub use renderer::*;

@@ -28,10 +28,10 @@ pub fn joint_state_map_from_arm_state<const N: usize>(
     names: &[&str; N],
     state: &ArmState<N>,
 ) -> HashMap<String, JointStateEntry> {
-    let positions = state.joint.unwrap_or([0.0; N]);
-    let velocities = state.joint_vel;
-    let accelerations = state.joint_acc;
-    let torques = state.torque;
+    let positions = state.measured.joint.unwrap_or([0.0; N]);
+    let velocities = state.measured.joint_vel;
+    let accelerations = state.measured.joint_acc;
+    let torques = state.measured.torque;
 
     names
         .iter()
@@ -58,10 +58,10 @@ pub fn update_joint_state_map<const N: usize>(
     names: &[&str],
     state: &ArmState<N>,
 ) {
-    let positions = state.joint.unwrap_or([0.0; N]);
-    let velocities = state.joint_vel;
-    let accelerations = state.joint_acc;
-    let torques = state.torque;
+    let positions = state.measured.joint.unwrap_or([0.0; N]);
+    let velocities = state.measured.joint_vel;
+    let accelerations = state.measured.joint_acc;
+    let torques = state.measured.torque;
 
     if let Ok(mut guard) = map.lock() {
         for (i, name) in names.iter().enumerate() {
