@@ -47,20 +47,20 @@ where
         &mut self,
         mut nodes: Nodes,
         mut op_domain: F,
-    ) -> impl Future<Output = Self::Output> + Send
+    ) -> impl Future<Output = (Self::Output, Nodes)> + Send
     where
         Nodes: Send,
         F: FnMut(Nodes, Self::Yield) -> Fut + Send,
         Fut: Future<Output = (Self::Feed, Nodes)> + Send,
     {
         async move {
-            // Channel: closure → drive loop (arm state)
+            // Channel: closure �?drive loop (arm state)
             let (state_tx, mut state_rx) =
                 tokio::sync::mpsc::unbounded_channel::<(ArmState<N>, Duration)>();
-            // Channel: drive loop → closure (control command)
+            // Channel: drive loop �?closure (control command)
             let (cmd_tx, cmd_rx) = std::sync::mpsc::sync_channel::<(ControlType<N>, bool)>(0);
 
-            self.arm.control_with_closure(move |state, dt| {
+            if let Err(e) = self.arm.control_with_closure(move |state, dt| {
                 if state_tx.send((state, dt)).is_err() {
                     return (ControlType::Zero, true);
                 }
@@ -68,7 +68,9 @@ where
                     Ok(cmd) => cmd,
                     Err(_) => (ControlType::Zero, true),
                 }
-            })?;
+            }) {
+                return (Err(e), nodes);
+            }
 
             let period = self.period;
             while let Some((state, dt)) = state_rx.recv().await {
@@ -90,7 +92,7 @@ where
                 }
             }
 
-            Ok(())
+            (Ok(()), nodes)
         }
     }
 }
@@ -129,7 +131,7 @@ where
         &mut self,
         mut nodes: Nodes,
         mut op_domain: F,
-    ) -> impl Future<Output = Self::Output> + Send
+    ) -> impl Future<Output = (Self::Output, Nodes)> + Send
     where
         Nodes: Send,
         F: FnMut(Nodes, Self::Yield) -> Fut + Send,
@@ -140,7 +142,7 @@ where
                 tokio::sync::mpsc::unbounded_channel::<(ArmState<N>, Duration)>();
             let (cmd_tx, cmd_rx) = std::sync::mpsc::sync_channel::<(MotionType<N>, bool)>(0);
 
-            self.arm.move_with_closure(move |state, dt| {
+            if let Err(e) = self.arm.move_with_closure(move |state, dt| {
                 if state_tx.send((state, dt)).is_err() {
                     return (MotionType::Stop, true);
                 }
@@ -148,7 +150,9 @@ where
                     Ok(cmd) => cmd,
                     Err(_) => (MotionType::Stop, true),
                 }
-            })?;
+            }) {
+                return (Err(e), nodes);
+            }
 
             let period = self.period;
             while let Some((state, dt)) = state_rx.recv().await {
@@ -169,7 +173,7 @@ where
                 }
             }
 
-            Ok(())
+            (Ok(()), nodes)
         }
     }
 }
@@ -206,16 +210,20 @@ where
         &mut self,
         mut nodes: Nodes,
         mut op_domain: F,
-    ) -> impl Future<Output = Self::Output> + Send
+    ) -> impl Future<Output = (Self::Output, Nodes)> + Send
     where
         Nodes: Send,
         F: FnMut(Nodes, Self::Yield) -> Fut + Send,
         Fut: Future<Output = (Self::Feed, Nodes)> + Send,
     {
         async move {
-            let handle = self
+            let handle = match self
                 .arm
-                .cartesian_impedance_async(self.stiffness, self.damping)?;
+                .cartesian_impedance_async(self.stiffness, self.damping)
+            {
+                Ok(h) => h,
+                Err(e) => return (Err(e), nodes),
+            };
 
             let mut sequence = 0u32;
             let start_time = Instant::now();
@@ -225,7 +233,10 @@ where
                 tokio::time::sleep_until(next_target.into()).await;
                 sequence += 1;
 
-                let state = self.arm.state()?;
+                let state = match self.arm.state() {
+                    Ok(s) => s,
+                    Err(e) => return (Err(e), nodes),
+                };
                 let (feed, returned_nodes) = op_domain(nodes, state).await;
                 nodes = returned_nodes;
 
@@ -238,7 +249,7 @@ where
                 }
             }
 
-            Ok(())
+            (Ok(()), nodes)
         }
     }
 }
@@ -273,16 +284,20 @@ where
         &mut self,
         mut nodes: Nodes,
         mut op_domain: F,
-    ) -> impl Future<Output = Self::Output> + Send
+    ) -> impl Future<Output = (Self::Output, Nodes)> + Send
     where
         Nodes: Send,
         F: FnMut(Nodes, Self::Yield) -> Fut + Send,
         Fut: Future<Output = (Self::Feed, Nodes)> + Send,
     {
         async move {
-            let handle = self
+            let handle = match self
                 .arm
-                .joint_impedance_async(&self.stiffness, &self.damping)?;
+                .joint_impedance_async(&self.stiffness, &self.damping)
+            {
+                Ok(h) => h,
+                Err(e) => return (Err(e), nodes),
+            };
 
             let mut sequence = 0u32;
             let start_time = Instant::now();
@@ -292,7 +307,10 @@ where
                 tokio::time::sleep_until(next_target.into()).await;
                 sequence += 1;
 
-                let state = self.arm.state()?;
+                let state = match self.arm.state() {
+                    Ok(s) => s,
+                    Err(e) => return (Err(e), nodes),
+                };
                 let (feed, returned_nodes) = op_domain(nodes, state).await;
                 nodes = returned_nodes;
 
@@ -305,7 +323,7 @@ where
                 }
             }
 
-            Ok(())
+            (Ok(()), nodes)
         }
     }
 }
