@@ -1,7 +1,6 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-pub mod controller;
 mod exception;
 #[cfg(feature = "ffi")]
 pub mod ffi;
@@ -15,7 +14,6 @@ mod world;
 use std::env;
 use std::path::PathBuf;
 
-pub use controller::*;
 pub use exception::*;
 pub use physics_engine::*;
 pub use renderer::*;
@@ -39,15 +37,20 @@ pub mod behavior {
         Arm, ArmControlRhythm, ArmDOF, ArmForwardKinematics, ArmImpedance, ArmInverseKinematics,
         ArmMotionRhythm, ArmParam, ArmPreplannedMotion, ArmPreplannedMotionExt, ArmPreplannedPath,
         ArmRealtimeControl, ArmRealtimeControlExt, ArmStreamingHandle, ArmStreamingMotion,
-        ArmStreamingMotionExt, CartesianImpedance, CartesianImpedanceHandle,
-        CartesianImpedanceRhythm, JointImpedance, JointImpedanceHandle, JointImpedanceRhythm,
-        JointStateEntry, JointStateMap, JointStateSync, Robot, RobotFile,
+        ArmStreamingMotionExt, CartesianImpedanceHandle, CartesianImpedanceRhythm,
+        JointImpedanceHandle, JointImpedanceRhythm, JointStateEntry, JointStateMap, JointStateSync,
+        Robot, RobotFile,
     };
     pub use crate::robot::{joint_state_map_from_arm_state, update_joint_state_map};
 
     pub use crate::physics_engine::{AddSearchPath, PhysicsEngine};
     pub use crate::renderer::{AttachFrom, Renderer};
     pub use crate::world::{AddCollision, AddRobot, AddVisual, EntityBuilder};
+}
+
+pub mod controller {
+    pub use crate::utils::controller::impedance::*;
+    pub use crate::utils::controller::pid::*;
 }
 
 #[cfg(feature = "to_py")]

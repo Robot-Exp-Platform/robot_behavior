@@ -5,7 +5,6 @@ use std::time::{Duration, Instant};
 use roplat::RoplatError;
 use roplat::rhythm::Rhythm;
 
-use crate::robot::arm::{CartesianImpedance, JointImpedance};
 use crate::{
     ArmImpedance, ArmRealtimeControl, ArmState, ControlType, MotionType, Pose, RobotException,
 };
