@@ -1,5 +1,7 @@
 use nalgebra as na;
 
+/// Convert a column-major homogeneous 4x4 matrix (16 elements) into an
+/// [`na::Isometry3`].
 pub fn homo_to_isometry(homo: &[f64; 16]) -> na::Isometry3<f64> {
     let rot = na::Rotation3::from_matrix(
         &na::Matrix4::from_column_slice(homo)
@@ -12,6 +14,14 @@ pub fn homo_to_isometry(homo: &[f64; 16]) -> na::Isometry3<f64> {
     )
 }
 
+/// Concatenate two fixed-size arrays into a single `[T; N + M]`.
+///
+/// # Example
+/// ```
+/// use robot_behavior::combine_array;
+///
+/// assert_eq!(combine_array(&[1, 2, 3], &[4, 5]), [1, 2, 3, 4, 5]);
+/// ```
 pub fn combine_array<T: Copy, const N: usize, const M: usize>(
     v1: &[T; N],
     v2: &[T; M],
@@ -22,6 +32,7 @@ pub fn combine_array<T: Copy, const N: usize, const M: usize>(
     result
 }
 
+/// Convert an array of angles from radians to degrees, element-wise.
 pub fn rad_to_deg<const N: usize>(arr: [f64; N]) -> [f64; N] {
     arr.map(|x| x.to_degrees())
 }
@@ -66,6 +77,10 @@ pub fn isometry_write_to_frame(transform: &na::Isometry3<f64>, frame: &mut [f64;
     frame[3..7].copy_from_slice(&orientation);
 }
 
+/// Convert an array of angles from degrees to radians, element-wise.
+///
+/// `const fn` so it can build joint-limit constants at compile time, e.g. in a
+/// [`Joints`](crate::Joints) impl.
 pub const fn to_radians_array<const N: usize>(arr: [f64; N]) -> [f64; N] {
     let mut result = [0.0; N];
     let mut i = 0;

@@ -1,61 +1,51 @@
-use std::ops::{Div, Mul};
+﻿use std::ops::{Div, Mul};
 
 use nalgebra as na;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
-use crate::utils::{combine_array, homo_to_isometry};
+use crate::{
+    ArmState,
+    utils::{combine_array, homo_to_isometry},
+};
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Clone, Copy)]
-/// The reference frame in which a Cartesian command is interpreted.
-///
-/// Parsed from a string via [`From<&str>`](Coord::from): `"OCS"` → [`Coord::OCS`],
-/// `"Shot"` → [`Coord::Relative`], `"Inertial"` → [`Coord::Inertial`], and any
-/// other string is decoded as a JSON [`Pose`] into [`Coord::Other`].
 pub enum Coord {
-    /// Object / base coordinate system (the default world frame).
     #[default]
     OCS,
-    /// Relative to the robot's current pose (incremental motion).
     Relative,
-    /// A fixed inertial frame.
     Inertial,
-    /// An arbitrary user-supplied frame given as a [`Pose`].
     Other(Pose),
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
-/// A rigid-body pose (position + orientation) with several interchangeable
-/// representations.
-///
-/// All variants describe the same `SE(3)` transform; the accessor methods
-/// ([`euler`](Pose::euler), [`quat`](Pose::quat), [`homo`](Pose::homo),
-/// [`axis_angle`](Pose::axis_angle), [`position`](Pose::position)) convert
-/// between them on demand, and `From` impls construct a `Pose` from arrays /
-/// [`na::Isometry3`] / `Vec<f64>`. The [`Default`] is the identity transform.
-///
-/// # Example
-/// ```
-/// use robot_behavior::Pose;
-///
-/// // 3 numbers => pure translation; 7 numbers => translation + XYZW quaternion.
-/// let p = Pose::from([0.1, 0.2, 0.3]);
-/// assert_eq!(p.position(), [0.1, 0.2, 0.3]);
-///
-/// // Convert to a homogeneous 4x4 column-major matrix.
-/// let homo = p.homo();
-/// assert_eq!(&homo[12..15], &[0.1, 0.2, 0.3]);
-/// ```
 pub enum Pose {
-    /// Translation `[x, y, z]` plus intrinsic Euler angles `[roll, pitch, yaw]` (rad).
     Euler([f64; 3], [f64; 3]),
-    /// A full isometry (translation + unit quaternion rotation).
     Quat(na::Isometry3<f64>),
-    /// A column-major homogeneous 4x4 matrix flattened to 16 elements.
     Homo([f64; 16]),
-    /// Translation `[x, y, z]`, rotation axis `[ax, ay, az]` and angle (rad).
     AxisAngle([f64; 3], [f64; 3], f64),
-    /// Pure translation `[x, y, z]` with identity orientation.
     Position([f64; 3]),
+}
+
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default)]
+pub enum ControlType<const N: usize> {
+    #[default]
+    Zero,
+    Torque(#[serde_as(as = "[_; N]")] [f64; N]),
+}
+
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default)]
+pub enum MotionType<const N: usize> {
+    Joint(#[serde_as(as = "[_; N]")] [f64; N]),
+    JointVel(#[serde_as(as = "[_; N]")] [f64; N]),
+    Cartesian(Pose),
+    CartesianVel([f64; 6]),
+    Position([f64; 3]),
+    PositionVel([f64; 3]),
+    #[default]
+    Stop,
 }
 
 impl From<&str> for Coord {
@@ -76,8 +66,6 @@ impl Default for Pose {
 }
 
 impl Pose {
-    /// Convert to translation `[x, y, z]` and intrinsic Euler angles
-    /// `[roll, pitch, yaw]` (rad).
     pub fn euler(&self) -> ([f64; 3], [f64; 3]) {
         match self {
             Pose::Euler(tran, rot) => (*tran, *rot),
@@ -103,7 +91,6 @@ impl Pose {
         }
     }
 
-    /// Convert to an [`na::Isometry3`] (translation + unit-quaternion rotation).
     pub fn quat(&self) -> na::Isometry3<f64> {
         match self {
             Pose::Euler(tran, rot) => na::Isometry3::<f64>::from_parts(
@@ -126,13 +113,11 @@ impl Pose {
         }
     }
 
-    /// Convert to translation `[x, y, z]` and a unit quaternion in XYZW order.
     pub fn quat_array(&self) -> ([f64; 3], [f64; 4]) {
         let quat = self.quat();
         (quat.translation.vector.into(), quat.rotation.coords.into())
     }
 
-    /// Convert to a column-major homogeneous 4x4 matrix (16 elements).
     pub fn homo(&self) -> [f64; 16] {
         match self {
             Pose::Euler(tran, rot) => na::IsometryMatrix3::from_parts(
@@ -165,8 +150,6 @@ impl Pose {
         }
     }
 
-    /// Convert to translation `[x, y, z]`, rotation axis `[ax, ay, az]` and
-    /// angle (rad).
     pub fn axis_angle(&self) -> ([f64; 3], [f64; 3], f64) {
         match self {
             Pose::Euler(tran, rot) => {
@@ -196,7 +179,6 @@ impl Pose {
         }
     }
 
-    /// Extract just the translation `[x, y, z]`, discarding orientation.
     pub fn position(&self) -> [f64; 3] {
         match self {
             Pose::Euler(tran, _) => *tran,
@@ -306,7 +288,7 @@ impl From<Vec<f64>> for Pose {
 
 impl From<Pose> for [f64; 3] {
     fn from(value: Pose) -> Self {
-        value.position()
+        value.meas.q()
     }
 }
 
@@ -365,9 +347,9 @@ impl From<Pose> for Vec<f64> {
 impl Div for Pose {
     type Output = f64;
     fn div(self, rhs: Self) -> Self::Output {
-        self.position()
+        self.meas.q()
             .iter()
-            .zip(rhs.position().iter())
+            .zip(rhs.meas.q().iter())
             .map(|(a, b)| (a - b).exp2())
             .sum()
     }
@@ -376,9 +358,9 @@ impl Div for Pose {
 impl Div for &Pose {
     type Output = f64;
     fn div(self, rhs: Self) -> Self::Output {
-        self.position()
+        self.meas.q()
             .iter()
-            .zip(rhs.position().iter())
+            .zip(rhs.meas.q().iter())
             .map(|(a, b)| (a - b).exp2())
             .sum()
     }
@@ -395,6 +377,28 @@ impl Mul for Pose {
                     .unwrap(),
             ),
             _ => Pose::Quat(self.quat() * rhs.quat()),
+        }
+    }
+}
+
+impl<const N: usize> MotionType<N> {
+    pub fn with_coord(self, coord: &Coord, state: &ArmState<N>) -> MotionType<N> {
+        match (self, coord) {
+            (_, Coord::OCS) => self,
+            (MotionType::Joint(joint), _) => {
+                let mut result = [0.0; N];
+                for i in 0..N {
+                    result[i] = joint[i] + state.j.meas.q.unwrap()[i]
+                }
+                MotionType::Joint(result)
+            }
+            (MotionType::Cartesian(pose), Coord::Relative) => {
+                MotionType::Cartesian(state.flange.meas.pose.unwrap() * pose)
+            }
+            (MotionType::Cartesian(pose), Coord::Inertial) => MotionType::Cartesian(
+                Pose::Position(state.flange.meas.pose.unwrap().meas.q()) * pose,
+            ),
+            _ => self,
         }
     }
 }
@@ -457,7 +461,7 @@ mod to_py {
         }
 
         fn position(&self) -> [f64; 3] {
-            Into::<Pose>::into(*self).position()
+            Into::<Pose>::into(*self).meas.q()
         }
     }
 
@@ -508,18 +512,102 @@ mod to_py {
         #[pyo3(constructor = ())]
         Stop(),
     }
+
+    impl<const N: usize> From<MotionType<N>> for PyMotionType {
+        fn from(value: MotionType<N>) -> Self {
+            match value {
+                MotionType::Joint(joint) => PyMotionType::Joint(joint.to_vec()),
+                MotionType::JointVel(joint_vel) => PyMotionType::JointVel(joint_vel.to_vec()),
+                MotionType::Cartesian(pose) => PyMotionType::Cartesian(pose.into()),
+                MotionType::CartesianVel(cartesian_vel) => {
+                    PyMotionType::CartesianVel(cartesian_vel.to_vec())
+                }
+                MotionType::Position(position) => PyMotionType::Position(position.to_vec()),
+                MotionType::PositionVel(position_vel) => {
+                    PyMotionType::PositionVel(position_vel.to_vec())
+                }
+                MotionType::Stop => PyMotionType::Stop(),
+            }
+        }
+    }
+
+    impl<const N: usize> TryFrom<PyMotionType> for MotionType<N> {
+        type Error = Vec<f64>;
+        fn try_from(value: PyMotionType) -> Result<Self, Self::Error> {
+            Ok(match value {
+                PyMotionType::Joint(joint) => MotionType::Joint(joint.try_into()?),
+                PyMotionType::JointVel(joint_vel) => MotionType::JointVel(joint_vel.try_into()?),
+                PyMotionType::Cartesian(pose) => MotionType::Cartesian(pose.into()),
+                PyMotionType::CartesianVel(cartesian_vel) => {
+                    MotionType::CartesianVel(cartesian_vel.try_into()?)
+                }
+                PyMotionType::Position(position) => MotionType::Position(position.try_into()?),
+                PyMotionType::PositionVel(position_vel) => {
+                    MotionType::PositionVel(position_vel.try_into()?)
+                }
+                PyMotionType::Stop() => MotionType::Stop,
+            })
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    #[pyclass(name = "ControlType")]
+    pub enum PyControlType {
+        #[pyo3(constructor = ())]
+        Zero(),
+        #[pyo3(constructor = (_0))]
+        Torque(Vec<f64>),
+    }
+
+    impl<const N: usize> From<ControlType<N>> for PyControlType {
+        fn from(value: ControlType<N>) -> Self {
+            match value {
+                ControlType::Zero => PyControlType::Zero(),
+                ControlType::Torque(torque) => PyControlType::Torque(torque.to_vec()),
+            }
+        }
+    }
+
+    impl<const N: usize> TryFrom<PyControlType> for ControlType<N> {
+        type Error = Vec<f64>;
+        fn try_from(value: PyControlType) -> Result<Self, Self::Error> {
+            Ok(match value {
+                PyControlType::Zero() => ControlType::Zero,
+                PyControlType::Torque(torque) => ControlType::Torque(torque.try_into()?),
+            })
+        }
+    }
 }
 
 #[cfg(feature = "to_py")]
 pub use to_py::*;
 
 #[cfg(feature = "to_cxx")]
-#[allow(unused_imports)]
 mod to_cxx {
     use super::*;
 
     #[cxx::bridge]
     mod to_cxx_bridge {
+        pub struct CxxMotionType {
+            pub mode: CxxMotionTypeMode,
+            pub values: Vec<f64>,
+        }
+        pub enum CxxMotionTypeMode {
+            Joint,
+            JointVel,
+            Cartesian,
+            CartesianVel,
+            Position,
+            PositionVel,
+        }
+        pub struct CxxControlType {
+            pub mode: CxxControlTypeMode,
+            pub values: Vec<f64>,
+        }
+        pub enum CxxControlTypeMode {
+            Zero,
+            Torque,
+        }
         extern "Rust" {
             type CxxPose;
             #[Self = "CxxPose"]
@@ -574,8 +662,37 @@ mod to_cxx {
             Box::new(CxxPose(vec.into()))
         }
     }
+
+    impl<const N: usize> From<CxxMotionType> for MotionType<N> {
+        fn from(cxx: CxxMotionType) -> Self {
+            match cxx.mode {
+                CxxMotionTypeMode::Joint => MotionType::Joint(cxx.values.try_into().unwrap()),
+                CxxMotionTypeMode::JointVel => MotionType::JointVel(cxx.values.try_into().unwrap()),
+                CxxMotionTypeMode::Cartesian => {
+                    MotionType::Cartesian(cxx.values.try_into().unwrap())
+                }
+                CxxMotionTypeMode::CartesianVel => {
+                    MotionType::CartesianVel(cxx.values.try_into().unwrap())
+                }
+                CxxMotionTypeMode::Position => MotionType::Position(cxx.values.try_into().unwrap()),
+                CxxMotionTypeMode::PositionVel => {
+                    MotionType::PositionVel(cxx.values.try_into().unwrap())
+                }
+                _ => panic!("Invalid mode for MotionType"),
+            }
+        }
+    }
+
+    impl<const N: usize> From<CxxControlType> for ControlType<N> {
+        fn from(cxx: CxxControlType) -> Self {
+            match cxx.mode {
+                CxxControlTypeMode::Zero => ControlType::Zero,
+                CxxControlTypeMode::Torque => ControlType::Torque(cxx.values.try_into().unwrap()),
+                _ => panic!("Invalid mode for ControlType"),
+            }
+        }
+    }
 }
 
 #[cfg(feature = "to_cxx")]
-#[allow(unused_imports)]
 pub use to_cxx::*;

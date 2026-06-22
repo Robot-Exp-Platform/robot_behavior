@@ -1,6 +1,6 @@
 [package]
 name = "robot_behavior"
-version = "0.5.4"
+version = "0.6.0"
 edition = "2024"
 authors = ["Yixing <yanjizhou312@163.com>"]
 readme = "README.md"
@@ -19,8 +19,8 @@ opt-level = 3
 
 [dependencies]
 roplat = { version = "0.2.0", path = "../../roplat/roplat" }
-copp = { version = "0.1.0", path = "../utils/copp" }
-pyo3 = { version = "0.27.1", optional = true, features = [
+copp = { version = "0.2.2" }
+pyo3 = { version = "0.28.3", optional = true, features = [
     "extension-module",
     "multiple-pymethods",
 ] }

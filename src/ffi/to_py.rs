@@ -1,220 +1,427 @@
+use std::time::Duration;
+
+use pyo3::prelude::*;
+
+use crate::{
+    ArmState, JointSample, JointState, RobotException, SpatialSample, StateView,
+    robot::types::PyPose,
+};
+
+#[derive(Debug, Clone)]
+#[pyclass(name = "JointSample")]
+pub struct PyJointSample {
+    #[pyo3(get, set)]
+    pub q: Option<Vec<f64>>,
+    #[pyo3(get, set)]
+    pub dq: Option<Vec<f64>>,
+    #[pyo3(get, set)]
+    pub ddq: Option<Vec<f64>>,
+    #[pyo3(get, set)]
+    pub tau: Option<Vec<f64>>,
+    #[pyo3(get, set)]
+    pub dtau: Option<Vec<f64>>,
+}
+
+#[pymethods]
+impl PyJointSample {
+    #[new]
+    fn new(
+        q: Option<Vec<f64>>,
+        dq: Option<Vec<f64>>,
+        ddq: Option<Vec<f64>>,
+        tau: Option<Vec<f64>>,
+        dtau: Option<Vec<f64>>,
+    ) -> Self {
+        Self { q, dq, ddq, tau, dtau }
+    }
+}
+
+impl<const N: usize> From<JointSample<N>> for PyJointSample {
+    fn from(value: JointSample<N>) -> Self {
+        Self {
+            q: value.q.map(Vec::from),
+            dq: value.dq.map(Vec::from),
+            ddq: value.ddq.map(Vec::from),
+            tau: value.tau.map(Vec::from),
+            dtau: value.dtau.map(Vec::from),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[pyclass(name = "SpatialSample")]
+pub struct PySpatialSample {
+    #[pyo3(get, set)]
+    pub pose: Option<PyPose>,
+    #[pyo3(get, set)]
+    pub vel: Option<[f64; 6]>,
+    #[pyo3(get, set)]
+    pub acc: Option<[f64; 6]>,
+    #[pyo3(get, set)]
+    pub wrench: Option<[f64; 6]>,
+}
+
+#[pymethods]
+impl PySpatialSample {
+    #[new]
+    fn new(
+        pose: Option<PyPose>,
+        vel: Option<[f64; 6]>,
+        acc: Option<[f64; 6]>,
+        wrench: Option<[f64; 6]>,
+    ) -> Self {
+        Self { pose, vel, acc, wrench }
+    }
+}
+
+impl From<SpatialSample> for PySpatialSample {
+    fn from(value: SpatialSample) -> Self {
+        Self {
+            pose: value.pose.map(PyPose::from),
+            vel: value.vel,
+            acc: value.acc,
+            wrench: value.wrench,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[pyclass(name = "JointState")]
+pub struct PyJointState {
+    #[pyo3(get, set)]
+    pub meas: PyJointSample,
+    #[pyo3(get, set)]
+    pub cmd: PyJointSample,
+    #[pyo3(get, set)]
+    pub des: PyJointSample,
+}
+
+#[pymethods]
+impl PyJointState {
+    #[new]
+    fn new(meas: PyJointSample, cmd: PyJointSample, des: PyJointSample) -> Self {
+        Self { meas, cmd, des }
+    }
+}
+
+impl<const N: usize> From<JointState<N>> for PyJointState {
+    fn from(value: JointState<N>) -> Self {
+        Self {
+            meas: value.meas.into(),
+            cmd: value.cmd.into(),
+            des: value.des.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[pyclass(name = "SpatialState")]
+pub struct PySpatialState {
+    #[pyo3(get, set)]
+    pub meas: PySpatialSample,
+    #[pyo3(get, set)]
+    pub cmd: PySpatialSample,
+    #[pyo3(get, set)]
+    pub des: PySpatialSample,
+}
+
+#[pymethods]
+impl PySpatialState {
+    #[new]
+    fn new(meas: PySpatialSample, cmd: PySpatialSample, des: PySpatialSample) -> Self {
+        Self { meas, cmd, des }
+    }
+}
+
+impl From<StateView<SpatialSample>> for PySpatialState {
+    fn from(value: StateView<SpatialSample>) -> Self {
+        Self {
+            meas: value.meas.into(),
+            cmd: value.cmd.into(),
+            des: value.des.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[pyclass(name = "ArmState")]
+pub struct PyArmState {
+    #[pyo3(get, set)]
+    pub joint: PyJointState,
+    #[pyo3(get, set)]
+    pub flange: PySpatialState,
+    #[pyo3(get, set)]
+    pub tcp: Option<PySpatialState>,
+    #[pyo3(get, set)]
+    pub stiffness: Option<PySpatialState>,
+    #[pyo3(get, set)]
+    pub load: Option<crate::LoadState>,
+}
+
+#[pymethods]
+impl PyArmState {
+    #[new]
+    fn new(
+        joint: PyJointState,
+        flange: PySpatialState,
+        tcp: Option<PySpatialState>,
+        stiffness: Option<PySpatialState>,
+        load: Option<crate::LoadState>,
+    ) -> Self {
+        Self { joint, flange, tcp, stiffness, load }
+    }
+}
+
+impl<const N: usize> From<ArmState<N>> for PyArmState {
+    fn from(value: ArmState<N>) -> Self {
+        Self {
+            joint: value.joint.into(),
+            flange: value.flange.into(),
+            tcp: value.tcp.map(PySpatialState::from),
+            stiffness: value.stiffness.map(PySpatialState::from),
+            load: value.load,
+        }
+    }
+}
+
+pub fn vec_to_array<const N: usize>(values: Vec<f64>) -> PyResult<[f64; N]> {
+    values.try_into().map_err(|values: Vec<f64>| {
+        RobotException::InvalidFFIData(format!(
+            "expected vector length {}, got {}",
+            N,
+            values.len()
+        ))
+        .into()
+    })
+}
+
+pub fn py_control_array<const N: usize>(
+    callable: &Py<PyAny>,
+    state: PyJointState,
+    duration: Duration,
+) -> ([f64; N], bool) {
+    Python::attach(|py| {
+        let result = callable
+            .call1(py, (state, duration.as_secs_f64()))
+            .and_then(|obj| obj.extract::<(Vec<f64>, bool)>(py))
+            .and_then(|(cmd, done)| vec_to_array::<N>(cmd).map(|cmd| (cmd, done)));
+
+        match result {
+            Ok(result) => result,
+            Err(err) => {
+                err.print(py);
+                ([0.0; N], true)
+            }
+        }
+    })
+}
+
+pub fn py_arm_control_array<const N: usize>(
+    callable: &Py<PyAny>,
+    state: PyArmState,
+    duration: Duration,
+) -> ([f64; N], bool) {
+    Python::attach(|py| {
+        let result = callable
+            .call1(py, (state, duration.as_secs_f64()))
+            .and_then(|obj| obj.extract::<(Vec<f64>, bool)>(py))
+            .and_then(|(cmd, done)| vec_to_array::<N>(cmd).map(|cmd| (cmd, done)));
+
+        match result {
+            Ok(result) => result,
+            Err(err) => {
+                err.print(py);
+                ([0.0; N], true)
+            }
+        }
+    })
+}
+
+pub fn py_arm_control_vec6(
+    callable: &Py<PyAny>,
+    state: PyArmState,
+    duration: Duration,
+) -> ([f64; 6], bool) {
+    Python::attach(|py| {
+        let result = callable
+            .call1(py, (state, duration.as_secs_f64()))
+            .and_then(|obj| obj.extract::<(Vec<f64>, bool)>(py))
+            .and_then(|(cmd, done)| vec_to_array::<6>(cmd).map(|cmd| (cmd, done)));
+
+        match result {
+            Ok(result) => result,
+            Err(err) => {
+                err.print(py);
+                ([0.0; 6], true)
+            }
+        }
+    })
+}
+
+pub fn py_arm_control_pose(
+    callable: &Py<PyAny>,
+    state: PyArmState,
+    duration: Duration,
+) -> (crate::Pose, bool) {
+    Python::attach(|py| {
+        let result = callable
+            .call1(py, (state, duration.as_secs_f64()))
+            .and_then(|obj| obj.extract::<(PyPose, bool)>(py))
+            .map(|(pose, done)| (pose.into(), done));
+
+        match result {
+            Ok(result) => result,
+            Err(err) => {
+                err.print(py);
+                (crate::Pose::default(), true)
+            }
+        }
+    })
+}
+
 #[macro_export]
-macro_rules! py_robot_behavior {
-    ($pyname: ident($name: ty)) => {
+macro_rules! py_robot_wrapper {
+    ($py:ident($inner:ty)) => {
+        #[pyo3::pyclass]
+        pub struct $py(pub $inner);
+    };
+}
+
+#[macro_export]
+macro_rules! py_robot {
+    ($py:ident($inner:ty)) => {
         #[pyo3::pymethods]
-        impl $pyname {
+        impl $py {
             #[staticmethod]
             fn version() -> String {
-                <$name>::version()
+                <$inner as $crate::Robot>::version()
             }
+
             fn init(&mut self) -> pyo3::PyResult<()> {
-                self.0.init().map_err(Into::into)
+                <$inner as $crate::Robot>::init(&mut self.0).map_err(Into::into)
             }
-            fn shutdown(&mut self) -> pyo3::PyResult<()> {
-                self.0.shutdown().map_err(Into::into)
-            }
+
             fn enable(&mut self) -> pyo3::PyResult<()> {
-                self.0.enable().map_err(Into::into)
+                <$inner as $crate::Robot>::enable(&mut self.0).map_err(Into::into)
             }
+
             fn disable(&mut self) -> pyo3::PyResult<()> {
-                self.0.disable().map_err(Into::into)
+                <$inner as $crate::Robot>::disable(&mut self.0).map_err(Into::into)
             }
+
+            fn shutdown(&mut self) -> pyo3::PyResult<()> {
+                <$inner as $crate::Robot>::shutdown(&mut self.0).map_err(Into::into)
+            }
+
             fn reset(&mut self) -> pyo3::PyResult<()> {
-                self.0.reset().map_err(Into::into)
+                <$inner as $crate::Robot>::reset(&mut self.0).map_err(Into::into)
             }
-            fn is_moving(&mut self) -> bool {
-                self.0.is_moving()
-            }
+
             fn stop(&mut self) -> pyo3::PyResult<()> {
-                self.0.stop().map_err(Into::into)
+                <$inner as $crate::Robot>::stop(&mut self.0).map_err(Into::into)
             }
+
             fn pause(&mut self) -> pyo3::PyResult<()> {
-                self.0.pause().map_err(Into::into)
+                <$inner as $crate::Robot>::pause(&mut self.0).map_err(Into::into)
             }
+
             fn resume(&mut self) -> pyo3::PyResult<()> {
-                self.0.resume().map_err(Into::into)
+                <$inner as $crate::Robot>::resume(&mut self.0).map_err(Into::into)
             }
+
             fn emergency_stop(&mut self) -> pyo3::PyResult<()> {
-                self.0.emergency_stop().map_err(Into::into)
+                <$inner as $crate::Robot>::emergency_stop(&mut self.0).map_err(Into::into)
             }
+
+            fn waiting_for_finish(&mut self) -> pyo3::PyResult<()> {
+                <$inner as $crate::Robot>::waiting_for_finish(&mut self.0).map_err(Into::into)
+            }
+
             fn clear_emergency_stop(&mut self) -> pyo3::PyResult<()> {
-                self.0.clear_emergency_stop().map_err(Into::into)
+                <$inner as $crate::Robot>::clear_emergency_stop(&mut self.0).map_err(Into::into)
+            }
+
+            fn is_moving(&mut self) -> pyo3::PyResult<bool> {
+                <$inner as $crate::Robot>::is_moving(&mut self.0).map_err(Into::into)
             }
         }
     };
 }
 
 #[macro_export]
-macro_rules! py_arm_behavior {
-    ($pyname: ident<{$dof: expr}>($name: ty)) => {
+macro_rules! py_arm {
+    ($py:ident < {$dof:expr} > ($inner:ty)) => {
         #[pyo3::pymethods]
-        impl $pyname {
+        impl $py {
             fn state(&mut self) -> pyo3::PyResult<$crate::PyArmState> {
-                self.0.state().map(Into::into).map_err(Into::into)
+                <$inner as $crate::Arm<$dof>>::state(&mut self.0)
+                    .map($crate::PyArmState::from)
+                    .map_err(Into::into)
             }
+
             fn set_load(&mut self, load: $crate::LoadState) -> pyo3::PyResult<()> {
-                self.0.set_load(load).map_err(Into::into)
-            }
-            fn set_coord(&mut self, coord: String) -> pyo3::PyResult<()> {
-                self.0.set_coord(coord.as_str().into()).map_err(Into::into)
-            }
-            fn with_coord(mut self_: pyo3::PyRefMut<'_, Self>, coord: String) -> pyo3::Py<Self> {
-                self_.0.with_coord(coord.as_str().into());
-                self_.into()
+                <$inner as $crate::Arm<$dof>>::set_load(&mut self.0, load).map_err(Into::into)
             }
 
-            fn set_speed(&mut self, speed: f64) -> pyo3::PyResult<()> {
-                self.0.set_speed(speed).map_err(Into::into)
+            fn get_joint(&self) -> [f64; $dof] {
+                <$inner as $crate::Arm<$dof>>::get_joint(&self.0)
             }
 
-            fn with_speed(mut self_: pyo3::PyRefMut<'_, Self>, speed: f64) -> pyo3::Py<Self> {
-                self_.0.with_speed(speed);
-                self_.into()
+            fn get_endpoint(&self) -> $crate::PyPose {
+                <$inner as $crate::Arm<$dof>>::get_endpoint(&self.0).into()
             }
-            fn with_velocity(
-                mut self_: pyo3::PyRefMut<'_, Self>,
-                joint_vel: [f64; $dof],
-            ) -> pyo3::Py<Self> {
-                self_.0.with_velocity(&joint_vel);
-                self_.into()
+
+            fn get_joint_min(&self) -> [f64; $dof] {
+                <$inner as $crate::Arm<$dof>>::get_joint_min(&self.0)
             }
-            fn with_acceleration(
-                mut self_: pyo3::PyRefMut<'_, Self>,
-                joint_acc: [f64; $dof],
-            ) -> pyo3::Py<Self> {
-                self_.0.with_acceleration(&joint_acc);
-                self_.into()
+
+            fn get_joint_max(&self) -> [f64; $dof] {
+                <$inner as $crate::Arm<$dof>>::get_joint_max(&self.0)
             }
-            fn with_jerk(
-                mut self_: pyo3::PyRefMut<'_, Self>,
-                joint_jerk: [f64; $dof],
-            ) -> pyo3::Py<Self> {
-                self_.0.with_jerk(&joint_jerk);
-                self_.into()
+
+            fn get_joint_vel_bound(&self) -> [f64; $dof] {
+                <$inner as $crate::Arm<$dof>>::get_joint_vel_bound(&self.0)
             }
-            fn with_cartesian_velocity(
-                mut self_: pyo3::PyRefMut<'_, Self>,
-                cartesian_vel: f64,
-            ) -> pyo3::Py<Self> {
-                self_.0.with_cartesian_velocity(cartesian_vel);
-                self_.into()
+
+            fn get_joint_acc_bound(&self) -> [f64; $dof] {
+                <$inner as $crate::Arm<$dof>>::get_joint_acc_bound(&self.0)
             }
-            fn with_cartesian_acceleration(
-                mut self_: pyo3::PyRefMut<'_, Self>,
-                cartesian_acc: f64,
-            ) -> pyo3::Py<Self> {
-                self_.0.with_cartesian_acceleration(cartesian_acc);
-                self_.into()
+
+            fn get_joint_jerk_bound(&self) -> [f64; $dof] {
+                <$inner as $crate::Arm<$dof>>::get_joint_jerk_bound(&self.0)
             }
-            fn with_cartesian_jerk(
-                mut self_: pyo3::PyRefMut<'_, Self>,
-                cartesian_jerk: f64,
-            ) -> pyo3::Py<Self> {
-                self_.0.with_cartesian_jerk(cartesian_jerk);
-                self_.into()
+
+            fn get_torque_bound(&self) -> [f64; $dof] {
+                <$inner as $crate::Arm<$dof>>::get_torque_bound(&self.0)
+            }
+
+            fn get_torque_dot_bound(&self) -> [f64; $dof] {
+                <$inner as $crate::Arm<$dof>>::get_torque_dot_bound(&self.0)
             }
         }
     };
 }
 
 #[macro_export]
-macro_rules! py_arm_param {
-    ($pyname: ident<{ $dof: expr }>($name: ty)) => {
+macro_rules! py_joint_motion {
+    ($py:ident < {$dof:expr} > ($inner:ty)) => {
         #[pyo3::pymethods]
-        impl $pyname {
-            #[staticmethod]
-            fn dh() -> [[f64; 4]; $dof] {
-                <$name>::DH
-            }
-            #[staticmethod]
-            fn joint_default() -> [f64; $dof] {
-                <$name>::JOINT_DEFAULT
-            }
-            #[staticmethod]
-            fn joint_min() -> [f64; $dof] {
-                <$name>::JOINT_MIN
-            }
-            #[staticmethod]
-            fn joint_max() -> [f64; $dof] {
-                <$name>::JOINT_MAX
-            }
-            #[staticmethod]
-            fn joint_vel_bound() -> [f64; $dof] {
-                <$name>::JOINT_VEL_BOUND
-            }
-            #[staticmethod]
-            fn joint_acc_bound() -> [f64; $dof] {
-                <$name>::JOINT_ACC_BOUND
-            }
-            #[staticmethod]
-            fn joint_jerk_bound() -> [f64; $dof] {
-                <$name>::JOINT_JERK_BOUND
-            }
-            #[staticmethod]
-            fn cartesian_vel_bound() -> f64 {
-                <$name>::CARTESIAN_VEL_BOUND
-            }
-            #[staticmethod]
-            fn cartesian_acc_bound() -> f64 {
-                <$name>::CARTESIAN_ACC_BOUND
-            }
-            #[staticmethod]
-            fn cartesian_jerk_bound() -> f64 {
-                <$name>::CARTESIAN_JERK_BOUND
-            }
-            #[staticmethod]
-            fn rotation_vel_bound() -> f64 {
-                <$name>::ROTATION_VEL_BOUND
-            }
-            #[staticmethod]
-            fn rotation_acc_bound() -> f64 {
-                <$name>::ROTATION_ACC_BOUND
-            }
-            #[staticmethod]
-            fn rotation_jerk_bound() -> f64 {
-                <$name>::ROTATION_JERK_BOUND
-            }
-            #[staticmethod]
-            fn torque_bound() -> [f64; $dof] {
-                <$name>::TORQUE_BOUND
-            }
-            #[staticmethod]
-            fn torque_dot_bound() -> [f64; $dof] {
-                <$name>::TORQUE_DOT_BOUND
-            }
-
-            #[staticmethod]
-            fn forward_kinematics(q: [f64; $dof]) -> $crate::PyPose {
-                <$name>::forward_kinematics(&q).into()
-            }
-
-            #[allow(deprecated)]
-            fn inverse_kinematics(&self, pose: $crate::PyPose) -> pyo3::PyResult<[f64; $dof]> {
-                let pose: $crate::Pose = pose.into();
-                <$name>::inverse_kinematics(pose).map_err(Into::into)
-            }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! py_arm_preplanned_motion_impl {
-    ($pyname: ident<{ $dof: literal }>($name: ty)) => {
-        #[pyo3::pymethods]
-        impl $pyname {
+        impl $py {
             fn move_joint(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
-                self.0.move_joint(&target).map_err(Into::into)
-            }
-            fn move_joint_async(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
-                self.0.move_joint_async(&target).map_err(Into::into)
+                <$inner as $crate::MoveTo<$crate::JointSpace<$dof>>>::move_to(&mut self.0, target)
+                    .map_err(Into::into)
             }
 
-            fn move_cartesian(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
-                self.0.move_cartesian(&target.into()).map_err(Into::into)
+            fn move_joint_sync(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
+                <$inner as $crate::MoveTo<$crate::JointSpace<$dof>>>::move_to_sync(
+                    &mut self.0,
+                    target,
+                )
+                .map_err(Into::into)
             }
-            fn move_cartesian_async(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
-                self.0
-                    .move_cartesian_async(&target.into())
+
+            fn move_joint_traj(&mut self, traj: Vec<[f64; $dof]>) -> pyo3::PyResult<()> {
+                <$inner as $crate::MoveTraj<$crate::JointSpace<$dof>>>::move_traj(&mut self.0, traj)
                     .map_err(Into::into)
             }
         }
@@ -222,466 +429,183 @@ macro_rules! py_arm_preplanned_motion_impl {
 }
 
 #[macro_export]
-macro_rules! py_arm_preplanned_motion {
-    ($pyname: ident<{ $dof: literal }>($name: ty)) => {
+macro_rules! py_flange_move {
+    ($py:ident($inner:ty)) => {
         #[pyo3::pymethods]
-        impl $pyname {
-            fn move_to(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_to(target.try_into()).map_err(Into::into)
-            }
-            fn move_to_async(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_to_async(target.try_into()).map_err(Into::into)
-            }
-            fn move_rel(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_rel(target.into()).map_err(Into::into)
-            }
-            fn move_rel_async(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_rel_async(target.try_into()).map_err(Into::into)
-            }
-            fn move_int(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_int(target.try_into()).map_err(Into::into)
-            }
-            fn move_int_async(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_int_async(target.try_into()).map_err(Into::into)
-            }
-            fn move_path(&mut self, path: Vec<$crate::PyMotionType>) -> pyo3::PyResult<()> {
-                self.0
-                    .move_path(path.into_iter().map(Into::into).collect())
+        impl $py {
+            fn move_flange(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
+                <$inner as $crate::MoveTo<$crate::FlangeSpace>>::move_to(&mut self.0, target.into())
                     .map_err(Into::into)
             }
-            fn move_path_async(&mut self, path: Vec<$crate::PyMotionType>) -> pyo3::PyResult<()> {
-                self.0
-                    .move_path_async(path.into_iter().map(Into::into).collect())
-                    .map_err(Into::into)
-            }
-            fn move_path_prepare(&mut self, path: Vec<$crate::PyMotionType>) -> pyo3::PyResult<()> {
-                self.0
-                    .move_path_prepare(path.into_iter().map(Into::into).collect())
-                    .map_err(Into::into)
-            }
-            fn move_path_start(&mut self, start: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_path_start(start.into()).map_err(Into::into)
+
+            fn move_flange_sync(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
+                <$inner as $crate::MoveTo<$crate::FlangeSpace>>::move_to_sync(
+                    &mut self.0,
+                    target.into(),
+                )
+                .map_err(Into::into)
             }
         }
     };
 }
 
 #[macro_export]
-macro_rules! py_arm_preplanned_motion_ext {
-    ($pyname: ident<{ $dof: expr }>($name: ty)) => {
+macro_rules! py_flange_traj {
+    ($py:ident($inner:ty)) => {
         #[pyo3::pymethods]
-        impl $pyname {
-            fn move_joint_rel(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
-                self.0.move_joint_rel(&target).map_err(Into::into)
-            }
-            fn move_joint_rel_async(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
-                self.0.move_joint_rel_async(&target).map_err(Into::into)
-            }
-            fn move_joint_path(&mut self, target: Vec<[f64; $dof]>) -> pyo3::PyResult<()> {
-                self.0.move_joint_path(target).map_err(Into::into)
-            }
-
-            fn move_cartesian_rel(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
-                self.0
-                    .move_cartesian_rel(&target.into())
+        impl $py {
+            fn move_flange_traj(&mut self, traj: Vec<$crate::PyPose>) -> pyo3::PyResult<()> {
+                let traj = traj.into_iter().map(Into::into).collect();
+                <$inner as $crate::MoveTraj<$crate::FlangeSpace>>::move_traj(&mut self.0, traj)
                     .map_err(Into::into)
-            }
-            fn move_cartesian_rel_async(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
-                self.0
-                    .move_cartesian_rel_async(&target.into())
-                    .map_err(Into::into)
-            }
-            fn move_cartesian_int(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
-                self.0
-                    .move_cartesian_int(&target.into())
-                    .map_err(Into::into)
-            }
-            fn move_cartesian_int_async(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
-                self.0
-                    .move_cartesian_int_async(&target.into())
-                    .map_err(Into::into)
-            }
-            fn move_cartesian_path(&mut self, target: Vec<$crate::PyPose>) -> pyo3::PyResult<()> {
-                self.0
-                    .move_cartesian_path(target.into_iter().map(Into::into).collect())
-                    .map_err(Into::into)
-            }
-
-            fn move_linear_with_euler(&mut self, target: [f64; 6]) -> pyo3::PyResult<()> {
-                self.0.move_linear_with_euler(target).map_err(Into::into)
-            }
-            fn move_linear_with_euler_async(&mut self, target: [f64; 6]) -> pyo3::PyResult<()> {
-                self.0
-                    .move_linear_with_euler_async(target)
-                    .map_err(Into::into)
-            }
-            fn move_linear_with_euler_rel(&mut self, target: [f64; 6]) -> pyo3::PyResult<()> {
-                self.0
-                    .move_linear_with_euler_rel(target)
-                    .map_err(Into::into)
-            }
-            fn move_linear_with_euler_rel_async(&mut self, target: [f64; 6]) -> pyo3::PyResult<()> {
-                self.0
-                    .move_linear_with_euler_rel_async(target)
-                    .map_err(Into::into)
-            }
-            fn move_linear_with_euler_int(&mut self, target: [f64; 6]) -> pyo3::PyResult<()> {
-                self.0
-                    .move_linear_with_euler_int(target)
-                    .map_err(Into::into)
-            }
-            fn move_linear_with_euler_int_async(&mut self, target: [f64; 6]) -> pyo3::PyResult<()> {
-                self.0
-                    .move_linear_with_euler_int_async(target)
-                    .map_err(Into::into)
-            }
-
-            fn move_path_from_file(&mut self, path: &str) -> pyo3::PyResult<()> {
-                self.0.move_path_from_file(path).map_err(Into::into)
-            }
-            fn move_path_prepare_from_file(&mut self, path: &str) -> pyo3::PyResult<()> {
-                self.0.move_path_prepare_from_file(path).map_err(Into::into)
             }
         }
     };
 }
 
 #[macro_export]
-macro_rules! py_arm_streaming_handle {
-    ($pyname: ident<{ $dof: expr }>($name: ty)) => {
-        #[pyo3::pymethods]
-        impl $pyname {
-            fn move_to(&mut self, target: $crate::PyMotionType) -> pyo3::PyResult<()> {
-                self.0.move_to(target.into()).map_err(Into::into)
-            }
-            fn last_motion(&self) -> Option<$crate::PyMotionType> {
-                self.0.last_motion().map(Into::into)
-            }
-
-            fn control_with(&mut self, target: $crate::PyControlType) -> pyo3::PyResult<()> {
-                self.0.control_with(target.into()).map_err(Into::into)
-            }
-            fn last_control(&self) -> Option<$crate::PyControlType> {
-                self.0.last_control().map(Into::into)
-            }
-        }
+macro_rules! py_flange_motion {
+    ($py:ident($inner:ty)) => {
+        $crate::py_flange_move!($py($inner));
+        $crate::py_flange_traj!($py($inner));
     };
 }
 
 #[macro_export]
-macro_rules! py_arm_streaming_motion {
-    ($pyname: ident<{ $dof: expr }>($name: ty) -> $handle_name: ident) => {
+macro_rules! py_joint_torque_control {
+    ($py:ident < {$dof:expr} > ($inner:ty)) => {
         #[pyo3::pymethods]
-        impl $pyname {
-            fn start_streaming(&mut self) -> pyo3::PyResult<$handle_name> {
-                self.0.start_streaming().map_err(Into::into).map(Into::into)
-            }
-            fn end_streaming(&mut self) -> pyo3::PyResult<()> {
-                self.0.end_streaming().map_err(Into::into)
-            }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! py_arm_streaming_motion_ext {
-    ($pyname: ident<{ $dof: expr }>($name: ty)) => {};
-}
-
-#[macro_export]
-macro_rules! py_arm_real_time_control {
-    ($pyname: ident<{ $dof: expr }>($name: ty)) => {
-        #[pyo3::pymethods]
-        impl $pyname {
-            fn move_with_closure(&mut self, closure: pyo3::Py<pyo3::PyAny>) -> pyo3::PyResult<()> {
-                self.0
-                    .move_with_closure(move |state, duration| {
-                        let state = $crate::PyArmState::from(state);
-                        let duration = duration.as_secs_f64();
-                        pyo3::Python::attach(|py| {
-                            closure
-                                .call1(py, (state, duration))
-                                .unwrap()
-                                .bind(py)
-                                .extract::<($crate::PyMotionType, bool)>()
-                                .map(|(motion, stop)| (motion.try_into().unwrap(), stop))
-                                .unwrap()
-                        })
-                    })
-                    .map_err(Into::into)
-            }
-            fn control_with_closure(
+        impl $py {
+            fn control_joint_torque(
                 &mut self,
                 closure: pyo3::Py<pyo3::PyAny>,
             ) -> pyo3::PyResult<()> {
-                self.0
-                    .control_with_closure(move |state, duration| {
-                        let state = $crate::PyArmState::from(state);
-                        let duration = duration.as_secs_f64();
-                        pyo3::Python::attach(|py| {
-                            closure
-                                .call1(py, (state, duration))
-                                .unwrap()
-                                .bind(py)
-                                .extract::<($crate::PyControlType, bool)>()
-                                .map(|(control, stop)| (control.try_into().unwrap(), stop))
-                                .unwrap()
-                        })
-                    })
-                    .map_err(Into::into)
+                <$inner as $crate::ControlWith<$crate::TorqueControl<$dof>>>::control_with(
+                    &mut self.0,
+                    move |state, duration| {
+                        $crate::ffi::to_py::py_control_array::<$dof>(
+                            &closure,
+                            state.into(),
+                            duration,
+                        )
+                    },
+                )
+                .map_err(Into::into)
             }
         }
     };
 }
 
 #[macro_export]
-macro_rules! py_arm_real_time_control_ext {
-    ($pyname: ident<{ $dof: expr }>($name: ty)) => {
+macro_rules! py_arm_torque_control {
+    ($py:ident < {$dof:expr} > ($inner:ty)) => {
         #[pyo3::pymethods]
-        impl $pyname {
-            fn move_joint_with_closure(
-                &mut self,
-                closure: pyo3::Py<pyo3::PyAny>,
-            ) -> pyo3::PyResult<()> {
-                self.0
-                    .move_joint_with_closure(move |state, duration| {
-                        let state = $crate::PyArmState::from(state);
-                        let duration = duration.as_secs_f64();
-                        pyo3::Python::attach(|py| {
-                            closure
-                                .call1(py, (state, duration))
-                                .unwrap()
-                                .bind(py)
-                                .extract::<([f64; $dof], bool)>()
-                                .unwrap()
-                        })
-                    })
-                    .map_err(Into::into)
-            }
-
-            fn move_joint_vel_with_closure(
-                &mut self,
-                closure: pyo3::Py<pyo3::PyAny>,
-            ) -> pyo3::PyResult<()> {
-                self.0
-                    .move_joint_vel_with_closure(move |state, duration| {
-                        let state = $crate::PyArmState::from(state);
-                        let duration = duration.as_secs_f64();
-                        pyo3::Python::attach(|py| {
-                            closure
-                                .call1(py, (state, duration))
-                                .unwrap()
-                                .bind(py)
-                                .extract::<([f64; $dof], bool)>()
-                                .unwrap()
-                        })
-                    })
-                    .map_err(Into::into)
-            }
-
-            fn move_cartesian_with_closure(
-                &mut self,
-                closure: pyo3::Py<pyo3::PyAny>,
-            ) -> pyo3::PyResult<()> {
-                self.0
-                    .move_cartesian_with_closure(move |state, duration| {
-                        let state = $crate::PyArmState::from(state);
-                        let duration = duration.as_secs_f64();
-                        pyo3::Python::attach(|py| {
-                            closure
-                                .call1(py, (state, duration))
-                                .unwrap()
-                                .bind(py)
-                                .extract::<($crate::PyPose, bool)>()
-                                .map(|(pose, stop)| (pose.into(), stop))
-                                .unwrap()
-                        })
-                    })
-                    .map_err(Into::into)
-            }
-
-            fn move_cartesian_vel_with_closure(
-                &mut self,
-                closure: pyo3::Py<pyo3::PyAny>,
-            ) -> pyo3::PyResult<()> {
-                self.0
-                    .move_cartesian_vel_with_closure(move |state, duration| {
-                        let state = $crate::PyArmState::from(state);
-                        let duration = duration.as_secs_f64();
-                        pyo3::Python::attach(|py| {
-                            closure
-                                .call1(py, (state, duration))
-                                .unwrap()
-                                .bind(py)
-                                .extract::<([f64; 6], bool)>()
-                                .unwrap()
-                        })
-                    })
-                    .map_err(Into::into)
+        impl $py {
+            fn control_arm_torque(&mut self, closure: pyo3::Py<pyo3::PyAny>) -> pyo3::PyResult<()> {
+                <$inner as $crate::ControlWith<$crate::ArmTorqueControl<$dof>>>::control_with(
+                    &mut self.0,
+                    move |state, duration| {
+                        $crate::ffi::to_py::py_arm_control_array::<$dof>(
+                            &closure,
+                            state.into(),
+                            duration,
+                        )
+                    },
+                )
+                .map_err(Into::into)
             }
         }
     };
 }
 
-#[cfg(all(test, feature = "to_py"))]
-mod test {
-    use pyo3::types::PyAnyMethods;
-    use std::sync::{Arc, Mutex};
-
-    use crate::{LoadState, RobotResult, behavior::*, robot::*};
-
-    struct TestRobot;
-
-    #[pyo3::pyclass]
-    struct PyTestRobot(TestRobot);
-
-    py_robot_behavior!(PyTestRobot(TestRobot));
-    py_arm_behavior!(PyTestRobot<{0}>(TestRobot));
-    py_arm_param!(PyTestRobot<{0}>(TestRobot));
-
-    py_arm_preplanned_motion_impl!(PyTestRobot<{0}>(TestRobot));
-    py_arm_preplanned_motion!(PyTestRobot<{0}>(TestRobot));
-    py_arm_preplanned_motion_ext!(PyTestRobot<{0}>(TestRobot));
-
-    #[pyo3::pyclass]
-    struct TestRobotHandle;
-    py_arm_streaming_motion!(PyTestRobot<{0}>(TestRobot) -> TestRobotHandle);
-    py_arm_streaming_motion_ext!(PyTestRobot<{0}>(TestRobot));
-
-    py_arm_real_time_control!(PyTestRobot<{0}>(TestRobot));
-    py_arm_real_time_control_ext!(PyTestRobot<{0}>(TestRobot));
-
-    macro_rules! unimpl {
-        // For methods with return type only (no arguments)
-        ($(fn $name:ident(&self) -> $ret:ty;)+) => {
-            $(
-                fn $name(&self) -> $ret {
-                    unimplemented!()
-                }
-            )+
-        };
-        ($(fn $name:ident(&mut self) -> $ret:ty;)+) => {
-            $(
-                fn $name(&mut self) -> $ret {
-                    unimplemented!()
-                }
-            )+
-        };
-        ($(fn $name:ident(&mut self, $($arg: ident: $arg_ty: ty),*) -> $ret:ty;)+) => {
-            $(
-                fn $name(&mut self, $($arg: $arg_ty),* ) -> $ret {
-                    unimplemented!()
-                }
-            )+
-        };
-    }
-
-    impl RobotBehavior for TestRobot {
-        type State = ();
-        fn version() -> String {
-            "TestRobot v0.1.0".to_string()
+#[macro_export]
+macro_rules! py_joint_position_control {
+    ($py:ident < {$dof:expr} > ($inner:ty)) => {
+        #[pyo3::pymethods]
+        impl $py {
+            fn control_joint_position(
+                &mut self,
+                closure: pyo3::Py<pyo3::PyAny>,
+            ) -> pyo3::PyResult<()> {
+                <$inner as $crate::ControlWith<$crate::JointPositionControl<$dof>>>::control_with(
+                    &mut self.0,
+                    move |state, duration| {
+                        $crate::ffi::to_py::py_control_array::<$dof>(
+                            &closure,
+                            state.into(),
+                            duration,
+                        )
+                    },
+                )
+                .map_err(Into::into)
+            }
         }
-        unimpl! {
-            fn is_moving(&mut self) -> bool;
-            fn init(&mut self) -> RobotResult<()>;
-            fn shutdown(&mut self) -> RobotResult<()>;
-            fn enable(&mut self) -> RobotResult<()>;
-            fn disable(&mut self) -> RobotResult<()>;
-            fn reset(&mut self) -> RobotResult<()>;
-            fn stop(&mut self) -> RobotResult<()>;
-            fn pause(&mut self) -> RobotResult<()>;
-            fn resume(&mut self) -> RobotResult<()>;
-            fn emergency_stop(&mut self) -> RobotResult<()>;
-            fn clear_emergency_stop(&mut self) -> RobotResult<()>;
-            fn read_state(&mut self) -> RobotResult<Self::State>;
+    };
+}
+
+#[macro_export]
+macro_rules! py_joint_velocity_control {
+    ($py:ident < {$dof:expr} > ($inner:ty)) => {
+        #[pyo3::pymethods]
+        impl $py {
+            fn control_joint_velocity(
+                &mut self,
+                closure: pyo3::Py<pyo3::PyAny>,
+            ) -> pyo3::PyResult<()> {
+                <$inner as $crate::ControlWith<$crate::JointVelocityControl<$dof>>>::control_with(
+                    &mut self.0,
+                    move |state, duration| {
+                        $crate::ffi::to_py::py_control_array::<$dof>(
+                            &closure,
+                            state.into(),
+                            duration,
+                        )
+                    },
+                )
+                .map_err(Into::into)
+            }
         }
-    }
+    };
+}
 
-    impl ArmBehavior<0> for TestRobot {
-        unimpl!(
-            fn state(&mut self) -> RobotResult<ArmState<0>>;
-        );
-        unimpl!(
-            fn set_load(&mut self, _load: LoadState) -> RobotResult<()>;
-            fn set_coord(&mut self, _coord: Coord) -> RobotResult<()>;
-            fn with_coord(&mut self, _coord: Coord) -> &mut Self;
-            fn set_speed(&mut self, _speed: f64) -> RobotResult<()>;
-            fn with_speed(&mut self, _speed: f64) -> &mut Self;
-
-            fn with_velocity(&mut self, _joint_vel: &[f64; 0]) -> &mut Self;
-            fn with_acceleration(&mut self, _joint_acc: &[f64; 0]) -> &mut Self;
-            fn with_jerk(&mut self, _joint_jerk: &[f64; 0]) -> &mut Self;
-            fn with_cartesian_velocity(&mut self, _cartesian_vel: f64) -> &mut Self;
-            fn with_cartesian_acceleration(&mut self, _cartesian_acc: f64) -> &mut Self;
-            fn with_cartesian_jerk(&mut self, _cartesian_jerk: f64) -> &mut Self;
-            fn with_rotation_velocity(&mut self, _rotation_vel: f64) -> &mut Self;
-            fn with_rotation_acceleration(&mut self, _rotation_acc: f64) -> &mut Self;
-            fn with_rotation_jerk(&mut self, _rotation_jerk: f64) -> &mut Self;
-        );
-    }
-
-    impl ArmParam<0> for TestRobot {
-        const DH: [[f64; 4]; 0] = [];
-        const JOINT_MIN: [f64; 0] = [];
-        const JOINT_MAX: [f64; 0] = [];
-    }
-
-    impl ArmPreplannedMotionImpl<0> for TestRobot {
-        unimpl!(
-            fn move_joint(&mut self, _target: &[f64; 0]) -> RobotResult<()>;
-            fn move_joint_async(&mut self, _target: &[f64; 0]) -> RobotResult<()>;
-
-            fn move_cartesian(&mut self, _target: &Pose) -> RobotResult<()>;
-            fn move_cartesian_async(&mut self, _target: &Pose) -> RobotResult<()>;
-        );
-    }
-
-    impl ArmPreplannedMotion<0> for TestRobot {
-        #[rustfmt::skip]
-        unimpl!(
-            fn move_path(&mut self, _path: Vec<MotionType<0>>) -> RobotResult<()>;
-            fn move_path_async(&mut self, _path: Vec<MotionType<0>>) -> RobotResult<()>;
-            fn move_path_prepare(&mut self, _path: Vec<MotionType<0>>) -> RobotResult<()>;
-            fn move_path_start(&mut self, _start: MotionType<0>) -> RobotResult<()>;
-        );
-    }
-
-    impl ArmStreamingHandle<0> for TestRobotHandle {
-        unimpl!(
-            fn last_motion(&self) -> RobotResult<MotionType<0>>;
-            fn last_control(&self) -> RobotResult<ControlType<0>>;
-        );
-        unimpl!(
-            fn move_to(&mut self, _target: MotionType<0>) -> RobotResult<()>;
-            fn control_with(&mut self, _target: ControlType<0>) -> RobotResult<()>;
-        );
-    }
-
-    impl ArmStreamingMotion<0> for TestRobot {
-        type Handle = TestRobotHandle;
-        unimpl!(
-            fn start_streaming(&mut self) -> RobotResult<Self::Handle>;
-            fn end_streaming(&mut self) -> RobotResult<()>;
-
-            fn move_to_target(&mut self) -> Arc<Mutex<Option<MotionType<0>>>>;
-            fn control_with_target(&mut self) -> Arc<Mutex<Option<ControlType<0>>>>;
-        );
-    }
-
-    impl ArmRealtimeControl<0> for TestRobot {
-        fn control_with_closure<FC>(&mut self, _closure: FC) -> RobotResult<()>
-        where
-            FC: FnMut(ArmState<0>, std::time::Duration) -> (ControlType<0>, bool) + Send + 'static,
-        {
-            unimplemented!()
+#[macro_export]
+macro_rules! py_cartesian_velocity_control {
+    ($py:ident < {$dof:expr} > ($inner:ty)) => {
+        #[pyo3::pymethods]
+        impl $py {
+            fn control_cartesian_velocity(
+                &mut self,
+                closure: pyo3::Py<pyo3::PyAny>,
+            ) -> pyo3::PyResult<()> {
+                <$inner as $crate::ControlWith<$crate::CartesianVelocityControl<$dof>>>::control_with(
+                    &mut self.0,
+                    move |state, duration| {
+                        $crate::ffi::to_py::py_arm_control_vec6(&closure, state.into(), duration)
+                    },
+                )
+                .map_err(Into::into)
+            }
         }
-        fn move_with_closure<FM>(&mut self, _closure: FM) -> RobotResult<()>
-        where
-            FM: FnMut(ArmState<0>, std::time::Duration) -> (MotionType<0>, bool) + Send + 'static,
-        {
-            unimplemented!()
-        }
-    }
+    };
+}
 
-    impl ArmRealtimeControlExt<0> for TestRobot {}
+#[macro_export]
+macro_rules! py_cartesian_pose_control {
+    ($py:ident < {$dof:expr} > ($inner:ty)) => {
+        #[pyo3::pymethods]
+        impl $py {
+            fn control_cartesian_pose(
+                &mut self,
+                closure: pyo3::Py<pyo3::PyAny>,
+            ) -> pyo3::PyResult<()> {
+                <$inner as $crate::ControlWith<$crate::CartesianPoseControl<$dof>>>::control_with(
+                    &mut self.0,
+                    move |state, duration| {
+                        $crate::ffi::to_py::py_arm_control_pose(&closure, state.into(), duration)
+                    },
+                )
+                .map_err(Into::into)
+            }
+        }
+    };
 }

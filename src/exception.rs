@@ -2,7 +2,14 @@ use std::{any::type_name, io};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+/// The unified error type for every fallible robot operation.
+///
+/// Most driver and behavior APIs return [`RobotResult<T>`]. `From` impls are
+/// provided for [`io::Error`], [`anyhow::Error`] and [`serde_json::Error`] so
+/// the `?` operator works across transport, command and (de)serialization
+/// failures. With the `to_py` feature it also converts into a Python exception.
 pub enum RobotException {
+    /// Sentinel "no error" value (not an actual failure).
     #[error("none")]
     NoException,
 
@@ -56,6 +63,7 @@ pub enum RobotException {
     UnWarpError(String),
 }
 
+/// A convenient alias for `Result<T, `[`RobotException`]`>`.
 pub type RobotResult<T> = Result<T, RobotException>;
 
 impl From<io::Error> for RobotException {
@@ -70,12 +78,23 @@ impl From<anyhow::Error> for RobotException {
     }
 }
 
+impl From<serde_json::Error> for RobotException {
+    fn from(e: serde_json::Error) -> Self {
+        RobotException::DeserializeError(e.to_string())
+    }
+}
+
+/// Build a closure that maps any error into a [`RobotException::DeserializeError`],
+/// embedding the target type name and the offending `data` string. Handy as the
+/// argument to [`Result::map_err`] when decoding `data`.
 pub fn deserialize_error<T, E>(data: &str) -> impl FnOnce(E) -> RobotException {
     move |_| {
         RobotException::DeserializeError(format!("exception {}, find {}", type_name::<T>(), data))
     }
 }
 
+/// Construct a [`RobotException::InvalidFFIData`] describing the unexpected
+/// `data` and its type name.
 pub fn invalid_ffi<T: std::fmt::Debug>(data: T) -> RobotException {
     RobotException::InvalidFFIData(format!("exception {}, find {:?}", type_name::<T>(), data))
 }

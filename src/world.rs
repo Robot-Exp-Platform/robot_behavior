@@ -1,7 +1,7 @@
 use anyhow::Result;
 use nalgebra as na;
 
-use crate::RobotFile;
+use crate::RobotDescription;
 
 pub trait World {}
 
@@ -53,10 +53,11 @@ pub type Visual<'a> = Entity<'a>;
 
 pub trait AddRobot {
     type PR<R>;
-    type RB<'a, R: RobotFile>: EntityBuilder<'a, Entity = Self::PR<R>>
+    type RB<'a, R: RobotDescription>: EntityBuilder<'a, Entity = Self::PR<R>>
     where
         Self: 'a;
-    fn robot_builder<'a, R: RobotFile>(&'a mut self, name: impl ToString) -> Self::RB<'a, R>;
+    fn robot_builder<'a, R: RobotDescription>(&'a mut self, name: impl ToString)
+    -> Self::RB<'a, R>;
 }
 
 pub trait AddCollision {

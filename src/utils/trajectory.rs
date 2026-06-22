@@ -1,7 +1,9 @@
 use nalgebra as na;
 use std::fmt::Display;
 
-use crate::{ArmParam, MotionType, RobotException, RobotResult};
+use std::time::Duration;
+
+use crate::{JointState, Joints, Robot, RobotException, RobotResult};
 
 /// Number of `s` samples used to discretise the geometric path for copp.
 pub const COPP_PATH_SAMPLES: usize = 1001;
@@ -16,7 +18,7 @@ pub fn plan_s_t_via_copp<R, const N: usize>(
     scale: f64,
 ) -> RobotResult<Vec<f64>>
 where
-    R: ArmParam<N> + ?Sized,
+    R: Joints<N> + Robot + ?Sized,
 {
     use copp::InterpolationMode;
     use copp::robot::Robot;
@@ -28,7 +30,7 @@ where
     let dt = R::CONTROL_PERIOD;
     if !(dt.is_finite() && dt > 0.0) {
         return Err(RobotException::UnprocessableInstructionError(format!(
-            "ArmParam::CONTROL_PERIOD must be a positive finite number, got {dt}"
+            "Robot::CONTROL_PERIOD must be a positive finite number, got {dt}"
         )));
     }
     if !(scale.is_finite() && scale > 0.0) {
@@ -103,15 +105,15 @@ where
         .build()
         .map_err(map_err)?;
 
-    let (a_qp1, _b_qp1, _ns1) = {
+    let profile_qp1 = {
         let prob =
             Topp3ProblemBuilder::new(&mut robot, idx_s_interval.0, &a_ra0, (0.0, 0.0), (0.0, 0.0))
                 .build_with_linearization()
                 .map_err(map_err)?;
         topp3_socp(&prob, &opts_socp).map_err(map_err)?
     };
-    let a_qp1: Vec<f64> = a_qp1.into_iter().map(|a| a.max(0.0)).collect();
-    let (a_qp2, b_qp2, ns2) = {
+    let a_qp1: Vec<f64> = profile_qp1.a.iter().map(|&a| a.max(0.0)).collect();
+    let profile_qp2 = {
         let prob =
             Topp3ProblemBuilder::new(&mut robot, idx_s_interval.0, &a_qp1, (0.0, 0.0), (0.0, 0.0))
                 .build_with_linearization()
@@ -133,15 +135,14 @@ where
         }
     };
 
-    let (_t_final, t_s) = s_to_t_topp3(&s, &a_qp2, &b_qp2, ns2, 0.0);
+    let (_t_final, t_s) = s_to_t_topp3(&s, profile_qp2.as_parts(), 0.0).map_err(map_err)?;
     let s_t = t_to_s_topp3(
         &s,
-        &a_qp2,
-        &b_qp2,
-        ns2,
+        profile_qp2.as_parts(),
         &t_s,
         InterpolationMode::UniformTimeGrid(0.0, dt, true),
-    );
+    )
+    .map_err(map_err)?;
     if s_t.is_empty() {
         return Err(RobotException::UnprocessableInstructionError(
             "copp t_to_s_topp3 produced an empty time grid".to_string(),
@@ -154,9 +155,9 @@ where
 pub fn plan_waypoints_traj_via_copp<R, const N: usize>(
     waypoints: &[[f64; N]],
     scale: f64,
-) -> RobotResult<Vec<MotionType<N>>>
+) -> RobotResult<Vec<[f64; N]>>
 where
-    R: ArmParam<N> + ?Sized,
+    R: Joints<N> + Robot + ?Sized,
 {
     use copp::path::{Path, SplineConfig};
 
@@ -198,61 +199,22 @@ where
 pub fn plan_path_traj_via_copp<P, F, const N: usize>(
     path_fn: &F,
     scale: f64,
-) -> RobotResult<Vec<MotionType<N>>>
+) -> RobotResult<Vec<[f64; N]>>
 where
-    P: ArmParam<N> + ?Sized,
-    F: Fn(f64) -> Option<MotionType<N>>,
+    P: Joints<N> + Robot + ?Sized,
+    F: Fn(f64) -> Option<[f64; N]>,
 {
-    use copp::path::{Path, SplineConfig};
-
     let n = COPP_PATH_SAMPLES;
-    let mut q_samples: Vec<[f64; N]> = Vec::with_capacity(n);
-    for i in 0..n {
-        let s = i as f64 / (n - 1) as f64;
-        match path_fn(s) {
-            Some(MotionType::Joint(q)) => q_samples.push(q),
-            Some(other) => {
-                return Err(RobotException::ConflictingInstruction(format!(
-                    "default move_path only supports MotionType::Joint, got {other:?}"
-                )));
-            }
-            None => {
-                return Err(RobotException::UnprocessableInstructionError(format!(
-                    "move_path closure returned None at s={}; must be defined on [0, 1]",
-                    s
-                )));
-            }
-        }
-    }
-
-    let wp_mat = na::DMatrix::<f64>::from_fn(N, n, |i, j| q_samples[j][i]);
-    let spline = Path::from_waypoints(&wp_mat, SplineConfig::default()).map_err(|e| {
-        RobotException::UnprocessableInstructionError(format!(
-            "copp Path::from_waypoints (closure derivative estimate) failed: {e}"
-        ))
-    })?;
     let s_grid: Vec<f64> = (0..n).map(|j| j as f64 / (n - 1) as f64).collect();
-    let derivs = spline.evaluate_up_to_3rd(&s_grid).map_err(|e| {
-        RobotException::UnprocessableInstructionError(format!("path.evaluate_up_to_3rd: {e}"))
-    })?;
+    let (q_grid, dq_grid, ddq_grid, dddq_grid) =
+        finite_difference_path_derivatives(path_fn, &s_grid)?;
 
-    let s_t = plan_s_t_via_copp::<P, N>(
-        &derivs.q,
-        derivs.dq.as_ref().unwrap(),
-        derivs.ddq.as_ref().unwrap(),
-        derivs.dddq.as_ref(),
-        scale,
-    )?;
+    let s_t = plan_s_t_via_copp::<P, N>(&q_grid, &dq_grid, &ddq_grid, Some(&dddq_grid), scale)?;
 
     let mut traj = Vec::with_capacity(s_t.len());
     for &s in &s_t {
         match path_fn(s) {
-            Some(MotionType::Joint(q)) => traj.push(MotionType::Joint(q)),
-            Some(other) => {
-                return Err(RobotException::ConflictingInstruction(format!(
-                    "default move_path only supports MotionType::Joint, got {other:?}"
-                )));
-            }
+            Some(q) => traj.push(q),
             None => {
                 return Err(RobotException::UnprocessableInstructionError(format!(
                     "move_path closure returned None at s={s} during final resampling"
@@ -263,15 +225,182 @@ where
     Ok(traj)
 }
 
-/// Convert a column-major `(N, M)` joint matrix to `Vec<MotionType::Joint>`.
-pub fn q_grid_to_traj<const N: usize>(q: &na::DMatrix<f64>) -> Vec<MotionType<N>> {
+/// Wrap an already sampled joint trajectory as a `JointPositionControl` closure.
+///
+/// The closure emits one trajectory sample per non-zero control tick and reports
+/// `done = true` after the final sample. It is intentionally open-loop: it only
+/// generates position commands, while any feedback behavior should be layered
+/// through PID / impedance / dynamics controller helpers.
+pub fn joint_traj_position_control<const N: usize>(
+    traj: Vec<[f64; N]>,
+) -> impl FnMut(JointState<N>, Duration) -> ([f64; N], bool) + Send + 'static {
+    let mut step = 0usize;
+
+    move |state, duration| {
+        if traj.is_empty() {
+            return (
+                state
+                    .cmd
+                    .q
+                    .or(state.des.q)
+                    .or(state.meas.q)
+                    .unwrap_or([0.0; N]),
+                true,
+            );
+        }
+        if duration == Duration::ZERO && step == 0 {
+            return (traj[0], false);
+        }
+
+        let index = step.min(traj.len() - 1);
+        let target = traj[index];
+        if duration > Duration::ZERO {
+            step += 1;
+        }
+        (target, step >= traj.len())
+    }
+}
+
+/// Plan waypoints with copp and return a closure usable by
+/// `control_with::<JointPositionControl<N>, _>(...)`.
+pub fn copp_waypoints_joint_position_control<R, const N: usize>(
+    waypoints: &[[f64; N]],
+    scale: f64,
+) -> RobotResult<impl FnMut(JointState<N>, Duration) -> ([f64; N], bool) + Send + 'static>
+where
+    R: Joints<N> + Robot + ?Sized,
+{
+    let traj = plan_waypoints_traj_via_copp::<R, N>(waypoints, scale)?;
+    Ok(joint_traj_position_control(traj))
+}
+
+/// Plan a continuous path with copp and return a closure usable by
+/// `control_with::<JointPositionControl<N>, _>(...)`.
+pub fn copp_path_joint_position_control<R, F, const N: usize>(
+    path_fn: &F,
+    scale: f64,
+) -> RobotResult<impl FnMut(JointState<N>, Duration) -> ([f64; N], bool) + Send + 'static>
+where
+    R: Joints<N> + Robot + ?Sized,
+    F: Fn(f64) -> Option<[f64; N]>,
+{
+    let traj = plan_path_traj_via_copp::<R, F, N>(path_fn, scale)?;
+    Ok(joint_traj_position_control(traj))
+}
+
+fn finite_difference_path_derivatives<F, const N: usize>(
+    path_fn: &F,
+    s_grid: &[f64],
+) -> RobotResult<(
+    na::DMatrix<f64>,
+    na::DMatrix<f64>,
+    na::DMatrix<f64>,
+    na::DMatrix<f64>,
+)>
+where
+    F: Fn(f64) -> Option<[f64; N]>,
+{
+    if s_grid.len() < 5 {
+        return Err(RobotException::UnprocessableInstructionError(
+            "move_path finite-difference planning requires at least 5 path samples".to_string(),
+        ));
+    }
+
+    let mut q_samples = Vec::with_capacity(s_grid.len());
+    for &s in s_grid {
+        match path_fn(s) {
+            Some(q) if q.iter().all(|v| v.is_finite()) => q_samples.push(q),
+            Some(_) => {
+                return Err(RobotException::UnprocessableInstructionError(format!(
+                    "move_path closure returned non-finite joint values at s={s}"
+                )));
+            }
+            None => {
+                return Err(RobotException::UnprocessableInstructionError(format!(
+                    "move_path closure returned None at s={s}; must be defined on [0, 1]"
+                )));
+            }
+        }
+    }
+
+    let n = s_grid.len();
+    let q = na::DMatrix::<f64>::from_fn(N, n, |i, j| q_samples[j][i]);
+    let mut dq = na::DMatrix::<f64>::zeros(N, n);
+    let mut ddq = na::DMatrix::<f64>::zeros(N, n);
+    let mut dddq = na::DMatrix::<f64>::zeros(N, n);
+
+    for j in 0..n {
+        let start = j.saturating_sub(2).min(n - 5);
+        let indices = [start, start + 1, start + 2, start + 3, start + 4];
+        let offsets = indices.map(|idx| s_grid[idx] - s_grid[j]);
+        let weights_d1 = finite_difference_weights(&offsets, 1);
+        let weights_d2 = finite_difference_weights(&offsets, 2);
+        let weights_d3 = finite_difference_weights(&offsets, 3);
+
+        for axis in 0..N {
+            for (k, &idx) in indices.iter().enumerate() {
+                let q_value = q_samples[idx][axis];
+                dq[(axis, j)] += weights_d1[k] * q_value;
+                ddq[(axis, j)] += weights_d2[k] * q_value;
+                dddq[(axis, j)] += weights_d3[k] * q_value;
+            }
+        }
+    }
+
+    Ok((q, dq, ddq, dddq))
+}
+
+fn finite_difference_weights(offsets: &[f64; 5], derivative_order: usize) -> [f64; 5] {
+    let mut matrix = [[0.0f64; 6]; 5];
+    for row in 0..5 {
+        for (col, &offset) in offsets.iter().enumerate() {
+            matrix[row][col] = offset.powi(row as i32);
+        }
+        matrix[row][5] = if row == derivative_order {
+            factorial(derivative_order) as f64
+        } else {
+            0.0
+        };
+    }
+
+    for pivot in 0..5 {
+        let pivot_row = (pivot..5)
+            .max_by(|&a, &b| matrix[a][pivot].abs().total_cmp(&matrix[b][pivot].abs()))
+            .unwrap();
+        matrix.swap(pivot, pivot_row);
+
+        let pivot_value = matrix[pivot][pivot];
+        for col in pivot..6 {
+            matrix[pivot][col] /= pivot_value;
+        }
+
+        for row in 0..5 {
+            if row == pivot {
+                continue;
+            }
+            let factor = matrix[row][pivot];
+            for col in pivot..6 {
+                matrix[row][col] -= factor * matrix[pivot][col];
+            }
+        }
+    }
+
+    matrix.map(|row| row[5])
+}
+
+fn factorial(n: usize) -> usize {
+    (1..=n).product()
+}
+
+/// Convert a column-major `(N, M)` joint matrix to `Vec<[f64; N]>`.
+pub fn q_grid_to_traj<const N: usize>(q: &na::DMatrix<f64>) -> Vec<[f64; N]> {
     let mut traj = Vec::with_capacity(q.ncols());
     for j in 0..q.ncols() {
         let mut joint = [0.0f64; N];
         for (i, slot) in joint.iter_mut().enumerate().take(N) {
             *slot = q[(i, j)];
         }
-        traj.push(MotionType::Joint(joint));
+        traj.push(joint);
     }
     traj
 }

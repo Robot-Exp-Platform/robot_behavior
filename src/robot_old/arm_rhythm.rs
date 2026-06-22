@@ -1,4 +1,4 @@
-use std::future::Future;
+﻿use std::future::Future;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
@@ -9,7 +9,7 @@ use crate::{
     ArmImpedance, ArmRealtimeControl, ArmState, ControlType, MotionType, Pose, RobotException,
 };
 
-// ── ArmControlRhythm ──────────────────────────────────────────────────────
+// 鈹€鈹€ ArmControlRhythm 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 // Wraps ArmRealtimeControl::control_with_closure as a Rhythm source.
 // Each rhythm tick corresponds to one realtime control cycle.
 // Yield = (ArmState<N>, Duration),  Feed = (ControlType<N>, bool)
@@ -53,10 +53,10 @@ where
         Fut: Future<Output = (Self::Feed, Nodes)> + Send,
     {
         async move {
-            // Channel: closure �?drive loop (arm state)
+            // Channel: closure 锟?drive loop (arm state)
             let (state_tx, mut state_rx) =
                 tokio::sync::mpsc::unbounded_channel::<(ArmState<N>, Duration)>();
-            // Channel: drive loop �?closure (control command)
+            // Channel: drive loop 锟?closure (control command)
             let (cmd_tx, cmd_rx) = std::sync::mpsc::sync_channel::<(ControlType<N>, bool)>(0);
 
             if let Err(e) = self.arm.control_with_closure(move |state, dt| {
@@ -96,7 +96,7 @@ where
     }
 }
 
-// ── ArmMotionRhythm ──────────────────────────────────────────────────────
+// 鈹€鈹€ ArmMotionRhythm 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 // Wraps ArmRealtimeControl::move_with_closure as a Rhythm source.
 // Each rhythm tick corresponds to one realtime motion cycle.
 // Yield = (ArmState<N>, Duration),  Feed = (MotionType<N>, bool)
@@ -177,7 +177,7 @@ where
     }
 }
 
-// ── CartesianImpedanceRhythm ─────────────────────────────────────────────
+// 鈹€鈹€ CartesianImpedanceRhythm 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 // Wraps ArmImpedance::cartesian_impedance_async as a Rhythm source.
 // The robot runs its own impedance control loop internally.
 // This rhythm periodically polls the arm state and lets nodes update the target.
@@ -253,7 +253,7 @@ where
     }
 }
 
-// ── JointImpedanceRhythm ────────────────────────────────────────────────
+// 鈹€鈹€ JointImpedanceRhythm 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 // Wraps ArmImpedance::joint_impedance_async as a Rhythm source.
 // Yield = ArmState<N>,  Feed = Option<[f64; N]>  (None = keep current target)
 

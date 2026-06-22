@@ -1,90 +1,104 @@
-# Readme
+# robot_behavior
 
-[English](README.md) | [简体中文](README_cn.md)
+[English](README.md) | [简体中文](README_zh.md) | [在线文档](../robot_behavior_page/docs/zh/index.md)
 
-<p align = "center">
-    <strong>
-        <a href="https://robot-exp-platform.github.io/robot_behavior_page/">Documentation</a>
-    </strong>
-</p>
+`robot_behavior` 是机器人驱动、仿真器和 Roplat 适配层共享的 Rust 行为抽象库。它描述的是机器人“能做什么”：在类型化空间中运动，暴露结构化状态，运行实时控制闭包，并在驱动具备模型能力时提供运动学、Jacobian 和动力学映射。
 
----
+它不是某个硬件 SDK，也不是完整运动规划框架。它是一个契约 crate，让 Franka、JAKA、Hans、AUBO、仿真器和示例机器人在应用层呈现一致的接口。
 
-目前小版本间的接口定义尚不稳定，预期在2026年前实现第一个稳定版本
+## 能力
 
-本库是[通用机器人驱动计划](https://github.com/Robot-Exp-Platform/robot_behavior)中的一员！我们立志于为更多的机器人平台提供 Rust 语言及更多语言的驱动支持！**统一不同型号的机器人驱动接口，降低机器人学习成本，提供更高效的机器人控制方案！**
+- 使用 `JointSpace<N>`、`FlangeSpace`、`TcpSpace`、base space 和 whole-body space 描述运动目标。
+- 使用 `TorqueControl<N>`、`ArmTorqueControl<N>`、`JointPositionControl<N>`、`CartesianPoseControl<N>`、`BaseVelocityControl` 等类型化通道运行实时控制。
+- 使用 `JointState<N>`、`ArmState<N>`、`BaseState`、`QuadrupedState<N>`、`HumanoidState<N>` 读取结构化状态。
+- 复用 PD/PID、阻抗控制、重力补偿、computed torque 等控制器闭包。
+- 用 `SpaceMap` 表达 FK、IK、Jacobian、动力学等模型能力。
+- 让机械臂、四足、人形、移动底盘和仿真器以“能力 + 状态”的方式组合，而不是继承同一个根机器人类型。
 
-本库是通用机器人驱动的特征库，用于描述机器人行为的特征。它提供了一些通用的特征描述符和实现，供其他机器人驱动库使用。同时特征库也为常见的接口实现了自动派生宏，用于派生安全的接口实现。
+## 依赖者
 
-我们正在力求确保驱动库在不同的操作平台上行为的一致性和不同驱动库之间的兼容性。我们希望通过这个库，减少机器人操作之间的学习成本，达到一门通而门门通的效果。
+当前 workspace 中使用 `robot_behavior` 的主要 crate 包括：
 
-## 接口设计原则
+- `franka-rust`
+- `libjaka-rs`
+- `libhans-rs`
+- `libaubo-rs`
+- `rsbullet`
+- `roplat_exrobot`
+- `roplat_rerun`
+- `examples/jaka_dual`
 
-- **描述完整**，每个接口在使用过程中应当完整明确的表达该接口执行的行为
-- **语义一致**，函数参数/返回值与函数名应当具有一致的语义
-- **行为一致**，接口的行为应当在不同的驱动库中保持一致
+下游实验 workspace 也通过 Cargo patch 使用同一套行为接口，从而避免实验代码绑定到某个具体硬件 crate。
 
-## 如何使用本库驱动的机器人？
+## 基本用法
 
-由本库派生的机器人均满足相同的接口规范。文档见 [robot_behavior](https://robot-exp-platform.github.io/robot_behavior_page/)。
-
-对于不同的机器人，我们通常建议以 `robot` 作为对象名，在之后的说明中，均以 `robot` 作为实例化后的机器人对象。
-
-一个简单的移动机器人的样例如下：
-
-```rust
-robot.move_to(MotionType::Joint([0.;6]))?;
-robot.move_to(MotionType::Cartensian(Pose::Euler([0;3],[0.;3])))?;
-```
-
-当然我们还准备了一些简化的函数，如以下的函数具备和上述代码相同的功能：
+应用代码通过类型参数选择运动空间：
 
 ```rust
-robot.move_joint([0.;6])?;
-robot.move_cartesian_euler([0;3],[0.;3])?;
-```
+use robot_behavior::{JointSpace, MoveTo, RobotResult};
 
-整体来说，我们将机器人接口分为 3 类：预规划接口、流式接口、闭包接口（实时控制接口），这三类接口分别描述:轨迹发布时已知；轨迹发布时未知，但是运行时发布；轨迹发布时未知，运行时通过闭包计算得到控制量三种情形。基本涵盖了所有的控制方法。
-
-我们正在努力实现更多机器人以及为机器人提供更加简单易懂的接口实现方法，尽情期待！
-
-你可以在 [robots](https://robot-exp-platform.github.io/robot_behavior_page/) 中找到当前已经实现了哪些机器人，如果你实现了机器人，也可以联系我们更新。
-
-## 如何为一个机器人实现驱动？
-
-为你的机器人实现一个结构体，然后尝试为他实现 [`robot_behavior::robot::arm`](./src/robot/arm.rs) 中的一系列特征吧！
-
-我们提供了过程中需要的一系列函数，如规划函数等等，供您任取。
-
-### 如何将驱动封装为 Python 接口？
-
-打开 "to_py" 特性，然后使用库中提供的宏来实现驱动。宏将自动为您生成相应的 Python 接口。
-
-```rust
-#[cfg(feature = "to_py")]
+fn home<R>(robot: &mut R) -> RobotResult<()>
+where
+    R: MoveTo<JointSpace<6>>,
 {
-    use pyo3::types::{PyModule, PyModuleMethods};
-    use robot_behavior::*;
-
-    struct ExRobot;
-
-    #[pyo3::pyclass]
-    struct PyExRobot(ExRobot);
-
-    py_robot_behavior!(PyExRobot(ExRobot));
-    py_arm_behavior!(PyExRobot<{0}>(ExRobot));
-    py_arm_param!(PyExRobot<{0}>(ExRobot));
-    py_arm_preplanned_motion_impl!(PyExRobot<{0}>(ExRobot));
-    py_arm_preplanned_motion!(PyExRobot<{0}>(ExRobot));
-    py_arm_preplanned_motion_ext!(PyExRobot<{0}>(ExRobot));
-
-    #[pyo3::pymodule]
-    fn ex_robot(m: &pyo3::Bound<'_, PyModule>) -> pyo3::PyResult<()> {
-        m.add_class::<PyExRobot>()?;
-        m.add_class::<PyPose>()?;
-        m.add_class::<PyArmState>()?;
-        m.add_class::<LoadState>()?;
-        Ok(())
-    }
+    robot.move_to::<JointSpace<6>>([0.0; 6])
 }
 ```
+
+实时控制通过 `ControlWith<S>` 表示驱动支持的控制通道，通过 `control_with` 执行闭包：
+
+```rust
+use robot_behavior::{Control, ControlWith, RobotResult, TorqueControl};
+
+fn hold_zero_torque<R>(robot: &mut R) -> RobotResult<()>
+where
+    R: ControlWith<TorqueControl<7>>,
+{
+    robot.control_with::<TorqueControl<7>, _>(|_state, _dt| ([0.0; 7], true))
+}
+```
+
+控制器 helper 返回普通 `FnMut` 闭包，可直接传入 `control_with`：
+
+```rust
+use robot_behavior::{
+    Control, ControlWith, RobotResult, TorqueControl,
+    controller::joint_traj_pd_control,
+};
+
+fn track_traj<R>(robot: &mut R, traj: Vec<[f64; 7]>) -> RobotResult<()>
+where
+    R: ControlWith<TorqueControl<7>>,
+{
+    let controller = joint_traj_pd_control(traj, [80.0; 7], [12.0; 7]);
+    robot.control_with::<TorqueControl<7>, _>(controller)
+}
+```
+
+COPP 轨迹也可以整理成实时控制闭包：
+
+```rust
+use robot_behavior::{
+    Control, ControlWith, JointPositionControl, RobotResult,
+    utils::trajectory::copp_waypoints_joint_position_control,
+};
+
+fn follow_waypoints<R>(robot: &mut R, waypoints: &[[f64; 7]]) -> RobotResult<()>
+where
+    R: ControlWith<JointPositionControl<7>> + robot_behavior::Joints<7>,
+{
+    let generator = copp_waypoints_joint_position_control::<R, 7>(waypoints, 1.0)?;
+    robot.control_with::<JointPositionControl<7>, _>(generator)
+}
+```
+
+## 设计脉络
+
+- `Robot`：生命周期和原生状态。
+- `MoveTo<S>` / `MoveTraj<S>`：驱动支持的运动空间。
+- `ControlWith<S>`：驱动支持的实时控制通道。
+- `Arm<N>`、`MobileBase`、`Quadruped<N>`、`Humanoid<N>`：可组合的机器人能力束。
+- `StateView<T>`：以 `meas` / `cmd` / `des` 表达 measured、commanded、desired 三类状态视角。
+- `SpaceMap`：模型映射统一入口，例如 FK、Jacobian、质量矩阵、重力和科氏力。
+
+`WholeBodyJointSpace<N>` 等 whole-body 运动空间仍用于区分整机关节运动；控制通道则统一复用 `TorqueControl<N>`、`JointPositionControl<N>`、`JointVelocityControl<N>`，避免为相同的输入输出形状重复定义控制类型。

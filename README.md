@@ -1,103 +1,166 @@
-# Readme
+﻿# robot_behavior
 
-[English](README.md) | [简体中文](README_cn.md)
+[English](README.md) | [简体中文](README_zh.md) | [Documentation](../robot_behavior_page/docs/en/index.md)
 
-<p align = "center">
-    <strong>
-        <a href="https://robot-exp-platform.github.io/robot_behavior_page/">Documentation</a>
-    </strong>
-</p>
+`robot_behavior` is the shared Rust behavior layer for robot drivers, simulators and Roplat adapters. It defines the common language for "what a robot can do": move in typed spaces, expose structured state, run realtime control closures, and provide kinematics / dynamics maps when a driver has a model.
 
----
+It is not a hardware SDK and it is not a motion-planning framework. It is the contract crate that lets different backends feel like the same kind of robot from application code.
 
-At present, the interface definitions among minor versions are still unstable. It is expected that the first stable version will be implemented before 2026.
+## What It Does
 
-This library is part of the [Universal Robot Driver Project](https://github.com/Robot-Exp-Platform/robot_behavior)! We are committed to providing Rust driver support for more robotic platforms! **Unifying driver interfaces across different robot models, reducing the learning curve for robotics, and delivering more efficient robot control solutions!**
+`robot_behavior` gives downstream crates a common API for:
 
-This library is a general robot driven feature library, used to describe the characteristics of robot behavior. It provides some common feature descriptors and implementations for use by other robot driver libraries. At the same time, the signature database also implements automatic derivation macros for common interfaces, which can be used to derive secure interface implementations.
+- Moving robots in typed spaces such as `JointSpace<N>`, `FlangeSpace`, `TcpSpace`, base spaces and whole-body spaces.
+- Running realtime control loops through typed channels such as `TorqueControl<N>`, `ArmTorqueControl<N>`, `CartesianPoseControl<N>` and `BaseVelocityControl`.
+- Reading structured state through `JointState<N>`, `ArmState<N>`, `BaseState`, `QuadrupedState<N>` and `HumanoidState<N>`.
+- Sharing controller skills such as PD/PID tracking, impedance control, gravity compensation and computed-torque control.
+- Expressing FK, IK, Jacobian and dynamics as typed `SpaceMap` implementations.
+- Letting arms, humanoids, quadrupeds, mobile bases and simulators share reusable behavior without forcing them into one root robot type.
 
-We aim to ensure consistent behavior of driver libraries across various operating platforms, as well as compatibility among different driver libraries. We hope that through the use of this library, we can minimize the learning curve associated with robot operations and achieve seamless integration.
+## Why Use It
 
-## The principles of interface design
+The main advantage is consistency across very different robots and backends.
 
-- **Complete interface description**. During the usage of each interface, the behavior executed by that interface should be clearly and completely expressed
-- **Semantic consistency**: Function parameters/return values and function names should have consistent semantics
-- **Consistent behavior**: The behavior of the interface should remain consistent across different driver libraries
+- **Typed commands instead of ambiguous arrays**: `[f64; 7]` becomes meaningful only when paired with `JointSpace<7>`, `TorqueControl<7>` or another marker.
+- **One application style across drivers**: user code can call `move_to::<JointSpace<N>>()` or `control_with::<TorqueControl<N>, _>()` against any compatible backend.
+- **Driver-friendly abstraction**: drivers implement only the spaces and control channels they actually support.
+- **Reusable controller closures**: controller helpers return plain `FnMut` closures, so they plug directly into realtime control loops.
+- **Robot form is compositional**: an arm, dog or humanoid can be modeled as capabilities plus state, rather than being forced into one rigid inheritance tree.
+- **Model APIs are optional**: kinematics and dynamics live behind typed maps, so a simple driver can skip them and a rich driver can expose them cleanly.
 
-## How to use the robot driven by this library
+## Who Depends On It
 
-[robot_behavior](https://robot-exp-platform.github.io/robot_behavior_page/)。
+In this workspace, `robot_behavior` is used by:
 
-All robots derived from this library follow the same interface specification. For consistency, we usually name the instantiated driver `robot`, and the rest of this document assumes that name.
+- `franka-rust`: Franka Emika / FR3 driver.
+- `libjaka-rs`: JAKA robot driver.
+- `libhans-rs`: Hans robot driver.
+- `libaubo-rs`: AUBO robot driver.
+- `rsbullet`: Bullet-based simulation backend.
+- `roplat_exrobot`: example / adapter robots exposed as Roplat nodes.
+- `roplat_rerun` and `utils/rerun_urdf`: visualization-related crates.
+- `examples/jaka_dual` and other workspace examples.
 
-Here is a minimal example of commanding a robot:
+It is also patched into downstream experiment workspaces so experiments can consume the same behavior interface without depending on a specific hardware crate.
 
-```rust
-robot.move_to(MotionType::Joint([0.; 6]))?;
-robot.move_to(MotionType::Cartensian(Pose::Euler([0; 3], [0.; 3])))?;
-```
+## Core Idea
 
-We also provide helper shortcuts that perform the same actions:
-
-```rust
-robot.move_joint([0.; 6])?;
-robot.move_cartesian_euler([0; 3], [0.; 3])?;
-```
-
-Conceptually, the interfaces fall into three categories:
-
-1. **Preplanned interfaces** – trajectories are known at the time of submission.
-2. **Streaming interfaces** – trajectories are generated online and streamed while the robot is moving.
-3. **Closure/real-time interfaces** – control commands are computed inside a user-provided closure during execution.
-
-Together these categories cover most control scenarios. We are continuously adding support for more robots and friendlier APIs. See [robots](https://robot-exp-platform.github.io/robot_behavior_page/) for the latest list, and reach out if you have a new driver to add.
-
-## How to implement a robot driver
-
-Create a struct for your robot and implement the traits defined in [`robot_behavior::robot::arm`](./src/robot/arm.rs). The crate provides plenty of helper functions—such as planning utilities—that you can pick and choose from during the implementation.
-
-### How to implement the driver to python
-
-open the feature "to_py" , and then use the macros provided in the library to implement the driver. The macros will automatically generate the corresponding Python interface for you.
+Application code selects behavior through type-level spaces:
 
 ```rust
-#[cfg(feature = "to_py")]
+use robot_behavior::{JointSpace, Motion, MoveTo, RobotResult};
+
+fn home<R>(robot: &mut R) -> RobotResult<()>
+where
+    R: MoveTo<JointSpace<6>>,
 {
-    use pyo3::types::{PyAnyMethods, PyModule, PyModuleMethods};
-    use robot_behavior::*;
-
-    struct ExRobot;
-
-    #[pyo3::pyclass]
-    struct PyExRobot(ExRobot);
-
-    // Implement the necessary traits for PyExRobot
-    py_robot_behavior!(PyExRobot(ExRobot));
-    py_arm_behavior!(PyExRobot<{0}>(ExRobot));
-    py_arm_param!(PyExRobot<{0}>(ExRobot));
-
-    // Implement the preplanned motion traits for PyExRobot
-    py_arm_preplanned_motion_impl!(PyExRobot<{0}>(ExRobot));
-    py_arm_preplanned_motion!(PyExRobot<{0}>(ExRobot));
-    py_arm_preplanned_motion_ext!(PyExRobot<{0}>(ExRobot));
-
-    // Implement the streaming motion traits for PyExRobot
-    #[pyo3::pyclass]
-    struct ExRobotHandle;
-    py_arm_streaming_motion!(PyExRobot<{0}>(ExRobot) -> ExRobotHandle);
-    py_arm_streaming_motion_ext!(PyExRobot<{0}>(ExRobot));
-
-    // Implement the real-time control traits for PyExRobot
-    py_arm_real_time_control!(PyExRobot<{0}>(ExRobot));
-    py_arm_real_time_control_ext!(PyExRobot<{0}>(ExRobot));
-
-    #[pyo3::pymodule]
-    fn ex_robot(m: &pyo3::Bound<'_, PyModule>) -> pyo3::PyResult<()> {
-        m.add_class::<PyExRobot>()?;
-        m.add_class::<PyPose>()?;
-        m.add_class::<PyArmState>()?;
-        m.add_class::<LoadState>()?;
-        Ok(())
-    }
+    robot.move_to::<JointSpace<6>>([0.0; 6])
 }
 ```
+
+Realtime control is selected through type-level control channels:
+
+```rust
+use robot_behavior::{Control, ControlWith, RobotResult, TorqueControl};
+
+fn hold_zero_torque<R>(robot: &mut R) -> RobotResult<()>
+where
+    R: ControlWith<TorqueControl<7>>,
+{
+    robot.control_with::<TorqueControl<7>, _>(|_state, _dt| {
+        ([0.0; 7], true)
+    })
+}
+```
+
+The channel determines what state the closure receives. For example, `TorqueControl<N>` observes `JointState<N>`, while `ArmTorqueControl<N>` observes full `ArmState<N>` for Cartesian impedance, Jacobians or dynamics-aware control.
+
+## Controller Skills
+
+The controller helpers are intentionally small and composable. They build realtime closures rather than controller objects:
+
+```rust
+use robot_behavior::{
+    Control, ControlWith, RobotResult, TorqueControl,
+    utils::controller::joint_traj_pd_control,
+};
+
+fn track_traj<R>(robot: &mut R, traj: Vec<[f64; 7]>) -> RobotResult<()>
+where
+    R: ControlWith<TorqueControl<7>>,
+{
+    let controller = joint_traj_pd_control(traj, [80.0; 7], [12.0; 7]);
+    robot.control_with::<TorqueControl<7>, _>(controller)
+}
+```
+
+Available controller families include:
+
+- Joint PD / PID fixed target, dynamic target and trajectory tracking.
+- Joint impedance fixed target, dynamic target, trajectory tracking and handle-driven sessions.
+- Cartesian impedance with FK / Jacobian model support.
+- Gravity compensation.
+- Computed-torque tracking.
+- Base velocity PID.
+
+## State Model
+
+State is represented as measured / commanded / desired views:
+
+```rust
+pub struct StateView<T> {
+    pub meas: T,
+    pub cmd: T,
+    pub des: T,
+}
+```
+
+For arms, the primary state is:
+
+```rust
+pub struct ArmState<const N: usize> {
+    pub joint: JointState<N>,
+    pub flange: StateView<SpatialSample>,
+    pub tcp: Option<StateView<SpatialSample>>,
+    pub stiffness: Option<StateView<SpatialSample>>,
+    pub load: Option<LoadState>,
+}
+```
+
+The field names are explicit at the robot-structure level (`joint`, `flange`, `tcp`) and use standard robotics notation inside samples (`q`, `dq`, `tau`).
+
+## For Driver Authors
+
+A typical arm driver implements:
+
+- `Robot` for lifecycle and native state.
+- `Joints<N>` and `EndPoint` for limits.
+- `MoveTo<S>` and optionally `MoveTraj<S>` for supported motion spaces.
+- `ControlWith<S>` for supported realtime channels.
+- `Arm<N>` for the unified arm surface.
+- Optional `SpaceMap` / model traits for FK, IK, Jacobian and dynamics.
+
+Driver crates should normally import:
+
+```rust
+use robot_behavior::driver::*;
+```
+
+Application crates should normally import:
+
+```rust
+use robot_behavior::behavior::*;
+```
+
+## Feature Flags
+
+- `ffi`: FFI module gates.
+- `to_py`: PyO3 support.
+- `to_cxx`: `cxx` support.
+- `to_c`: C-facing gates.
+
+The core Rust behavior API works with default features.
+
+## Status
+
+`robot_behavior` is still evolving with the driver workspace. The current direction is stable at the design level: represent robots as capabilities, typed spaces and reusable controller / model skills. Some trait details may still change as more drivers and robot forms are integrated.
