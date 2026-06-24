@@ -8,6 +8,7 @@ pub mod kinematics_dynamics;
 pub mod load;
 pub mod model;
 pub mod motion;
+pub mod observe;
 pub mod spaces;
 pub mod state;
 pub mod types;
@@ -32,6 +33,7 @@ pub use model::{
     JacobianModel, SpaceMap, TypedSpaceMap,
 };
 pub use motion::{Motion, MotionFile, MotionSpace, MoveTo, MoveTraj};
+pub use observe::{ControlObservation, ControlObserver};
 pub use spaces::{
     BasePoseSpace, BaseVelocitySpace, CenterOfMassSpace, CoriolisInputSpace, EndSpace, FlangeSpace,
     FootSpace, GaitCommand, GaitSpace, GravityInputSpace, HandSpace, Inertial, JacobianSpace,

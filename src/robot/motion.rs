@@ -1,6 +1,8 @@
+use std::future::Future;
+
 use serde::de::DeserializeOwned;
 
-use crate::{Robot, RobotResult};
+use crate::{Robot, RobotException, RobotResult};
 
 /// Type-level mapping from a motion *space* to the *target* it carries for a
 /// particular robot `R`.
@@ -20,15 +22,22 @@ pub trait MotionSpace<R: ?Sized> {
 /// each hop applying its own linkage (tool offset, inverse kinematics, joint
 /// limits).
 pub trait MoveTo<S: MotionSpace<Self>>: Robot {
-    /// Command the robot to reach `target`, returning once the motion has been
-    /// accepted (non-blocking semantics are driver-defined).
+    /// Command the robot to reach `target`, returning when the motion has
+    /// finished or failed.
     fn move_to(&mut self, target: S::Target) -> RobotResult<()>;
 
-    /// Command the robot to reach `target` and block until it has finished.
-    /// Defaults to [`MoveTo::move_to`]; override when blocking differs.
-    fn move_to_sync(&mut self, target: S::Target) -> RobotResult<()> {
-        self.move_to(target)?;
-        self.waiting_for_finish()
+    /// Asynchronous target motion. The returned future is inert until the
+    /// caller polls or awaits it.
+    ///
+    /// Drivers should implement this only when they have a real async backend.
+    /// The default reports that async motion is not supported; it deliberately
+    /// does not wrap the blocking [`MoveTo::move_to`] path.
+    fn move_to_async(&mut self, _target: S::Target) -> impl Future<Output = RobotResult<()>> {
+        async {
+            Err(RobotException::UnprocessableInstructionError(
+                "async target motion is not implemented for this driver".to_string(),
+            ))
+        }
     }
 }
 
@@ -100,13 +109,23 @@ pub trait Motion: Sized {
         <Self as MoveTo<S>>::move_to(self, target)
     }
 
-    /// Reach `target` in space `S` and block. See [`MoveTo::move_to_sync`].
+    /// Reach `target` in space `S` asynchronously. See [`MoveTo::move_to_async`].
+    fn move_to_async<S>(&mut self, target: S::Target) -> impl Future<Output = RobotResult<()>>
+    where
+        S: MotionSpace<Self>,
+        Self: MoveTo<S>,
+    {
+        <Self as MoveTo<S>>::move_to_async(self, target)
+    }
+
+    #[deprecated(note = "move_to is blocking; use move_to_async for a Future-returning API")]
+    #[allow(deprecated)]
     fn move_to_sync<S>(&mut self, target: S::Target) -> RobotResult<()>
     where
         S: MotionSpace<Self>,
         Self: MoveTo<S>,
     {
-        <Self as MoveTo<S>>::move_to_sync(self, target)
+        <Self as MoveTo<S>>::move_to(self, target)
     }
 
     /// Follow a dense trajectory in space `S`. See [`MoveTraj::move_traj`].

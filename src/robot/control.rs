@@ -1,4 +1,6 @@
-﻿use std::time::Duration;
+use std::time::Duration;
+
+use futures::executor;
 
 use crate::{
     Robot, RobotResult,
@@ -90,7 +92,7 @@ impl<R> ControlSpace<R> for BalanceControl {
     type Command = [f64; 6];
 }
 
-/// Realtime, closure-driven control - the bridge into roplat's `Rhythm`.
+/// Realtime, closure-driven control - the bridge into blocking control loops.
 /// **Implemented by drivers**, one impl per control channel `S`.
 ///
 /// Generic over the [`ControlSpace`] channel `S`, which fixes both the observed
@@ -100,6 +102,10 @@ impl<R> ControlSpace<R> for BalanceControl {
 /// task-shaped view. The closure is invoked once per control cycle with the
 /// freshly observed state and the elapsed cycle time, and returns the next
 /// command together with a `done` flag.
+///
+/// `control_with` runs a control relation until the closure reports `done = true`
+/// or the driver returns an error. The closure is scoped to the call, so drivers
+/// should not store it after `control_with` returns.
 pub trait ControlWith<S: ControlSpace<Self>>: Robot {
     /// Build a continuity-preserving fallback command from the latest observed
     /// state.
@@ -115,7 +121,20 @@ pub trait ControlWith<S: ControlSpace<Self>>: Robot {
     /// Run a realtime control loop until the closure signals completion.
     fn control_with<F>(&mut self, closure: F) -> RobotResult<()>
     where
-        F: FnMut(S::Obs, Duration) -> (S::Command, bool) + Send + 'static;
+        F: FnMut(S::Obs, Duration) -> (S::Command, bool);
+
+    /// Blocking control loop that accepts an async per-cycle closure.
+    ///
+    /// The default implementation adapts an async controller back into the
+    /// blocking [`control_with`](ControlWith::control_with) loop by running one
+    /// controller future to completion per cycle. The method itself is still
+    /// blocking: it returns only when the control loop finishes or errors.
+    fn control_with_async<F>(&mut self, mut closure: F) -> RobotResult<()>
+    where
+        F: async FnMut(S::Obs, Duration) -> (S::Command, bool),
+    {
+        self.control_with(move |obs, duration| executor::block_on(closure(obs, duration)))
+    }
 }
 
 /// Ergonomic, channel-parameterised entry point. **Blanket-implemented for every
@@ -135,7 +154,7 @@ pub trait Control: Robot + Sized {
     where
         S: ControlSpace<Self>,
         Self: ControlWith<S>,
-        F: FnMut(S::Obs, Duration) -> (S::Command, bool) + Send + 'static,
+        F: FnMut(S::Obs, Duration) -> (S::Command, bool),
     {
         <Self as ControlWith<S>>::control_with(self, closure)
     }
@@ -148,6 +167,17 @@ pub trait Control: Robot + Sized {
         Self: ControlWith<S> + Sized,
     {
         <Self as ControlWith<S>>::hold_command(obs)
+    }
+
+    /// Blocking async-closure facade for channel `S`.
+    /// See [`ControlWith::control_with_async`].
+    fn control_with_async<S, F>(&mut self, closure: F) -> RobotResult<()>
+    where
+        S: ControlSpace<Self>,
+        Self: ControlWith<S>,
+        F: async FnMut(S::Obs, Duration) -> (S::Command, bool),
+    {
+        <Self as ControlWith<S>>::control_with_async(self, closure)
     }
 }
 

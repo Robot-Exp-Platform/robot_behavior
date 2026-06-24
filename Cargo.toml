@@ -18,7 +18,7 @@ crate-type = ["cdylib", "rlib"]
 opt-level = 3
 
 [dependencies]
-roplat = { version = "0.2.0", path = "../../roplat/roplat" }
+roplat = { version = "0.2.2", path = "../../roplat/roplat" }
 copp = { version = "0.2.2" }
 pyo3 = { version = "0.28.3", optional = true, features = [
     "extension-module",
@@ -35,7 +35,7 @@ paste = "1.0.15"
 pipe-trait = "0.4.0"
 typenum = "1.19.0"
 futures = "0.3"
-tokio = { version = "1", features = ["sync", "time"] }
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 
 [build-dependencies]
 cxx-build = "1.0.188"

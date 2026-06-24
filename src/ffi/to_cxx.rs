@@ -132,7 +132,7 @@ macro_rules! cxx_arm_motion_api {
         }
 
         fn move_joint_sync(&mut self, target: [f64; $dof]) -> $crate::RobotResult<()> {
-            <$ty as $crate::MoveTo<$crate::JointSpace<$dof>>>::move_to_sync(self, target)
+            <$ty as $crate::MoveTo<$crate::JointSpace<$dof>>>::move_to(self, target)
         }
 
         fn move_flange(
@@ -148,7 +148,7 @@ macro_rules! cxx_arm_motion_api {
             target: $crate::ffi::to_cxx::CxxPoseData,
         ) -> $crate::RobotResult<()> {
             let target = $crate::Pose::try_from(target)?;
-            <$ty as $crate::MoveTo<$crate::FlangeSpace>>::move_to_sync(self, target)
+            <$ty as $crate::MoveTo<$crate::FlangeSpace>>::move_to(self, target)
         }
     };
 }
@@ -289,10 +289,7 @@ macro_rules! cxx_arm_bridge {
             }
 
             fn move_joint_sync(&mut self, target: [f64; $dof]) -> $crate::RobotResult<()> {
-                <$inner as $crate::MoveTo<$crate::JointSpace<$dof>>>::move_to_sync(
-                    &mut self.0,
-                    target,
-                )
+                <$inner as $crate::MoveTo<$crate::JointSpace<$dof>>>::move_to(&mut self.0, target)
             }
 
             fn move_flange(&mut self, target: $mod_name::CxxPoseData) -> $crate::RobotResult<()> {
@@ -305,7 +302,7 @@ macro_rules! cxx_arm_bridge {
                 target: $mod_name::CxxPoseData,
             ) -> $crate::RobotResult<()> {
                 let target = Self::cxx_pose_to_pose(target)?;
-                <$inner as $crate::MoveTo<$crate::FlangeSpace>>::move_to_sync(&mut self.0, target)
+                <$inner as $crate::MoveTo<$crate::FlangeSpace>>::move_to(&mut self.0, target)
             }
 
             fn cxx_pose_to_pose(

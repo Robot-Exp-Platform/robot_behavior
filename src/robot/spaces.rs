@@ -94,8 +94,9 @@ impl<R> MotionSpace<R> for CenterOfMassSpace {
 ///
 /// This is intentionally small; vendor-specific gait parameters should live in
 /// driver-specific types until a shared need appears.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum GaitCommand {
+    #[default]
     Stop,
     Stand,
     Walk {
@@ -104,12 +105,6 @@ pub enum GaitCommand {
         /// Desired angular velocity `[wx, wy, wz]`.
         angular: [f64; 3],
     },
-}
-
-impl Default for GaitCommand {
-    fn default() -> Self {
-        Self::Stop
-    }
 }
 
 /// Gait command space for legged robots.

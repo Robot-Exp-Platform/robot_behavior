@@ -1,4 +1,5 @@
 #![allow(incomplete_features)]
+#![feature(async_trait_bounds)]
 #![feature(generic_const_exprs)]
 
 mod exception;
@@ -8,6 +9,7 @@ pub mod ffi;
 mod physics_engine;
 mod renderer;
 mod robot;
+pub mod roplat;
 pub mod utils;
 mod world;
 
@@ -42,15 +44,16 @@ pub mod behavior {
         Arm, ArmDynamics, ArmForwardKinematics, ArmInverseKinematics, ArmState, ArmTorqueControl,
         BalanceControl, BasePoseSpace, BaseState, BaseVelocityControl, BaseVelocitySpace,
         CartesianPoseControl, CartesianVelocityControl, CenterOfMassSpace, ContactState, Control,
-        ControlSpace, Coord, CoriolisInput, CoriolisInputSpace, DhParam, DynamicsModel,
-        EndEffectorState, EndPoint, EndSpace, FlangeSpace, FootSpace, ForwardKinematics,
-        GaitCommand, GaitSpace, GravityInput, GravityInputSpace, HandSpace, Humanoid,
-        HumanoidState, Inertial, InverseKinematics, JacobianModel, JacobianSpace,
-        JointPositionControl, JointSample, JointSpace, JointState, JointTorqueSpace,
-        JointVelocityControl, Joints, LoadState, MassMatrixSpace, MobileBase, MobileBaseState,
-        Motion, MotionFile, MotionSpace, Pose, Quadruped, QuadrupedState, Relative, Robot,
-        RobotDescription, SpaceMap, SpatialSample, StateView, TcpSpace, TorqueControl,
-        TypedSpaceMap, WholeBodyJointSpace, WholeBodyTorqueSpace, WholeBodyVelocitySpace,
+        ControlObservation, ControlObserver, ControlSpace, Coord, CoriolisInput,
+        CoriolisInputSpace, DhParam, DynamicsModel, EndEffectorState, EndPoint, EndSpace,
+        FlangeSpace, FootSpace, ForwardKinematics, GaitCommand, GaitSpace, GravityInput,
+        GravityInputSpace, HandSpace, Humanoid, HumanoidState, Inertial, InverseKinematics,
+        JacobianModel, JacobianSpace, JointPositionControl, JointSample, JointSpace, JointState,
+        JointTorqueSpace, JointVelocityControl, Joints, LoadState, MassMatrixSpace, MobileBase,
+        MobileBaseState, Motion, MotionFile, MotionSpace, Pose, Quadruped, QuadrupedState,
+        Relative, Robot, RobotDescription, SpaceMap, SpatialSample, StateView, TcpSpace,
+        TorqueControl, TypedSpaceMap, WholeBodyJointSpace, WholeBodyTorqueSpace,
+        WholeBodyVelocitySpace,
     };
 
     pub use crate::physics_engine::{AddSearchPath, PhysicsEngine};

@@ -413,11 +413,8 @@ macro_rules! py_joint_motion {
             }
 
             fn move_joint_sync(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
-                <$inner as $crate::MoveTo<$crate::JointSpace<$dof>>>::move_to_sync(
-                    &mut self.0,
-                    target,
-                )
-                .map_err(Into::into)
+                <$inner as $crate::MoveTo<$crate::JointSpace<$dof>>>::move_to(&mut self.0, target)
+                    .map_err(Into::into)
             }
 
             fn move_joint_traj(&mut self, traj: Vec<[f64; $dof]>) -> pyo3::PyResult<()> {
@@ -439,11 +436,8 @@ macro_rules! py_flange_move {
             }
 
             fn move_flange_sync(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
-                <$inner as $crate::MoveTo<$crate::FlangeSpace>>::move_to_sync(
-                    &mut self.0,
-                    target.into(),
-                )
-                .map_err(Into::into)
+                <$inner as $crate::MoveTo<$crate::FlangeSpace>>::move_to(&mut self.0, target.into())
+                    .map_err(Into::into)
             }
         }
     };
