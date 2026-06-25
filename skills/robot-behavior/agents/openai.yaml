@@ -1,0 +1,4 @@
+interface:
+  display_name: "Robot Behavior"
+  short_description: "Use or implement robot_behavior drivers"
+  default_prompt: "Use $robot-behavior to write application code for a robot driver or implement a new robot_behavior driver."

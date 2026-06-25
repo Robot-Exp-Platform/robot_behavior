@@ -2,6 +2,8 @@
 
 [English](README.md) | [简体中文](README_zh.md) | [Documentation](../robot_behavior_page/docs/en/index.md)
 
+For AI agents and contributors, see [skills/robot-behavior/SKILL.md](skills/robot-behavior/SKILL.md). It keeps the current workflow split clear: application users consume `robot_behavior::behavior::*`, while driver authors implement through `robot_behavior::driver::*`.
+
 `robot_behavior` is the shared Rust behavior layer for robot drivers, simulators and Roplat adapters. It defines the common language for "what a robot can do": move in typed spaces, expose structured state, run realtime control closures, and provide kinematics / dynamics maps when a driver has a model.
 
 It is not a hardware SDK and it is not a motion-planning framework. It is the contract crate that lets different backends feel like the same kind of robot from application code.
