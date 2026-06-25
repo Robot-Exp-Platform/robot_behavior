@@ -1,0 +1,169 @@
+# 机器人示例清单
+
+这份清单用于说明：一个机器人驱动最好提供哪些示例，才能较有说服力地证明它已经完成了 `robot_behavior` 的核心能力实现。
+
+- [ ] 00 连接与生命周期
+  - [ ] 生命周期冒烟测试
+    - 推荐文件名：`00_00_lifecycle.rs`
+    - 对应 trait：`Robot`
+    - 期望结果：打印驱动版本，连接机器人，执行驱动支持的生命周期调用，并且不产生运动。
+  - [ ] 安全恢复冒烟测试
+    - 推荐文件名：`00_01_recovery.rs`
+    - 对应 trait：`Robot`
+    - 期望结果：在驱动支持时演示 `stop`、`reset` 或急停恢复语义。
+
+- [ ] 01 状态读取
+  - [ ] 读取一次完整状态
+    - 推荐文件名：`01_00_read_state.rs`
+    - 对应 trait：`Robot`
+    - 期望结果：打印一次 `Robot::State` 中该机器人最关键的测量字段。
+  - [ ] 短循环回显状态
+    - 推荐文件名：`01_01_echo_state.rs`
+    - 对应 trait：`Robot`
+    - 期望结果：连续打印状态采样，并用 `RobotResult` 暴露通信错误。
+
+- [ ] 02 关节运动
+  - [ ] 运动到文档约定的默认关节位姿
+    - 推荐文件名：`02_00_move_joint_default.rs`
+    - 对应 trait：`Motion`，`MoveTo<JointSpace<N>>`
+    - 期望结果：机器人到达默认关节位姿，`move_to` 在运动完成后返回。
+  - [ ] 执行小幅安全关节偏移并返回
+    - 推荐文件名：`02_01_move_joint_offset.rs`
+    - 对应 trait：`Motion`，`MoveTo<JointSpace<N>>`
+    - 期望结果：机器人执行有界相对关节运动，并回到已知位姿。
+  - [ ] 执行稠密关节轨迹
+    - 推荐文件名：`02_02_move_joint_trajectory.rs`
+    - 对应 trait：`Motion`，`MoveTraj<JointSpace<N>>`
+    - 期望结果：机器人消费已采样关节轨迹，不依赖外部规划器。
+  - [ ] 从文件加载并执行轨迹
+    - 推荐文件名：`02_03_move_joint_trajectory_file.rs`
+    - 对应 trait：`MotionFile`，`MoveTraj<JointSpace<N>>`
+    - 期望结果：机器人加载 JSON 轨迹并执行。
+  - [ ] 执行稀疏关节路点
+    - 推荐文件名：`02_04_move_joint_waypoints.rs`
+    - 对应 trait：`Motion`，`MoveTraj<JointSpace<N>>`
+    - 期望结果：驱动完成路点插值，或明确报告不支持路点规划。
+
+- [ ] 03 笛卡尔运动
+  - [ ] 对法兰或 TCP 执行小幅安全位姿偏移
+    - 推荐文件名：`03_00_move_flange_offset.rs`
+    - 对应 trait：`Motion`，`MoveTo<FlangeSpace>` 或 `MoveTo<TcpSpace>`
+    - 期望结果：机器人执行有界笛卡尔偏移，并在完成后返回。
+  - [ ] 运动到文档约定的笛卡尔位姿
+    - 推荐文件名：`03_01_move_flange_pose.rs`
+    - 对应 trait：`Motion`，`MoveTo<FlangeSpace>` 或 `MoveTo<TcpSpace>`
+    - 期望结果：机器人到达已知法兰/TCP 位姿，或明确报告不支持笛卡尔运动。
+
+- [ ] 04 实时控制
+  - [ ] 关节位置保持或跟踪
+    - 推荐文件名：`04_00_control_joint_position.rs`
+    - 对应 trait：`Control`，`ControlWith<JointPositionControl<N>>`
+    - 期望结果：有界控制闭包通过返回 `done = true` 结束。
+  - [ ] 有界关节速度控制
+    - 推荐文件名：`04_01_control_joint_velocity.rs`
+    - 对应 trait：`Control`，`ControlWith<JointVelocityControl<N>>`
+    - 期望结果：速度命令保持有界，并由闭包主动结束。
+  - [ ] 有界关节力矩控制
+    - 推荐文件名：`04_02_control_torque.rs`
+    - 对应 trait：`Control`，`ControlWith<TorqueControl<N>>`
+    - 期望结果：力矩命令被驱动接受并限幅，闭包能正常结束。
+  - [ ] 机械臂级力矩控制
+    - 推荐文件名：`04_03_control_arm_torque.rs`
+    - 对应 trait：`Control`，`ControlWith<ArmTorqueControl<N>>`
+    - 期望结果：控制器获得完整机械臂状态并返回关节力矩。
+  - [ ] 笛卡尔位姿控制
+    - 推荐文件名：`04_04_control_cartesian_pose.rs`
+    - 对应 trait：`Control`，`ControlWith<CartesianPoseControl<N>>`
+    - 期望结果：控制器获得机械臂状态并返回位姿命令。
+  - [ ] 笛卡尔速度控制
+    - 推荐文件名：`04_05_control_cartesian_velocity.rs`
+    - 对应 trait：`Control`，`ControlWith<CartesianVelocityControl<N>>`
+    - 期望结果：控制器获得机械臂状态并返回有界空间速度。
+
+- [ ] 05 可复用控制器
+  - [ ] 使用关节阻抗控制器
+    - 推荐文件名：`05_00_controller_joint_impedance.rs`
+    - 对应 trait：`Control`，`ControlWith<TorqueControl<N>>`
+    - 期望结果：`robot_behavior::controller` 生成的控制器可以直接传给 `control_with`。
+  - [ ] 使用笛卡尔阻抗控制器
+    - 推荐文件名：`05_01_controller_cartesian_impedance.rs`
+    - 对应 trait：`Control`，`ControlWith<ArmTorqueControl<N>>`，`ForwardKinematics`，`JacobianModel`
+    - 期望结果：模型驱动控制器根据笛卡尔位姿误差计算关节力矩。
+  - [ ] 使用轨迹跟踪控制器
+    - 推荐文件名：`05_02_controller_joint_traj_impedance.rs`
+    - 对应 trait：`Control`，`ControlWith<TorqueControl<N>>`
+    - 期望结果：控制器跟踪采样目标序列，而不是固定目标点。
+
+- [ ] 06 观察与日志
+  - [ ] 注册控制观察器
+    - 推荐文件名：`06_00_control_observation.rs`
+    - 对应 trait：`ControlObservation`，`Control`
+    - 期望结果：`before` 和 `after` 观察器在有界控制会话中收到完整机器人状态。
+  - [ ] 通信质量记录
+    - 推荐文件名：`06_01_communication_test.rs`
+    - 对应 trait：`ControlObservation`，`Control`
+    - 期望结果：记录命令成功率或周期统计，同时避免在实时回调中做重日志。
+
+- [ ] 07 运动学与动力学模型
+  - [ ] 打印在线坐标系位姿
+    - 推荐文件名：`07_00_model_live_frames.rs`
+    - 对应 trait：`Robot`，`ForwardKinematics`
+    - 期望结果：基于实时机器人状态打印有意义坐标系的正运动学位姿。
+  - [ ] 打印离线模型动力学
+    - 推荐文件名：`07_01_model_offline_dynamics.rs`
+    - 对应 trait：`ForwardKinematics`，`JacobianModel`，`DynamicsModel`
+    - 期望结果：打印位姿、雅可比、质量矩阵、科氏力和重力项等模型数据。
+
+- [ ] 08 末端执行器与 IO
+  - [ ] 夹爪或末端执行器冒烟测试
+    - 推荐文件名：`08_00_gripper.rs`
+    - 对应 trait：驱动原生末端执行器 API
+    - 期望结果：完成 homing、移动、读取状态、安全抓取和停止。
+  - [ ] 数字量或模拟量 IO
+    - 推荐文件名：`08_01_io.rs`
+    - 对应 trait：驱动原生 IO API
+    - 期望结果：在驱动暴露 IO 时完成读取或写入。
+
+- [ ] 09 异步或外部控制后端
+  - [ ] 原生异步运动
+    - 推荐文件名：`09_00_async_move_joint.rs`
+    - 对应 trait：`Motion`，`MoveTo<JointSpace<N>>`
+    - 期望结果：`move_to_async` 返回一个只有在被轮询时才运行的 future。
+  - [ ] 原生异步实时控制
+    - 推荐文件名：`09_01_async_control.rs`
+    - 对应 trait：`Control`，`ControlWith<S>`
+    - 期望结果：驱动使用真实异步后端，而不是把阻塞调用包成异步。
+  - [ ] active read/write 控制循环
+    - 推荐文件名：`09_02_active_read_write.rs`
+    - 对应 trait：驱动原生 active control API
+    - 期望结果：当后端没有 active read/write 原语时明确说明不支持。
+
+- [ ] 10 仿真器专属行为
+  - [ ] 在场景中生成机器人
+    - 推荐文件名：`10_00_spawn_robot.rs`
+    - 对应 trait：仿真器原生 API
+    - 期望结果：仿真器创建机器人，并暴露后续 step 可用的资源句柄。
+  - [ ] 推进入队运动和控制器
+    - 推荐文件名：`10_01_step_sim_control.rs`
+    - 对应 trait：仿真器原生 API
+    - 期望结果：每个仿真步分发状态、运行已注册控制器并汇总命令。
+
+- [ ] 11 安全包络
+  - [ ] 保守安全配置
+    - 推荐文件名：`11_00_safety_envelope.rs`
+    - 对应 trait：`Arm`，驱动原生安全 API
+    - 期望结果：展示默认比例、碰撞阈值、命令限幅或饱和行为。
+  - [ ] 真机操作警告
+    - 推荐文件名：写在每个会移动真机的示例说明中
+    - 对应 trait：无
+    - 期望结果：每个运动示例都足够清楚地说明预期物理效果，方便操作前审查。
+
+- [ ] 12 未支持能力表
+  - [ ] 未支持的通用 trait
+    - 推荐文件名：`UNSUPPORTED.md`
+    - 对应 trait：无
+    - 期望结果：列出有意不实现的行为特征及原因。
+  - [ ] 厂商专属能力
+    - 推荐文件名：驱动原生示例或 README 章节
+    - 对应 trait：驱动原生 API
+    - 期望结果：指向暂时无法纳入通用 trait 的硬件专属功能。
