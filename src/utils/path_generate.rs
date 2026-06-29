@@ -1,4 +1,4 @@
-﻿use nalgebra as na;
+use nalgebra as na;
 use std::{sync::Arc, time::Duration};
 
 use crate::{ArmState, JointState, Pose};
@@ -239,6 +239,276 @@ pub fn t_curve(
     (t_total, Arc::new(f))
 }
 
+#[derive(Clone, Copy, Debug)]
+enum ScalarSCurveProfile {
+    Hold,
+    Trapezoid {
+        delta: f64,
+        v_max: f64,
+        a_max: f64,
+        t_acc: f64,
+        s_acc: f64,
+        t_cruise: f64,
+        t_total: f64,
+    },
+    Short {
+        delta: f64,
+        j_max: f64,
+        t_min: f64,
+        t1: f64,
+    },
+    Cruise {
+        delta: f64,
+        v_max: f64,
+        a_max: f64,
+        j_max: f64,
+        t_min: f64,
+        t1: f64,
+        t2: f64,
+        t34: f64,
+    },
+    NoCruise {
+        delta: f64,
+        a_max: f64,
+        j_max: f64,
+        t_min: f64,
+        t1: f64,
+        t2: f64,
+    },
+}
+
+impl ScalarSCurveProfile {
+    fn plan(delta: f64, v_max: f64, a_max: f64, j_max: f64) -> Self {
+        if delta.abs() < 1e-6 {
+            return Self::Hold;
+        }
+
+        let delta = delta.abs();
+        if j_max == f64::MAX {
+            let v_max = v_max.min((2. * delta * a_max).sqrt());
+            let t_acc = v_max / a_max;
+            let s_acc = 0.5 * a_max * t_acc * t_acc;
+            let s_cruise = delta - 2. * s_acc;
+            let t_cruise = if s_cruise > 0. { s_cruise / v_max } else { 0. };
+            let t_total = 2. * t_acc + t_cruise;
+            return Self::Trapezoid { delta, v_max, a_max, t_acc, s_acc, t_cruise, t_total };
+        }
+
+        let d2 = 2. * a_max.powi(3) / j_max.powi(2);
+        let d1 = v_max * (a_max / j_max + v_max / a_max);
+
+        if delta < d2 {
+            let t_min = (32. * delta / j_max).powf(1. / 3.);
+            Self::Short { delta, j_max, t_min, t1: t_min / 4. }
+        } else if delta > d1 {
+            Self::Cruise {
+                delta,
+                v_max,
+                a_max,
+                j_max,
+                t_min: delta / v_max + v_max / a_max + a_max / j_max,
+                t1: a_max / j_max,
+                t2: v_max / a_max,
+                t34: (delta - d1) / v_max,
+            }
+        } else {
+            let t_min = (a_max.powi(2)
+                + (a_max.powi(4) + 4. * a_max * delta * j_max.powi(2)).sqrt())
+                / (a_max * j_max);
+            Self::NoCruise {
+                delta,
+                a_max,
+                j_max,
+                t_min,
+                t1: a_max / j_max,
+                t2: t_min / 2. - a_max / j_max,
+            }
+        }
+    }
+
+    fn total_time(self) -> f64 {
+        match self {
+            Self::Hold => 0.,
+            Self::Trapezoid { t_total, .. } => t_total,
+            Self::Short { t_min, .. } => t_min,
+            Self::Cruise { t_min, .. } => t_min,
+            Self::NoCruise { t_min, .. } => t_min,
+        }
+    }
+
+    fn sample(self, t: f64) -> f64 {
+        match self {
+            Self::Hold => 0.,
+            Self::Trapezoid { delta, v_max, a_max, t_acc, s_acc, t_cruise, t_total } => {
+                let t = t.min(t_total);
+                if t < t_acc {
+                    0.5 * a_max * t * t
+                } else if t < t_acc + t_cruise {
+                    s_acc + v_max * (t - t_acc)
+                } else {
+                    delta - 0.5 * a_max * (t_total - t).powi(2)
+                }
+            }
+            Self::Short { delta, j_max, t_min, t1 } => {
+                let t = t.min(t_min);
+                if t < t1 {
+                    Self::path_1(j_max, t)
+                } else if t < t1 * 3. {
+                    Self::path_1(j_max, t1)
+                        + Self::path_3(j_max, t - t1, j_max * t1.powi(2) / 2., j_max * t1)
+                } else if t < t_min {
+                    delta - Self::path_1(j_max, t_min - t)
+                } else {
+                    delta
+                }
+            }
+            Self::Cruise { delta, v_max, a_max, j_max, t_min, t1, t2, t34 } => {
+                let t = t.min(t_min);
+                if t < t1 {
+                    Self::path_1(j_max, t)
+                } else if t < t2 {
+                    Self::path_1(j_max, t1) + Self::path_2(t - t1, a_max * t1 / 2., j_max * t1)
+                } else if t < t1 + t2 {
+                    Self::path_1(j_max, t1)
+                        + Self::path_2(t2 - t1, a_max * t1 / 2., j_max * t1)
+                        + Self::path_3(j_max, t - t2, v_max - a_max * t1 / 2., a_max)
+                } else if t < t1 + t2 + t34 {
+                    delta / 2. + Self::path_4(t - t_min / 2., v_max)
+                } else if t < t_min - t2 {
+                    delta / 2.
+                        + Self::path_4(t34 / 2., v_max)
+                        + Self::path_5(j_max, t - (t1 + t2 + t34), v_max)
+                } else if t < t_min - t1 {
+                    delta
+                        - Self::path_1(j_max, t1)
+                        - Self::path_2(t_min - t - t1, a_max * t1 / 2., j_max * t1)
+                } else if t < t_min {
+                    delta - Self::path_1(j_max, t_min - t)
+                } else {
+                    delta
+                }
+            }
+            Self::NoCruise { delta, a_max, j_max, t_min, t1, t2 } => {
+                let t = t.min(t_min);
+                if t < t1 {
+                    Self::path_1(j_max, t)
+                } else if t < t2 {
+                    Self::path_1(j_max, t1) + Self::path_2(t - t1, a_max * t1 / 2., j_max * t1)
+                } else if t < t_min - t2 {
+                    Self::path_1(j_max, t1)
+                        + Self::path_2(t2 - t1, a_max * t1 / 2., j_max * t1)
+                        + Self::path_3(j_max, t - t2, a_max * (t2 - t1 / 2.), a_max)
+                } else if t < t_min - t1 {
+                    delta
+                        - Self::path_1(j_max, t1)
+                        - Self::path_2(t_min - t - t1, a_max * t1 / 2., j_max * t1)
+                } else if t < t_min {
+                    delta - Self::path_1(j_max, t_min - t)
+                } else {
+                    delta
+                }
+            }
+        }
+    }
+
+    fn path_1(j_max: f64, t: f64) -> f64 {
+        j_max * t.powi(3) / 6.
+    }
+
+    fn path_2(t: f64, v_s: f64, a: f64) -> f64 {
+        a * t.powi(2) / 2. + v_s * t
+    }
+
+    fn path_3(j_max: f64, t: f64, v_s: f64, a_s: f64) -> f64 {
+        -j_max * t.powi(3) / 6. + a_s * t.powi(2) / 2. + v_s * t
+    }
+
+    fn path_4(t: f64, v_s: f64) -> f64 {
+        v_s * t
+    }
+
+    fn path_5(j_max: f64, t: f64, v_s: f64) -> f64 {
+        v_s * t - j_max * t.powi(3) / 6.
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct JointSCurve<const N: usize> {
+    v_max: [f64; N],
+    a_max: [f64; N],
+    j_max: [f64; N],
+    start: [f64; N],
+    target: [f64; N],
+    delta: [f64; N],
+    profile: ScalarSCurveProfile,
+    total: Duration,
+    planned: bool,
+}
+
+impl<const N: usize> JointSCurve<N> {
+    pub fn new(v_max: [f64; N], a_max: [f64; N], j_max: [f64; N]) -> Self {
+        Self {
+            v_max,
+            a_max,
+            j_max,
+            start: [0.; N],
+            target: [0.; N],
+            delta: [0.; N],
+            profile: ScalarSCurveProfile::Hold,
+            total: Duration::ZERO,
+            planned: false,
+        }
+    }
+
+    pub fn plan(&mut self, start: [f64; N], target: [f64; N]) -> Duration {
+        self.start = start;
+        self.target = target;
+        let mut v_path = f64::INFINITY;
+        let mut a_path = f64::INFINITY;
+        let mut j_path = f64::INFINITY;
+        let mut has_motion = false;
+
+        for i in 0..N {
+            self.delta[i] = target[i] - start[i];
+            let delta = self.delta[i].abs();
+            if delta > 1e-6 {
+                has_motion = true;
+                v_path = v_path.min(self.v_max[i] / delta);
+                a_path = a_path.min(self.a_max[i] / delta);
+                j_path = j_path.min(self.j_max[i] / delta);
+            }
+        }
+
+        if has_motion {
+            self.profile = ScalarSCurveProfile::plan(1., v_path, a_path, j_path);
+            self.total = Duration::from_secs_f64(self.profile.total_time());
+        } else {
+            self.profile = ScalarSCurveProfile::Hold;
+            self.total = Duration::ZERO;
+        }
+        self.planned = true;
+        self.total
+    }
+
+    pub fn apply(&self, time: Duration) -> ([f64; N], bool) {
+        if !self.planned || self.total.is_zero() {
+            return (self.target, true);
+        }
+
+        let progress = self.profile.sample(time.as_secs_f64()).min(1.);
+        let mut result = self.start;
+        for i in 0..N {
+            result[i] += self.delta[i] * progress;
+        }
+
+        if time >= self.total {
+            (self.target, true)
+        } else {
+            (result, false)
+        }
+    }
+}
+
 pub fn joint_s_curve<const N: usize>(
     start: &[f64; N],
     end: &[f64; N],
@@ -246,33 +516,14 @@ pub fn joint_s_curve<const N: usize>(
     a_max: &[f64; N],
     j_max: &[f64; N],
 ) -> (Arc<dyn Fn(Duration) -> [f64; N] + Send + Sync>, Duration) {
-    let start = na::SVector::<f64, N>::from_column_slice(start);
-    let end = na::SVector::<f64, N>::from_column_slice(end);
-    let delta = end - start;
+    let mut curve = JointSCurve::new(*v_max, *a_max, *j_max);
+    let total = curve.plan(*start, *end);
+    let f = move |t: Duration| curve.apply(t).0;
 
-    let mut t_path = Vec::with_capacity(N);
-    let mut f_path = Vec::with_capacity(N);
-    for i in 0..N {
-        let (t, f) = s_curve(delta[i].abs(), v_max[i], a_max[i], j_max[i]);
-        t_path.push(t);
-        f_path.push(f);
-    }
-
-    let t_max = t_path.iter().cloned().fold(0.0, f64::max);
-
-    let f = move |t: Duration| {
-        let t = t.as_secs_f64();
-        let t = t / t_max;
-        let mut result = start;
-        for i in 0..N {
-            result[i] += delta[i].signum() * f_path[i](Duration::from_secs_f64(t * t_path[i]));
-        }
-        result.into()
-    };
-
-    (Arc::new(f), Duration::from_secs_f64(t_max))
+    (Arc::new(f), total)
 }
 
+#[cfg(test)]
 fn s_curve(
     delta: f64,
     v_max: f64,
@@ -501,6 +752,46 @@ mod test {
             let t = Duration::from_secs_f64(i as f64 / 100.);
             let result = f(t);
             println!("time: {} | {:?}", i as f64 / 100., result);
+        }
+    }
+
+    #[test]
+    fn test_joint_s_curve_struct_endpoints() {
+        let start = [-0.2, -0.77, -0.36, -2.42, 0.00, 2.57, 0.77];
+        let end = [0., -PI / 4., 0., -3. * PI / 4., 0., PI / 2., PI / 4.];
+        let v_max = [2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100];
+        let a_max = [15., 7.5, 10., 12.5, 15., 20., 20.];
+        let j_max = [100., 100., 100., 100., 100., 100., 100.];
+
+        let mut curve = JointSCurve::new(v_max, a_max, j_max);
+        let total = curve.plan(start, end);
+
+        let (first, first_done) = curve.apply(Duration::ZERO);
+        assert_eq!(first, start);
+        assert!(!first_done);
+
+        let (last, last_done) = curve.apply(total);
+        assert_eq!(last, end);
+        assert!(last_done);
+    }
+
+    #[test]
+    fn test_joint_s_curve_struct_keeps_joint_line() {
+        let start = [0.0, -0.3, 0.7];
+        let end = [1.0, 0.1, -0.1];
+        let v_max = [1.0, 0.8, 1.2];
+        let a_max = [2.0, 1.5, 2.5];
+        let j_max = [8.0, 7.0, 9.0];
+
+        let mut curve = JointSCurve::new(v_max, a_max, j_max);
+        let total = curve.plan(start, end);
+        let (mid, done) = curve.apply(total / 2);
+
+        assert!(!done);
+        let progress = (mid[0] - start[0]) / (end[0] - start[0]);
+        for i in 1..3 {
+            let joint_progress = (mid[i] - start[i]) / (end[i] - start[i]);
+            assert!((joint_progress - progress).abs() < 1e-12);
         }
     }
 
