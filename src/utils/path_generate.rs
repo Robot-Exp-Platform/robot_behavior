@@ -166,7 +166,7 @@ pub fn joint_s_curve<const N: usize>(
 
     let f = move |t: Duration| {
         let t = t.as_secs_f64();
-        let t = t / t_max;
+        let t = if t_max > 0.0 { t / t_max } else { 0.0 };
         let mut result = start;
         for i in 0..N {
             result[i] += delta[i].signum() * f_path[i](Duration::from_secs_f64(t * t_path[i]));
@@ -525,6 +525,19 @@ mod test {
             //     ))
             //     .unwrap();
         }
+    }
+
+    #[test]
+    fn zero_distance_joint_s_curve_is_constant() {
+        let start = [-0.2, -0.77, -0.36, -2.42, 0.0, 2.57, 0.77];
+        let v_max = [2.175, 2.175, 2.175, 2.175, 2.61, 2.61, 2.61];
+        let a_max = [15.0, 7.5, 10.0, 12.5, 15.0, 20.0, 20.0];
+        let j_max = [100.0; 7];
+        let (path, duration) = joint_s_curve(&start, &start, &v_max, &a_max, &j_max);
+
+        assert_eq!(duration, Duration::ZERO);
+        assert_eq!(path(Duration::ZERO), start);
+        assert_eq!(path(Duration::from_secs(1)), start);
     }
 
     #[test]
