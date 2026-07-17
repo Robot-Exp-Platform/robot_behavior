@@ -37,6 +37,7 @@ impl<A, const N: usize> Rhythm for ArmControlRhythm<A, N>
 where
     A: ArmRealtimeControl<N> + Send,
 {
+    type Input = ();
     type Yield = (ArmState<N>, Duration);
     type Feed = (ControlType<N>, bool);
     type Output = Result<(), RobotException>;
@@ -46,6 +47,7 @@ where
         &mut self,
         mut nodes: Nodes,
         mut op_domain: F,
+        _input: Self::Input,
     ) -> impl Future<Output = (Self::Output, Nodes)> + Send
     where
         Nodes: Send,
@@ -121,6 +123,7 @@ impl<A, const N: usize> Rhythm for ArmMotionRhythm<A, N>
 where
     A: ArmRealtimeControl<N> + Send,
 {
+    type Input = ();
     type Yield = (ArmState<N>, Duration);
     type Feed = (MotionType<N>, bool);
     type Output = Result<(), RobotException>;
@@ -130,6 +133,7 @@ where
         &mut self,
         mut nodes: Nodes,
         mut op_domain: F,
+        _input: Self::Input,
     ) -> impl Future<Output = (Self::Output, Nodes)> + Send
     where
         Nodes: Send,
@@ -200,6 +204,7 @@ impl<A, const N: usize> Rhythm for CartesianImpedanceRhythm<A, N>
 where
     A: ArmImpedance<N> + crate::behavior::Arm<N> + Send,
 {
+    type Input = ();
     type Yield = ArmState<N>;
     type Feed = Option<Pose>;
     type Output = Result<(), RobotException>;
@@ -209,6 +214,7 @@ where
         &mut self,
         mut nodes: Nodes,
         mut op_domain: F,
+        _input: Self::Input,
     ) -> impl Future<Output = (Self::Output, Nodes)> + Send
     where
         Nodes: Send,
@@ -274,6 +280,7 @@ impl<A, const N: usize> Rhythm for JointImpedanceRhythm<A, N>
 where
     A: ArmImpedance<N> + crate::behavior::Arm<N> + Send,
 {
+    type Input = ();
     type Yield = ArmState<N>;
     type Feed = Option<[f64; N]>;
     type Output = Result<(), RobotException>;
@@ -283,6 +290,7 @@ where
         &mut self,
         mut nodes: Nodes,
         mut op_domain: F,
+        _input: Self::Input,
     ) -> impl Future<Output = (Self::Output, Nodes)> + Send
     where
         Nodes: Send,

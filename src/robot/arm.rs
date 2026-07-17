@@ -31,6 +31,12 @@ pub struct ArmState<const N: usize> {
     pub commanded: ArmStateSample<N>,
     pub desired: ArmStateSample<N>,
     pub load: Option<LoadState>,
+    /// Estimated external wrench `[Fx, Fy, Fz, Tx, Ty, Tz]` in the robot base frame.
+    pub external_wrench: Option<[f64; 6]>,
+    /// Whether the backend reports an active reflex/collision abort condition.
+    pub reflex_triggered: Option<bool>,
+    /// Fraction of recent control commands accepted by the robot controller.
+    pub command_success_rate: Option<f64>,
 }
 
 impl<const N: usize> ArmState<N> {
@@ -608,6 +614,9 @@ impl<const N: usize> Default for ArmState<N> {
             commanded: ArmStateSample::default(),
             desired: ArmStateSample::default(),
             load: Some(LoadState { m: 0., x: [0.; 3], i: [0.; 9] }),
+            external_wrench: None,
+            reflex_triggered: None,
+            command_success_rate: None,
         }
     }
 }
