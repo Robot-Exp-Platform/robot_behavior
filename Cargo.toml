@@ -36,6 +36,7 @@ pipe-trait = "0.4.0"
 typenum = "1.19.0"
 futures = "0.3"
 tokio = { version = "1", features = ["sync", "time"] }
+crossbeam-queue = "0.3"
 
 [build-dependencies]
 cxx-build = "1.0.188"

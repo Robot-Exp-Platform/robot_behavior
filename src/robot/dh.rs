@@ -14,7 +14,7 @@ use nalgebra as na;
 ///    you can use the macros `dh_param!` and `mdh_param!` to create instances of this enum.
 ///    omitting the field names in the macro invocation is supported.
 /// ```rust
-/// use robot_behavior::robot::DhParam;
+/// use robot_behavior::{DhParam, dh_param, mdh_param};
 /// let dh = dh_param! {theta: 0.0, d: 0.5, r: 0.3, alpha: std::f64::consts::FRAC_PI_2};
 /// let dh = dh_param! {0.0, 0.5, 0.3, std::f64::consts::FRAC_PI_2};
 /// let mdh = mdh_param! {theta: 0.0, d: 0.5, a: 0.3, alpha: std::f64::consts::FRAC_PI_2};
