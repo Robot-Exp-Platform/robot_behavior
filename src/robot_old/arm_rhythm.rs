@@ -39,6 +39,7 @@ where
 {
     type Yield = (ArmState<N>, Duration);
     type Feed = (ControlType<N>, bool);
+    type Input = ();
     type Output = Result<(), RobotException>;
     type Error = RoplatError;
 
@@ -46,6 +47,7 @@ where
         &mut self,
         mut nodes: Nodes,
         mut op_domain: F,
+        _input: Self::Input,
     ) -> impl Future<Output = (Self::Output, Nodes)> + Send
     where
         Nodes: Send,
@@ -123,6 +125,7 @@ where
 {
     type Yield = (ArmState<N>, Duration);
     type Feed = (MotionType<N>, bool);
+    type Input = ();
     type Output = Result<(), RobotException>;
     type Error = RoplatError;
 
@@ -130,6 +133,7 @@ where
         &mut self,
         mut nodes: Nodes,
         mut op_domain: F,
+        _input: Self::Input,
     ) -> impl Future<Output = (Self::Output, Nodes)> + Send
     where
         Nodes: Send,
@@ -202,6 +206,7 @@ where
 {
     type Yield = ArmState<N>;
     type Feed = Option<Pose>;
+    type Input = ();
     type Output = Result<(), RobotException>;
     type Error = RoplatError;
 
@@ -209,6 +214,7 @@ where
         &mut self,
         mut nodes: Nodes,
         mut op_domain: F,
+        _input: Self::Input,
     ) -> impl Future<Output = (Self::Output, Nodes)> + Send
     where
         Nodes: Send,
@@ -276,6 +282,7 @@ where
 {
     type Yield = ArmState<N>;
     type Feed = Option<[f64; N]>;
+    type Input = ();
     type Output = Result<(), RobotException>;
     type Error = RoplatError;
 
@@ -283,6 +290,7 @@ where
         &mut self,
         mut nodes: Nodes,
         mut op_domain: F,
+        _input: Self::Input,
     ) -> impl Future<Output = (Self::Output, Nodes)> + Send
     where
         Nodes: Send,
