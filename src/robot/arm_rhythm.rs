@@ -16,9 +16,9 @@ use crate::{
 // Each rhythm tick corresponds to one realtime control cycle.
 // Yield = (ArmState<N>, Duration),  Feed = (ControlType<N>, bool)
 
-const CONTROL_QUEUE_CAPACITY: usize = 8;
-const MAX_COMMAND_AGE_TICKS: u64 = (CONTROL_QUEUE_CAPACITY - 1) as u64;
-const CONTROL_MAILBOX_POLL_INTERVAL: Duration = Duration::from_micros(50);
+const CONTROL_QUEUE_CAPACITY: usize = 16;
+const DEFAULT_MAX_COMMAND_AGE_TICKS: u64 = 7;
+const MAX_CONFIGURABLE_COMMAND_AGE_TICKS: u64 = (CONTROL_QUEUE_CAPACITY - 1) as u64;
 const CONTROL_CALLBACK_STALL_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// One command application observed at the realtime callback boundary.
@@ -130,6 +130,7 @@ struct ControlMailbox<const N: usize> {
     commands: Arc<ArrayQueue<TimedControl<N>>>,
     stop_reason: Arc<AtomicU8>,
     callback_finished: Arc<AtomicBool>,
+    progress: Arc<tokio::sync::Notify>,
 }
 
 impl<const N: usize> Clone for ControlMailbox<N> {
@@ -139,6 +140,7 @@ impl<const N: usize> Clone for ControlMailbox<N> {
             commands: Arc::clone(&self.commands),
             stop_reason: Arc::clone(&self.stop_reason),
             callback_finished: Arc::clone(&self.callback_finished),
+            progress: Arc::clone(&self.progress),
         }
     }
 }
@@ -150,6 +152,7 @@ impl<const N: usize> ControlMailbox<N> {
             commands: Arc::new(ArrayQueue::new(CONTROL_QUEUE_CAPACITY)),
             stop_reason: Arc::new(AtomicU8::new(ControlStopReason::None as u8)),
             callback_finished: Arc::new(AtomicBool::new(false)),
+            progress: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -165,6 +168,7 @@ impl<const N: usize> ControlMailbox<N> {
     fn finish_callback(&self, reason: ControlStopReason) {
         self.request_stop(reason);
         self.callback_finished.store(true, Ordering::Release);
+        self.progress.notify_one();
     }
 
     fn stop_reason(&self) -> ControlStopReason {
@@ -214,16 +218,27 @@ struct ControlCallback<const N: usize> {
     callback_tick: u64,
     held_command: Option<TimedControl<N>>,
     application_log: Option<ControlApplicationLog<N>>,
+    max_command_age_ticks: u64,
     epoch: Instant,
 }
 
 impl<const N: usize> ControlCallback<N> {
+    #[cfg(test)]
     fn new(mailbox: ControlMailbox<N>, application_log: Option<ControlApplicationLog<N>>) -> Self {
+        Self::with_max_command_age_ticks(mailbox, application_log, DEFAULT_MAX_COMMAND_AGE_TICKS)
+    }
+
+    fn with_max_command_age_ticks(
+        mailbox: ControlMailbox<N>,
+        application_log: Option<ControlApplicationLog<N>>,
+        max_command_age_ticks: u64,
+    ) -> Self {
         Self {
             mailbox,
             callback_tick: 0,
             held_command: None,
             application_log,
+            max_command_age_ticks,
             epoch: Instant::now(),
         }
     }
@@ -235,6 +250,7 @@ impl<const N: usize> ControlCallback<N> {
             self.mailbox
                 .callback_finished
                 .store(true, Ordering::Release);
+            self.mailbox.progress.notify_one();
             if stop_reason == ControlStopReason::DoneApplied {
                 return (
                     self.held_command.map_or(state_hold, |value| value.command),
@@ -251,7 +267,7 @@ impl<const N: usize> ControlCallback<N> {
                     .finish_callback(ControlStopReason::InvalidCommandTick);
                 return self.transport_stop(&state, period, Some(command.source_tick));
             }
-            if self.callback_tick.saturating_sub(command.source_tick) > MAX_COMMAND_AGE_TICKS {
+            if self.callback_tick.saturating_sub(command.source_tick) > self.max_command_age_ticks {
                 self.mailbox
                     .finish_callback(ControlStopReason::StaleCommand);
                 return self.transport_stop(&state, period, Some(command.source_tick));
@@ -275,14 +291,6 @@ impl<const N: usize> ControlCallback<N> {
             }
         }
 
-        if let Some(command) = self.held_command
-            && self.callback_tick.saturating_sub(command.source_tick) > MAX_COMMAND_AGE_TICKS
-        {
-            self.mailbox
-                .finish_callback(ControlStopReason::StaleCommand);
-            return self.transport_stop(&state, period, Some(command.source_tick));
-        }
-
         let output = self.held_command.map_or(state_hold, |value| value.command);
         let observation = ControlObservation {
             source_tick: self.callback_tick,
@@ -294,6 +302,7 @@ impl<const N: usize> ControlCallback<N> {
                 .finish_callback(ControlStopReason::ObservationQueueOverflow);
             return self.transport_stop(&state, period, None);
         }
+        self.mailbox.progress.notify_one();
         let stop_reason = self.mailbox.stop_reason();
         if !matches!(
             stop_reason,
@@ -371,11 +380,17 @@ pub struct ArmControlRhythm<A, const N: usize> {
     /// real-time.  For real robots, set to None (timing is driven by hardware).
     pub period: Option<Duration>,
     application_log: Option<ControlApplicationLog<N>>,
+    max_command_age_ticks: u64,
 }
 
 impl<A, const N: usize> ArmControlRhythm<A, N> {
     pub fn new(arm: A) -> Self {
-        Self { arm, period: None, application_log: None }
+        Self {
+            arm,
+            period: None,
+            application_log: None,
+            max_command_age_ticks: DEFAULT_MAX_COMMAND_AGE_TICKS,
+        }
     }
 
     pub fn with_period(mut self, period: Duration) -> Self {
@@ -386,6 +401,28 @@ impl<A, const N: usize> ArmControlRhythm<A, N> {
     pub fn with_application_log(mut self, log: ControlApplicationLog<N>) -> Self {
         self.application_log = Some(log);
         self
+    }
+
+    /// 设置命令在实时应用边界允许的最大时龄。
+    ///
+    /// 时龄定义为 `application_tick - source_tick`，且必须在预分配传输队列
+    /// 可表示的范围内。调用方可设置更小的值，使任务看门狗与实际回调边界一致。
+    ///
+    /// # 错误
+    ///
+    /// 当 `max_command_age_ticks` 为零或超出传输队列可表示的时龄时，返回
+    /// [`RobotException::CommandException`]。
+    pub fn try_with_max_command_age_ticks(
+        mut self,
+        max_command_age_ticks: u64,
+    ) -> Result<Self, RobotException> {
+        if !(1..=MAX_CONFIGURABLE_COMMAND_AGE_TICKS).contains(&max_command_age_ticks) {
+            return Err(RobotException::CommandException(format!(
+                "control command age must be in 1..={MAX_CONFIGURABLE_COMMAND_AGE_TICKS} ticks"
+            )));
+        }
+        self.max_command_age_ticks = max_command_age_ticks;
+        Ok(self)
     }
 }
 
@@ -412,7 +449,11 @@ where
     {
         async move {
             let mailbox = ControlMailbox::new();
-            let mut callback = ControlCallback::new(mailbox.clone(), self.application_log.clone());
+            let mut callback = ControlCallback::with_max_command_age_ticks(
+                mailbox.clone(),
+                self.application_log.clone(),
+                self.max_command_age_ticks,
+            );
             if let Err(error) = self
                 .arm
                 .control_with_closure(move |state, period| callback.step(state, period))
@@ -422,21 +463,24 @@ where
 
             let period = self.period;
             let mut done_published = false;
-            let mut last_callback_progress = Instant::now();
             loop {
                 if mailbox.callback_finished() {
                     break;
                 }
                 if done_published {
-                    if last_callback_progress.elapsed() >= CONTROL_CALLBACK_STALL_TIMEOUT {
+                    if tokio::time::timeout(
+                        CONTROL_CALLBACK_STALL_TIMEOUT,
+                        mailbox.progress.notified(),
+                    )
+                    .await
+                    .is_err()
+                    {
                         mailbox.request_stop(ControlStopReason::CallbackStalled);
                         break;
                     }
-                    tokio::time::sleep(CONTROL_MAILBOX_POLL_INTERVAL).await;
                     continue;
                 }
                 if let Some(observation) = mailbox.observations.pop() {
-                    last_callback_progress = Instant::now();
                     let tick_start = Instant::now();
                     let source_tick = observation.source_tick;
                     let ((command, done), returned_nodes) =
@@ -455,12 +499,15 @@ where
                             tokio::time::sleep(target_period - elapsed).await;
                         }
                     }
-                } else {
-                    if last_callback_progress.elapsed() >= CONTROL_CALLBACK_STALL_TIMEOUT {
-                        mailbox.request_stop(ControlStopReason::CallbackStalled);
-                        break;
-                    }
-                    tokio::time::sleep(CONTROL_MAILBOX_POLL_INTERVAL).await;
+                } else if tokio::time::timeout(
+                    CONTROL_CALLBACK_STALL_TIMEOUT,
+                    mailbox.progress.notified(),
+                )
+                .await
+                .is_err()
+                {
+                    mailbox.request_stop(ControlStopReason::CallbackStalled);
+                    break;
                 }
             }
 
@@ -1055,7 +1102,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_command_stops_without_waiting_for_another_feed() {
+    fn held_command_is_not_reclassified_as_stale_without_a_new_feed() {
         let mailbox = ControlMailbox::new();
         let mut callback = ControlCallback::new(mailbox.clone(), None);
         let _ = callback.step(
@@ -1072,27 +1119,23 @@ mod tests {
             done: false,
         }));
 
-        for _ in 1..=MAX_COMMAND_AGE_TICKS {
-            let (_, done) = callback.step(
+        for _ in 0..=DEFAULT_MAX_COMMAND_AGE_TICKS {
+            let (command, done) = callback.step(
                 state_with_desired_torque([0.0; TEST_DOF]),
                 Duration::from_millis(1),
             );
             assert!(!done);
+            assert!(matches!(command, ControlType::Torque([0.75, 0.75])));
+            let _ = mailbox.observations.pop();
         }
-        let (command, done) = callback.step(
-            state_with_desired_torque([0.0; TEST_DOF]),
-            Duration::from_millis(1),
-        );
-        assert!(done);
-        assert!(matches!(command, ControlType::Torque([0.0, 0.0])));
-        assert_eq!(mailbox.stop_reason(), ControlStopReason::StaleCommand);
+        assert_eq!(mailbox.stop_reason(), ControlStopReason::None);
     }
 
     #[test]
     fn stale_terminal_command_is_rejected_before_it_can_replace_the_hold() {
         let mailbox = ControlMailbox::new();
         let mut callback = ControlCallback::new(mailbox.clone(), None);
-        for _ in 0..=MAX_COMMAND_AGE_TICKS {
+        for _ in 0..=DEFAULT_MAX_COMMAND_AGE_TICKS {
             let (_, done) = callback.step(
                 state_with_desired_torque([0.2; TEST_DOF]),
                 Duration::from_millis(1),
@@ -1151,6 +1194,71 @@ mod tests {
         assert!(done);
         assert!(matches!(command, ControlType::Torque([0.35, -0.15])));
         assert_eq!(mailbox.stop_reason(), ControlStopReason::InvalidCommandTick);
+    }
+
+    #[test]
+    fn task_specific_command_age_limit_is_enforced_at_application() {
+        let mailbox = ControlMailbox::new();
+        let mut callback = ControlCallback::with_max_command_age_ticks(mailbox.clone(), None, 2);
+        let _ = callback.step(
+            state_with_desired_torque([0.0; TEST_DOF]),
+            Duration::from_millis(1),
+        );
+        let observation = mailbox
+            .observations
+            .pop()
+            .expect("the initial callback must publish an observation");
+        for _ in 0..2 {
+            let (_, done) = callback.step(
+                state_with_desired_torque([0.5; TEST_DOF]),
+                Duration::from_millis(1),
+            );
+            assert!(!done);
+            let _ = mailbox.observations.pop();
+        }
+        assert!(mailbox.publish_command(TimedControl {
+            source_tick: observation.source_tick,
+            command: ControlType::Torque([0.5; TEST_DOF]),
+            done: false,
+        }));
+        let (command, done) = callback.step(
+            state_with_desired_torque([0.25, -0.25]),
+            Duration::from_millis(1),
+        );
+
+        assert!(done);
+        assert!(matches!(command, ControlType::Torque([0.25, -0.25])));
+        assert_eq!(mailbox.stop_reason(), ControlStopReason::StaleCommand);
+    }
+
+    #[test]
+    fn command_age_configuration_accepts_the_transport_boundary() {
+        let arm = || MockArm {
+            callback_count: Arc::new(AtomicUsize::new(0)),
+            done_seen: Arc::new(AtomicBool::new(false)),
+            produce_callbacks: false,
+        };
+
+        assert!(
+            ArmControlRhythm::<MockArm, TEST_DOF>::new(arm())
+                .try_with_max_command_age_ticks(MAX_CONFIGURABLE_COMMAND_AGE_TICKS)
+                .is_ok()
+        );
+        assert!(
+            ArmControlRhythm::<MockArm, TEST_DOF>::new(arm())
+                .try_with_max_command_age_ticks(12)
+                .is_ok()
+        );
+        assert!(
+            ArmControlRhythm::<MockArm, TEST_DOF>::new(arm())
+                .try_with_max_command_age_ticks(0)
+                .is_err()
+        );
+        assert!(
+            ArmControlRhythm::<MockArm, TEST_DOF>::new(arm())
+                .try_with_max_command_age_ticks(MAX_CONFIGURABLE_COMMAND_AGE_TICKS + 1)
+                .is_err()
+        );
     }
 
     #[test]
