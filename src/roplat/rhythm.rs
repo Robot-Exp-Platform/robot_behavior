@@ -43,7 +43,7 @@ pub struct ControlSessionError {
     pub device: RobotException,
 }
 
-fn device_error(device: RobotException, domain: Option<ControlDomainExit>) -> RoplatError {
+pub(super) fn device_error(device: RobotException, domain: Option<ControlDomainExit>) -> RoplatError {
     std::io::Error::other(ControlSessionError { domain, device }).into()
 }
 

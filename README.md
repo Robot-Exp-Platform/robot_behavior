@@ -158,6 +158,7 @@ use robot_behavior::behavior::*;
 - `to_py`: PyO3 support.
 - `to_cxx`: `cxx` support.
 - `to_c`: C-facing gates.
+- `roplat`: optional Node, blocking ControlRhythm and native AsyncControlRhythm adapters.
 
 The core Rust behavior API works with default features.
 
@@ -217,3 +218,88 @@ commands. Its legacy path reproduces pre-change loop code because that older
 adapter cannot compile against the current core. It does not measure physical
 robot latency or runtime fairness. Foreign-language examples are compileable
 mock wrappers, not complete deployment packages or device demonstrations.
+
+## Independent source checkout
+
+The optional roplat adapter uses the full Git revision pinned in Cargo.toml.
+It does not require a sibling roplat checkout or the drives workspace. This is
+an internal Git baseline: the crates.io package with the same version number
+predates the current core execution API. Repository SSH access must already be
+configured; set `CARGO_NET_GIT_FETCH_WITH_CLI=true` to use your existing SSH key
+or agent. Do not put credentials in project files.
+
+```sh
+CARGO_NET_GIT_FETCH_WITH_CLI=true cargo check --no-default-features --lib
+CARGO_NET_GIT_FETCH_WITH_CLI=true cargo check --no-default-features --features roplat --lib
+```
+
+Cargo may inspect the pinned source while resolving optional dependencies even
+when the feature is off. Feature separation removes core compilation/runtime
+dependencies from the default build; it is not an offline download guarantee.
+
+
+## Native asynchronous control
+
+`AsyncControlWith<S>::control_native_async` returns a **complete session Future**,
+including asynchronous entry and termination. It is a separate driver capability:
+implementing the blocking `ControlWith` does not automatically implement it, and
+none of the version 0.6 blocking methods change meaning. Drivers document their
+I/O runtime requirements; the behavior interfaces themselves have no Tokio or
+roplat dependency.
+
+```rust
+use robot_behavior::{AsyncControl, AsyncControlWith, JointPositionControl, RobotResult};
+use std::ops::ControlFlow;
+
+async fn one_command<R>(robot: &mut R, command: [f64; 7]) -> RobotResult<()>
+where
+    R: AsyncControlWith<JointPositionControl<7>>,
+{
+    let mut callback = move |_state, _dt| async move {
+        ControlFlow::Continue((command, true))
+    };
+    AsyncControl::control_native_async::<JointPositionControl<7>, _>(robot, &mut callback).await
+}
+```
+
+The canonical callback is `AsyncControlCallback<Obs, Command>::call(&mut self, ...)
+-> impl Future<Output = ControlStep<Command>> + Send`. A driver borrows the callback
+for the whole session and awaits every call before starting another. State is
+available to its caller after success or error. Ordinary `FnMut -> Send Future`
+closures work directly. A controller that needs to borrow its own mutable state
+across await can implement the trait on a named struct; this avoids a boxed future
+or a copied state value per cycle. It does not promise that every lending async
+closure automatically meets the callback contract.
+
+Enable `roplat` and use `robot_behavior::roplat::AsyncControlRhythm<R, S>` for the
+native session in a System graph. Its Input/Yield/Feed/Output, creator lifecycle,
+error retention and N-return rules match ControlRhythm. It neither constructs a
+nested runtime nor spawns or boxes a future per cycle. Native async makes I/O
+suspension visible to the caller's executor; synchronous computation inside a
+callback can still occupy that executor until it yields.
+
+A successful Feed is committed for the current cycle even if stop was requested
+while it was computing. Stop is observed before the next callback; a valid final
+Feed with `done = true` completes normally. A domain with no command must return
+`Stopped` or `Err`. Stopping while waiting for device input follows the driver's
+wait/termination policy, not an automatically imposed timing guarantee. Dropping
+the session future is not cooperative shutdown.
+
+[Native tests](tests/async_control.rs) run on a current-thread runtime and include
+a callback that can only resume when a same-task join sibling signals it. They
+also exercise pending-domain stop, original plus cleanup errors, non-Clone node
+return, real nested System execution and the complete graph's Send bound. These
+are finite mock checks, not hardware timing or safety validation.
+
+```sh
+cargo test -p robot_behavior --no-default-features --test async_control
+cargo test -p robot_behavior --features roplat --test async_control
+CONTROL_BENCH_CYCLES=1000000 cargo bench -p robot_behavior --features roplat --bench native_async_control
+```
+
+The independent native benchmark compares existing ControlRhythm with
+AsyncControlRhythm using the same synthetic 48/56/1024-byte command work and 21
+alternating paired batches. It reports batch-average nanoseconds per cycle and
+the maximum batch mean, not individual-cycle p99, device latency or a claim that
+an always-ready callback is fairly scheduled. The older control_flow benchmark
+remains unchanged for separate regression comparison.

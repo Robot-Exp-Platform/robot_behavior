@@ -112,7 +112,7 @@ where
 - `Continue((command, true))`：先发送最后一条命令，再正常结束。
 - `Break(())`：本周期不发送算法命令，进入设备协议规定的会话收尾。不统一替换成零命令、hold 或急停。
 
-原有 `control_with`、`control_with_async` 保留为便利包装。两个 async 命名的方法均延续 0.6 的**阻塞会话 + async 周期闭包**：并不返回会话 Future，也不保证外层同任务其他分支能在会话期间继续轮询。
+原有 `control_with`、`control_with_async` 保留为便利包装。`control_with_async` 和 `control_with_flow_async` 均延续 0.6 的**阻塞会话 + async 周期闭包**：并不返回会话 Future，也不保证外层同任务其他分支能在会话期间继续轮询。
 
 默认 feature 为空，Robot / ControlWith / 状态 / 模型能力不依赖 roplat。显式启用 `features = ["roplat"]` 才提供 `ControlRhythm` 与三类节点适配。控制节律的 Input 为 `RobotResult<R>`，Yield 为 `(Obs, Duration)`，Feed 为 `(Command, bool)`，完整 drive 返回 `Execution<R>`。域错误和设备错误进入框架错误通道；无有效指令的周期通过 Break 结束。
 
@@ -130,3 +130,24 @@ cargo bench -p robot_behavior --features roplat --bench control_flow
 ```
 
 性能样例比较 48、56、1024 字节命令的纯 CPU 成功路径；旧路径是对原控制循环的复现，因为旧适配不能直接对当前核心编译。结果不是实物机器人延迟，也不验证外层 runtime 公平性。Python/C++ 示例是可编译 mock wrapper，不是完整部署包或真机演示。
+
+
+## 原生异步控制会话
+
+新增 `AsyncControlWith<S>::control_native_async` 返回整个设备会话的 Future，包括异步进入与结束会话。它是单独的驱动能力，不会为仅实现 `ControlWith` 的阻塞驱动自动伪造异步实现；已有 0.6 接口语义保持不变。具体驱动说明其 I/O runtime 要求，行为接口本身不依赖 Tokio 或 roplat。
+
+其回调为 `AsyncControlCallback<Obs, Command>`，`call(&mut self, ...)` 返回 `Send` Future。驱动在整个会话期间借用回调，并完整等待当前调用后再开始下一次；会话返回后，调用方可以取回回调中的状态。普通 `FnMut -> Send Future` 闭包直接适配；需要跨 await 借用自身可变状态的控制器可以实现这个静态分发 trait，无需每周期装箱、创建任务或复制状态。这里不承诺所有 lending async 闭包都能自动满足约束。
+
+启用 `roplat` feature 后，使用 `robot_behavior::roplat::AsyncControlRhythm<R, S>` 将原生会话加入 System。Input/Yield/Feed/Output、创建层生命周期、错误保留和 N 归还规则与原 ControlRhythm 相同。新适配器不创建嵌套 runtime，不在每个周期 spawn 或装箱 Future。原生异步使 I/O 等待能够让出外层 executor；回调中的同步计算仍会占据 executor，直到其主动让出。
+
+成功 Feed 按本周期提交：计算期间收到停止请求，但域仍返回有效 Feed，则发送该指令，下一 callback 前观察停止；若该有效 Feed 的 done=true，则正常完成。没有有效命令的域应返回 Stopped 或 Err。等待设备状态期间如何退出仍取决于驱动的等待及收尾协议，不自动给出统一时限；丢弃会话 Future 不等于合作关闭。
+
+[原生异步测试](tests/async_control.rs) 在 current-thread runtime 下，让周期闭包真正等待同一任务 join 兄弟分支的信号，验证能够共同推进；同时覆盖挂起期间停止、主错与收尾错、非 Clone 节点归还、真实两层 System、整图 Send 编译约束与跨 drive 生命周期。这些有限 mock 测试不代表真机时序或物理安全认证。
+
+```sh
+cargo test -p robot_behavior --no-default-features --test async_control
+cargo test -p robot_behavior --features roplat --test async_control
+CONTROL_BENCH_CYCLES=1000000 cargo bench -p robot_behavior --features roplat --bench native_async_control
+```
+
+新增独立 CPU 基准比较 ControlRhythm 与 AsyncControlRhythm，采用相同的 48/56/1024 字节命令计算和 21 组交替先后的配对批次。输出每批平均 ns/周期及最大批均值，不是逐周期 p99、设备延迟，也不证明一直 Ready 的计算会自动公平调度。既有 control_flow 基准保持不变，用于独立回归对照。
