@@ -19,7 +19,7 @@ use pyo3::{pyclass, pymethods};
 /// - Unit of center of mass: [m](https://latex.codecogs.com/png.latex?m)
 /// - Unit of inertia tensor: [kg·m²](https://latex.codecogs.com/png.latex?kg%5Ccdot%20m%5E2)
 #[derive(Debug, Clone)]
-#[pyclass]
+#[pyclass(from_py_object)]
 pub struct LoadState {
     #[pyo3(get, set)]
     pub m: f64,

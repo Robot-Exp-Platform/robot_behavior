@@ -35,11 +35,11 @@
 应用代码通过类型参数选择运动空间：
 
 ```rust
-use robot_behavior::{JointSpace, MoveTo, RobotResult};
+use robot_behavior::{JointSpace, Motion, RobotResult};
 
 fn home<R>(robot: &mut R) -> RobotResult<()>
 where
-    R: MoveTo<JointSpace<6>>,
+    R: robot_behavior::MoveTo<JointSpace<6>>,
 {
     robot.move_to::<JointSpace<6>>([0.0; 6])
 }
@@ -48,11 +48,11 @@ where
 实时控制通过 `ControlWith<S>` 表示驱动支持的控制通道，通过 `control_with` 执行闭包：
 
 ```rust
-use robot_behavior::{Control, ControlWith, RobotResult, TorqueControl};
+use robot_behavior::{Control, RobotResult, TorqueControl};
 
-fn hold_zero_torque<R>(robot: &mut R) -> RobotResult<()>
+fn one_torque_command<R>(robot: &mut R) -> RobotResult<()>
 where
-    R: ControlWith<TorqueControl<7>>,
+    R: robot_behavior::ControlWith<TorqueControl<7>>,
 {
     robot.control_with::<TorqueControl<7>, _>(|_state, _dt| ([0.0; 7], true))
 }
@@ -62,13 +62,13 @@ where
 
 ```rust
 use robot_behavior::{
-    Control, ControlWith, RobotResult, TorqueControl,
-    controller::joint_traj_pd_control,
+    Control, RobotResult, TorqueControl,
+    utils::controller::joint_traj_pd_control,
 };
 
 fn track_traj<R>(robot: &mut R, traj: Vec<[f64; 7]>) -> RobotResult<()>
 where
-    R: ControlWith<TorqueControl<7>>,
+    R: robot_behavior::ControlWith<TorqueControl<7>>,
 {
     let controller = joint_traj_pd_control(traj, [80.0; 7], [12.0; 7]);
     robot.control_with::<TorqueControl<7>, _>(controller)
@@ -79,13 +79,13 @@ COPP 轨迹也可以整理成实时控制闭包：
 
 ```rust
 use robot_behavior::{
-    Control, ControlWith, JointPositionControl, RobotResult,
+    Control, JointPositionControl, RobotResult,
     utils::trajectory::copp_waypoints_joint_position_control,
 };
 
 fn follow_waypoints<R>(robot: &mut R, waypoints: &[[f64; 7]]) -> RobotResult<()>
 where
-    R: ControlWith<JointPositionControl<7>> + robot_behavior::Joints<7>,
+    R: robot_behavior::ControlWith<JointPositionControl<7>> + robot_behavior::Joints<7>,
 {
     let generator = copp_waypoints_joint_position_control::<R, 7>(waypoints, 1.0)?;
     robot.control_with::<JointPositionControl<7>, _>(generator)
@@ -102,3 +102,31 @@ where
 - `SpaceMap`：模型映射统一入口，例如 FK、Jacobian、质量矩阵、重力和科氏力。
 
 `WholeBodyJointSpace<N>` 等 whole-body 运动空间仍用于区分整机关节运动；控制通道则统一复用 `TorqueControl<N>`、`JointPositionControl<N>`、`JointVelocityControl<N>`，避免为相同的输入输出形状重复定义控制类型。
+
+## 控制退出与可选 roplat 适配
+
+驱动实现统一入口 `ControlWith<S>::control_with_flow`。其闭包返回
+`ControlStep<Command> = ControlFlow<(), (Command, bool)>`：
+
+- `Continue((command, false))`：发送有效命令，继续周期。
+- `Continue((command, true))`：先发送最后一条命令，再正常结束。
+- `Break(())`：本周期不发送算法命令，进入设备协议规定的会话收尾。不统一替换成零命令、hold 或急停。
+
+原有 `control_with`、`control_with_async` 保留为便利包装。两个 async 命名的方法均延续 0.6 的**阻塞会话 + async 周期闭包**：并不返回会话 Future，也不保证外层同任务其他分支能在会话期间继续轮询。
+
+默认 feature 为空，Robot / ControlWith / 状态 / 模型能力不依赖 roplat。显式启用 `features = ["roplat"]` 才提供 `ControlRhythm` 与三类节点适配。控制节律的 Input 为 `RobotResult<R>`，Yield 为 `(Obs, Duration)`，Feed 为 `(Command, bool)`，完整 drive 返回 `Execution<R>`。域错误和设备错误进入框架错误通道；无有效指令的周期通过 Break 结束。
+
+合作退出都归还 N。设备作为 Input、不在 N 中时，只有正常完成才通过 Output 返回设备本身。生命周期属于创建层；反复进入 drive 不会重置或重新启用外部节点。域单独失败时保留原 RoplatError；设备失败通过 `RoplatError::Io` 包装可 downcast 的 `ControlSessionError`，其字段保留同时发生的域退出和设备错误；驱动双错用 `RobotException::ControlSession` 保留。错误包装仅在失败路径分配。
+
+应用图使用 `#[roplat::system]`；可执行多层域示例见 [control_rhythm 测试](tests/control_rhythm.rs)，AI 开发配合 [roplat-skills](https://github.com/Robot-Exp-Platform/roplat-skills)。不要以手写应用 process 链替代 System 的生命周期和退出管理。
+
+从 drives 根可执行：
+
+```sh
+cargo check -p robot_behavior --no-default-features --lib
+cargo test -p robot_behavior --features roplat --lib --tests
+cargo check -p robot_behavior --all-features --all-targets
+cargo bench -p robot_behavior --features roplat --bench control_flow
+```
+
+性能样例比较 48、56、1024 字节命令的纯 CPU 成功路径；旧路径是对原控制循环的复现，因为旧适配不能直接对当前核心编译。结果不是实物机器人延迟，也不验证外层 runtime 公平性。Python/C++ 示例是可编译 mock wrapper，不是完整部署包或真机演示。

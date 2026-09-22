@@ -463,15 +463,17 @@ where
     Ok(joint_traj_position_control(traj))
 }
 
+type PathDerivativeMatrices = (
+    na::DMatrix<f64>,
+    na::DMatrix<f64>,
+    na::DMatrix<f64>,
+    na::DMatrix<f64>,
+);
+
 fn finite_difference_path_derivatives<F, const N: usize>(
     path_fn: &F,
     s_grid: &[f64],
-) -> RobotResult<(
-    na::DMatrix<f64>,
-    na::DMatrix<f64>,
-    na::DMatrix<f64>,
-    na::DMatrix<f64>,
-)>
+) -> RobotResult<PathDerivativeMatrices>
 where
     F: Fn(f64) -> Option<[f64; N]>,
 {
@@ -581,12 +583,7 @@ fn joint_path_is_stationary<const N: usize>(q_samples: &[[f64; N]]) -> bool {
 fn finite_difference_sample_derivatives<const N: usize>(
     q_samples: &[[f64; N]],
     s_grid: &[f64],
-) -> RobotResult<(
-    na::DMatrix<f64>,
-    na::DMatrix<f64>,
-    na::DMatrix<f64>,
-    na::DMatrix<f64>,
-)> {
+) -> RobotResult<PathDerivativeMatrices> {
     if q_samples.len() != s_grid.len() || q_samples.len() < 5 {
         return Err(RobotException::UnprocessableInstructionError(
             "joint sample derivative estimation requires matching grids with at least 5 samples"
@@ -805,11 +802,11 @@ where
 
 fn finite_difference_weights(offsets: &[f64; 5], derivative_order: usize) -> [f64; 5] {
     let mut matrix = [[0.0f64; 6]; 5];
-    for row in 0..5 {
+    for (row, values) in matrix.iter_mut().enumerate() {
         for (col, &offset) in offsets.iter().enumerate() {
-            matrix[row][col] = offset.powi(row as i32);
+            values[col] = offset.powi(row as i32);
         }
-        matrix[row][5] = if row == derivative_order {
+        values[5] = if row == derivative_order {
             factorial(derivative_order) as f64
         } else {
             0.0
@@ -823,8 +820,8 @@ fn finite_difference_weights(offsets: &[f64; 5], derivative_order: usize) -> [f6
         matrix.swap(pivot, pivot_row);
 
         let pivot_value = matrix[pivot][pivot];
-        for col in pivot..6 {
-            matrix[pivot][col] /= pivot_value;
+        for value in matrix[pivot].iter_mut().skip(pivot) {
+            *value /= pivot_value;
         }
 
         for row in 0..5 {

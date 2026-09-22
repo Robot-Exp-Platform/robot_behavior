@@ -17,7 +17,7 @@ pub use arm::{Arm, ArmState};
 pub use category::{Humanoid, MobileBase, Quadruped};
 pub use control::{
     ArmTorqueControl, BalanceControl, BaseVelocityControl, CartesianPoseControl,
-    CartesianVelocityControl, Control, ControlSpace, ControlWith, JointPositionControl,
+    CartesianVelocityControl, Control, ControlSpace, ControlStep, ControlWith, JointPositionControl,
     JointVelocityControl, TorqueControl,
 };
 pub use dh::DhParam;

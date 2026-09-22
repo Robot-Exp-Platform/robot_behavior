@@ -1,4 +1,4 @@
-﻿# robot_behavior
+# robot_behavior
 
 [English](README.md) | [简体中文](README_zh.md) | [Documentation](../robot_behavior_page/docs/en/index.md)
 
@@ -48,11 +48,11 @@ It is also patched into downstream experiment workspaces so experiments can cons
 Application code selects behavior through type-level spaces:
 
 ```rust
-use robot_behavior::{JointSpace, Motion, MoveTo, RobotResult};
+use robot_behavior::{JointSpace, Motion, RobotResult};
 
 fn home<R>(robot: &mut R) -> RobotResult<()>
 where
-    R: MoveTo<JointSpace<6>>,
+    R: robot_behavior::MoveTo<JointSpace<6>>,
 {
     robot.move_to::<JointSpace<6>>([0.0; 6])
 }
@@ -61,11 +61,11 @@ where
 Realtime control is selected through type-level control channels:
 
 ```rust
-use robot_behavior::{Control, ControlWith, RobotResult, TorqueControl};
+use robot_behavior::{Control, RobotResult, TorqueControl};
 
-fn hold_zero_torque<R>(robot: &mut R) -> RobotResult<()>
+fn one_torque_command<R>(robot: &mut R) -> RobotResult<()>
 where
-    R: ControlWith<TorqueControl<7>>,
+    R: robot_behavior::ControlWith<TorqueControl<7>>,
 {
     robot.control_with::<TorqueControl<7>, _>(|_state, _dt| {
         ([0.0; 7], true)
@@ -81,13 +81,13 @@ The controller helpers are intentionally small and composable. They build realti
 
 ```rust
 use robot_behavior::{
-    Control, ControlWith, RobotResult, TorqueControl,
+    Control, RobotResult, TorqueControl,
     utils::controller::joint_traj_pd_control,
 };
 
 fn track_traj<R>(robot: &mut R, traj: Vec<[f64; 7]>) -> RobotResult<()>
 where
-    R: ControlWith<TorqueControl<7>>,
+    R: robot_behavior::ControlWith<TorqueControl<7>>,
 {
     let controller = joint_traj_pd_control(traj, [80.0; 7], [12.0; 7]);
     robot.control_with::<TorqueControl<7>, _>(controller)
@@ -164,3 +164,56 @@ The core Rust behavior API works with default features.
 ## Status
 
 `robot_behavior` is still evolving with the driver workspace. The current direction is stable at the design level: represent robots as capabilities, typed spaces and reusable controller / model skills. Some trait details may still change as more drivers and robot forms are integrated.
+
+## Control sessions and Roplat
+
+The driver implements `ControlWith<S>::control_with_flow`. Its callback returns
+`ControlStep<Command> = ControlFlow<(), (Command, bool)>`:
+
+- `Continue((command, false))`: send the command and continue.
+- `Continue((command, true))`: send this final command, then complete normally.
+- `Break(())`: send no algorithm command this cycle, then perform device-specific
+  session termination. This does not prescribe a zero command, hold or emergency stop.
+
+The existing tuple callback methods `control_with` and `control_with_async` are
+wrappers. Both `control_with_async` and `control_with_flow_async` are **blocking
+sessions with async per-cycle callbacks**, preserving version 0.6 semantics.
+They do not return a session Future or promise that siblings on an outer
+executor can run while the session blocks.
+
+Default features are empty: using Robot, ControlWith, motion, state or models
+requires no roplat dependency. Enable `features = ["roplat"]` to import
+`robot_behavior::roplat::{ControlRhythm, MotionNode, SpaceMapNode, SafetyNode}`.
+ControlRhythm accepts `RobotResult<R>`, yields `(Obs, Duration)`, receives
+`(Command, bool)`, and returns `Execution<R>`. Domain or device failure is a
+framework error; a stopped/failed cycle does not require an invented command.
+Every cooperative exit returns N. The robot Input is outside N, so the robot
+itself is only returned as Output on completion. The creating scope owns
+Lifecycle; repeated drives do not reset or reactivate external nodes.
+
+A domain failure alone retains its original RoplatError. Device failures use
+`RoplatError::Io` with a downcastable `ControlSessionError`, retaining both the
+domain exit and device error when needed. Drivers retain operation and cleanup
+failures with `RobotException::ControlSession`. Allocations for these wrappers
+occur only on failure.
+
+Use `#[roplat::system]` for application graphs; see the executable multi-layer
+examples in [control_rhythm tests](tests/control_rhythm.rs) and
+[roplat-skills](https://github.com/Robot-Exp-Platform/roplat-skills). Implementing
+a Node's process method is normal; replacing the application's entire graph
+with manual process calls bypasses System semantics.
+
+Finite checks (from the parent drives workspace):
+
+```sh
+cargo check -p robot_behavior --no-default-features --lib
+cargo test -p robot_behavior --features roplat --lib --tests
+cargo check -p robot_behavior --all-features --all-targets
+cargo bench -p robot_behavior --features roplat --bench control_flow
+```
+
+The benchmark compares CPU-only successful paths with 48, 56 and 1024-byte
+commands. Its legacy path reproduces pre-change loop code because that older
+adapter cannot compile against the current core. It does not measure physical
+robot latency or runtime fairness. Foreign-language examples are compileable
+mock wrappers, not complete deployment packages or device demonstrations.

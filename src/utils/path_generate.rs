@@ -523,7 +523,7 @@ pub fn joint_s_curve<const N: usize>(
     (Arc::new(f), total)
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "linux", target_os = "windows")))]
 fn s_curve(
     delta: f64,
     v_max: f64,

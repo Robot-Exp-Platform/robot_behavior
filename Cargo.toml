@@ -14,11 +14,8 @@ keywords = ["robot", "robotics", "behavior", "roplat"]
 name = "robot_behavior"
 crate-type = ["cdylib", "rlib"]
 
-[profile.test]
-opt-level = 3
-
 [dependencies]
-roplat = { version = "0.2.2", path = "../../roplat/roplat" }
+roplat = { version = "0.2.2", path = "../../roplat/roplat", optional = true }
 copp = { version = "0.2.2" }
 pyo3 = { version = "0.28.3", optional = true, features = [
     "extension-module",
@@ -27,18 +24,11 @@ pyo3 = { version = "0.28.3", optional = true, features = [
 cxx = { version = "1.0.188", optional = true }
 nalgebra = { version = "0.34.1", features = ["serde-serialize"] }
 serde = { version = "1.0.228", features = ["derive", "alloc"] }
-serde_with = "3.16.0"
 serde_json = "1.0.145"
 thiserror = "2.0.17"
 anyhow = "1.0.100"
 paste = "1.0.15"
-pipe-trait = "0.4.0"
-typenum = "1.19.0"
 futures = "0.3"
-tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
-
-[build-dependencies]
-cxx-build = "1.0.188"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2.177"
@@ -48,9 +38,18 @@ plotters = "0.3.7"
 winapi = { version = "0.3.9", features = ["processthreadsapi", "winbase"] }
 plotters = "0.3.7"
 
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+
 [features]
 default = []
+roplat = ["dep:roplat"]
 ffi = []
 to_c = ["ffi"]
 to_cxx = ["ffi", "cxx"]
 to_py = ["ffi", "pyo3"]
+
+[[bench]]
+name = "control_flow"
+harness = false
+required-features = ["roplat"]

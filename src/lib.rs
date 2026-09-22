@@ -9,6 +9,7 @@ pub mod ffi;
 mod physics_engine;
 mod renderer;
 mod robot;
+#[cfg(feature = "roplat")]
 pub mod roplat;
 pub mod utils;
 mod world;
@@ -44,7 +45,7 @@ pub mod behavior {
         Arm, ArmDynamics, ArmForwardKinematics, ArmInverseKinematics, ArmState, ArmTorqueControl,
         BalanceControl, BasePoseSpace, BaseState, BaseVelocityControl, BaseVelocitySpace,
         CartesianPoseControl, CartesianVelocityControl, CenterOfMassSpace, ContactState, Control,
-        ControlObservation, ControlObserver, ControlSpace, Coord, CoriolisInput,
+        ControlObservation, ControlObserver, ControlSpace, ControlStep, Coord, CoriolisInput,
         CoriolisInputSpace, DhParam, DynamicsModel, EndEffectorState, EndPoint, EndSpace,
         FlangeSpace, FootSpace, ForwardKinematics, GaitCommand, GaitSpace, GravityInput,
         GravityInputSpace, HandSpace, Humanoid, HumanoidState, Inertial, InverseKinematics,
