@@ -399,14 +399,16 @@ impl Mul for Pose {
     }
 }
 
+// PyO3 0.28 generates Clone-based FromPyObject even for Copy PyPose.
 #[cfg(feature = "to_py")]
+#[allow(clippy::clone_on_copy)]
 mod to_py {
 
     use super::*;
     use pyo3::{pyclass, pymethods};
 
     #[derive(Debug, Clone)]
-    #[pyclass(name = "Desc")]
+    #[pyclass(name = "Desc", from_py_object)]
     pub struct PyDesc {
         #[pyo3(get, set)]
         pub from: String,
@@ -423,7 +425,7 @@ mod to_py {
     }
 
     #[derive(Debug, Clone, Copy)]
-    #[pyclass(name = "Pose")]
+    #[pyclass(name = "Pose", from_py_object)]
 
     pub enum PyPose {
         #[pyo3(constructor = (_0, _1))]
@@ -491,7 +493,7 @@ mod to_py {
     }
 
     #[derive(Debug, Clone)]
-    #[pyclass(name = "MotionType")]
+    #[pyclass(name = "MotionType", from_py_object)]
     pub enum PyMotionType {
         #[pyo3(constructor = (_0))]
         Joint(Vec<f64>),

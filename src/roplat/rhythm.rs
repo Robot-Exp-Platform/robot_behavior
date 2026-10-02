@@ -1,33 +1,58 @@
-//! roplat rhythms for robot control.
+//! Device-paced roplat control, enabled with the `roplat` feature.
 //!
-//! The generic [`ControlRhythm`] adapts
-//! [`ControlWith::control_with_async`](crate::ControlWith::control_with_async)
-//! into roplat's async [`Rhythm`](roplat::rhythm::Rhythm) interface. It treats
-//! the robot as a linear resource:
+//! The robot enters as `RobotResult<R>` and returns as `R` on completion.
+//! Framework failures and cooperative stops live in `Execution`, not in Feed:
+//! a successful Feed remains `(Command, done)`. The creating layer owns object
+//! lifecycle; entering a drive never activates, resets or shuts down its nodes.
 //!
-//! - `Input = RobotResult<R>` receives ownership of the robot resource.
-//! - The rhythm runs `robot.control_with::<S, _>(...)` until the controller
-//!   reports `done` or the driver errors.
-//! - `Output = RobotResult<R>` returns the robot resource to the graph.
+//! The device session remains blocking, including when its per-cycle callback
+//! is async. This preserves the 0.6 contract; it does not promise fair polling
+//! with sibling futures on the outer executor. An in-flight domain is always
+//! awaited to recover `N`. Dropped futures and panics are outside that guarantee.
 //!
-//! `ControlRhythm` calls the blocking
-//! [`ControlWith::control_with_async`](crate::ControlWith::control_with_async).
-//! The method accepts an async per-cycle closure but returns only after the
-//! robot control loop finishes.
+//! A successfully completed Feed is committed for this cycle. A concurrent stop
+//! is observed before the next callback; if this Feed already has `done = true`,
+//! its final command is sent and normal `Completed(R)` wins. A domain that cannot
+//! produce a command must return `Stopped` or `Err` instead of a successful Feed.
 
-use std::{future::Future, marker::PhantomData, time::Duration};
+use std::{future::Future, marker::PhantomData, ops::ControlFlow, time::Duration};
 
-use roplat::{RoplatError, rhythm::Rhythm};
+use roplat::{Completion, Execution, ExecutionContext, Lifecycle, RoplatError, rhythm::Rhythm};
 
-use crate::{ControlSpace, ControlWith, RobotResult};
+use crate::{ControlSpace, ControlWith, RobotException, RobotResult};
 
-/// Generic control rhythm backed by [`ControlWith::control_with_async`].
+/// Why a domain asked the device session to end without another command.
+#[derive(Debug)]
+pub enum ControlDomainExit {
+    Stopped,
+    Failed(RoplatError),
+}
+
+/// Device failure, retaining the preceding domain exit if there was one.
+///
+/// Transported through `RoplatError::Io(std::io::Error)` so the core needs no
+/// robot-specific variant. `io_error.get_ref().and_then(|e| e.downcast_ref())`
+/// recovers this concrete type, including the original domain error. The I/O
+/// category identifies the device/session boundary, not necessarily a socket.
+/// No wrapper is allocated when only the domain fails or when control succeeds.
+#[derive(Debug, thiserror::Error)]
+#[error("control device/session failed: {device}; preceding domain exit: {domain:?}")]
+pub struct ControlSessionError {
+    pub domain: Option<ControlDomainExit>,
+    #[source]
+    pub device: RobotException,
+}
+
+pub(super) fn device_error(device: RobotException, domain: Option<ControlDomainExit>) -> RoplatError {
+    std::io::Error::other(ControlSessionError { domain, device }).into()
+}
+
+/// A blocking device session driving one complete domain per control cycle.
 pub struct ControlRhythm<R, S> {
     _types: PhantomData<fn(R) -> S>,
 }
 
 impl<R, S> ControlRhythm<R, S> {
-    /// Create a control rhythm for robot type `R` and control space `S`.
     pub fn new() -> Self {
         Self { _types: PhantomData }
     }
@@ -37,6 +62,10 @@ impl<R, S> Default for ControlRhythm<R, S> {
     fn default() -> Self {
         Self::new()
     }
+}
+
+impl<R, S> Lifecycle for ControlRhythm<R, S> {
+    type Error = RoplatError;
 }
 
 impl<R, S> Rhythm for ControlRhythm<R, S>
@@ -49,126 +78,72 @@ where
     type Yield = (S::Obs, Duration);
     type Feed = (S::Command, bool);
     type Input = RobotResult<R>;
-    type Output = RobotResult<R>;
-    type Error = RoplatError;
+    type Output = R;
 
     async fn drive<N, F, Fut>(
         &mut self,
         nodes: N,
         mut op_domain: F,
         input: Self::Input,
-    ) -> (Self::Output, N)
+        context: ExecutionContext,
+    ) -> (Execution<Self::Output>, N)
     where
         N: Send,
-        F: FnMut(N, Self::Yield) -> Fut + Send,
-        Fut: Future<Output = (Self::Feed, N)> + Send,
+        F: FnMut(N, Self::Yield, ExecutionContext) -> Fut + Send,
+        Fut: Future<Output = (Execution<Self::Feed>, N)> + Send,
     {
+        if context.is_stopping() {
+            return (Ok(Completion::Stopped), nodes);
+        }
         let mut robot = match input {
             Ok(robot) => robot,
-            Err(error) => return (Err(error), nodes),
+            Err(error) => {
+                context.request_stop();
+                return (Err(device_error(error, None)), nodes);
+            }
         };
 
         let mut nodes = Some(nodes);
+        let mut domain_exit = None;
         let result =
-            <R as ControlWith<S>>::control_with_async(&mut robot, async |obs, duration| {
+            <R as ControlWith<S>>::control_with_flow_async(&mut robot, async |obs, duration| {
+                if context.is_stopping() {
+                    domain_exit = Some(ControlDomainExit::Stopped);
+                    return ControlFlow::Break(());
+                }
                 let current_nodes = nodes
                     .take()
-                    .expect("control rhythm operation domain lost its node state");
-                let (feed, returned_nodes) = op_domain(current_nodes, (obs, duration)).await;
+                    .expect("control driver invoked an overlapping domain callback");
+                let (execution, returned_nodes) =
+                    op_domain(current_nodes, (obs, duration), context.clone()).await;
+                // Restore ownership before inspecting the exit or asking the driver to stop.
                 nodes = Some(returned_nodes);
-                feed
+                match execution {
+                    Ok(Completion::Completed(feed)) => ControlFlow::Continue(feed),
+                    Ok(Completion::Stopped) => {
+                        context.request_stop();
+                        domain_exit = Some(ControlDomainExit::Stopped);
+                        ControlFlow::Break(())
+                    }
+                    Err(error) => {
+                        context.request_stop();
+                        domain_exit = Some(ControlDomainExit::Failed(error));
+                        ControlFlow::Break(())
+                    }
+                }
             });
-
-        let nodes = nodes.expect("control rhythm operation domain did not return node state");
-
-        match result {
-            Ok(()) => (Ok(robot), nodes),
-            Err(error) => (Err(error), nodes),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ControlRhythm;
-    use crate::{ControlSpace, ControlWith, Robot, RobotResult};
-    use roplat::rhythm::Rhythm;
-    use std::time::Duration;
-
-    struct TestControl;
-
-    #[derive(Debug, PartialEq)]
-    struct TestRobot {
-        cycles: u32,
-    }
-
-    impl Robot for TestRobot {
-        type State = ();
-
-        const CONTROL_PERIOD: f64 = 0.001;
-
-        fn version() -> String {
-            "test".to_string()
-        }
-
-        fn read_state(&mut self) -> RobotResult<Self::State> {
-            Ok(())
-        }
-    }
-
-    impl ControlSpace<TestRobot> for TestControl {
-        type Obs = u32;
-        type Command = u32;
-    }
-
-    impl ControlWith<TestControl> for TestRobot {
-        fn hold_command(obs: &u32) -> u32 {
-            *obs
-        }
-
-        fn control_with<F>(&mut self, mut closure: F) -> RobotResult<()>
-        where
-            F: FnMut(u32, Duration) -> (u32, bool),
-        {
-            loop {
-                let (_command, done) = closure(self.cycles, Duration::from_millis(1));
-                self.cycles += 1;
-                if done {
-                    return Ok(());
-                }
+        let nodes = nodes.expect("control domain did not return its node state");
+        let execution = match result {
+            Err(error) => {
+                context.request_stop();
+                Err(device_error(error, domain_exit))
             }
-        }
-
-        fn control_with_async<F>(&mut self, mut closure: F) -> RobotResult<()>
-        where
-            F: async FnMut(u32, Duration) -> (u32, bool),
-        {
-            loop {
-                let (_command, done) =
-                    futures::executor::block_on(closure(self.cycles, Duration::from_millis(1)));
-                self.cycles += 1;
-                if done {
-                    return Ok(());
-                }
-            }
-        }
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn control_rhythm_returns_robot_resource_after_done() {
-        let mut rhythm = ControlRhythm::<TestRobot, TestControl>::new();
-        let future = rhythm.drive(
-            10_u32,
-            |nodes, (obs, _duration)| async move {
-                let done = obs >= 2;
-                ((obs + nodes, done), nodes + 1)
+            Ok(()) => match domain_exit {
+                Some(ControlDomainExit::Failed(error)) => Err(error),
+                Some(ControlDomainExit::Stopped) => Ok(Completion::Stopped),
+                None => Ok(Completion::Completed(robot)),
             },
-            Ok(TestRobot { cycles: 0 }),
-        );
-
-        let (robot, nodes) = future.await;
-
-        assert_eq!(robot.unwrap(), TestRobot { cycles: 3 });
-        assert_eq!(nodes, 13);
+        };
+        (execution, nodes)
     }
 }

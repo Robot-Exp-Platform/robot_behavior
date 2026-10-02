@@ -92,13 +92,13 @@ mod tests {
 
     #[test]
     fn test_simd_optimization() {
-        let mut q = [1.5; 8];
+        let q = [1.5; 8];
         let q_last = [0.0; 8];
         let time = 0.1;
 
         let start_time = std::time::Instant::now();
         for _ in 0..100_000 {
-            let _ = difference(&mut q, &q_last, time);
+            let _ = difference(&q, &q_last, time);
         }
         println!("difference: {:?}", start_time.elapsed());
         // let q = Simd::from_array(q);

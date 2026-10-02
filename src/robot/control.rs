@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{ops::ControlFlow, time::Duration};
 
 use futures::executor;
 
@@ -92,6 +92,10 @@ impl<R> ControlSpace<R> for BalanceControl {
     type Command = [f64; 6];
 }
 
+/// One control cycle's decision. `Break` carries no fabricated command.
+/// The command and `done` flag exist only for successfully computed cycles.
+pub type ControlStep<Command> = ControlFlow<(), (Command, bool)>;
+
 /// Realtime, closure-driven control - the bridge into blocking control loops.
 /// **Implemented by drivers**, one impl per control channel `S`.
 ///
@@ -118,22 +122,48 @@ pub trait ControlWith<S: ControlSpace<Self>>: Robot {
     where
         Self: Sized;
 
-    /// Run a realtime control loop until the closure signals completion.
-    fn control_with<F>(&mut self, closure: F) -> RobotResult<()>
-    where
-        F: FnMut(S::Obs, Duration) -> (S::Command, bool);
-
-    /// Blocking control loop that accepts an async per-cycle closure.
+    /// Canonical blocking control session, implemented by each driver.
     ///
-    /// The default implementation adapts an async controller back into the
-    /// blocking [`control_with`](ControlWith::control_with) loop by running one
-    /// controller future to completion per cycle. The method itself is still
-    /// blocking: it returns only when the control loop finishes or errors.
+    /// `Continue((command, done))` sends the valid command, then ends normally
+    /// if `done`. `Break(())` sends no algorithm command for this cycle and
+    /// enters the driver's session termination protocol. The driver must not
+    /// invoke the callback again after either exit. Protocol-specific termination
+    /// packets remain the driver's responsibility; `Break` is not an emergency stop.
+    fn control_with_flow<F>(&mut self, closure: F) -> RobotResult<()>
+    where
+        F: FnMut(S::Obs, Duration) -> ControlStep<S::Command>;
+
+    /// Run a blocking control session with a command on every completed cycle.
+    fn control_with<F>(&mut self, mut closure: F) -> RobotResult<()>
+    where
+        F: FnMut(S::Obs, Duration) -> (S::Command, bool),
+    {
+        self.control_with_flow(move |obs, duration| ControlFlow::Continue(closure(obs, duration)))
+    }
+
+    /// Blocking control session with an async, exit-capable per-cycle callback.
+    ///
+    /// The default runs each callback future to completion inside the blocking
+    /// loop. The method itself does not return a Future. Drivers with their own
+    /// session runtime can override this primitive while keeping the same contract.
+    fn control_with_flow_async<F>(&mut self, mut closure: F) -> RobotResult<()>
+    where
+        F: async FnMut(S::Obs, Duration) -> ControlStep<S::Command>,
+    {
+        self.control_with_flow(move |obs, duration| executor::block_on(closure(obs, duration)))
+    }
+
+    /// Blocking control session accepting an async per-cycle callback.
+    ///
+    /// This preserves the 0.6 session semantics: the call returns only after
+    /// completion or failure. It does not make the outer session asynchronous.
     fn control_with_async<F>(&mut self, mut closure: F) -> RobotResult<()>
     where
         F: async FnMut(S::Obs, Duration) -> (S::Command, bool),
     {
-        self.control_with(move |obs, duration| executor::block_on(closure(obs, duration)))
+        self.control_with_flow_async(async move |obs, duration| {
+            ControlFlow::Continue(closure(obs, duration).await)
+        })
     }
 }
 
@@ -150,6 +180,26 @@ pub trait ControlWith<S: ControlSpace<Self>>: Robot {
 /// never collide. Each call forwards to the [`ControlWith<S>`] impl the
 /// driver provides for that channel.
 pub trait Control: Robot + Sized {
+    /// Blocking session with an explicit no-command exit path.
+    fn control_with_flow<S, F>(&mut self, closure: F) -> RobotResult<()>
+    where
+        S: ControlSpace<Self>,
+        Self: ControlWith<S>,
+        F: FnMut(S::Obs, Duration) -> ControlStep<S::Command>,
+    {
+        <Self as ControlWith<S>>::control_with_flow(self, closure)
+    }
+
+    /// Async callback variant of [`Control::control_with_flow`]; still blocking.
+    fn control_with_flow_async<S, F>(&mut self, closure: F) -> RobotResult<()>
+    where
+        S: ControlSpace<Self>,
+        Self: ControlWith<S>,
+        F: async FnMut(S::Obs, Duration) -> ControlStep<S::Command>,
+    {
+        <Self as ControlWith<S>>::control_with_flow_async(self, closure)
+    }
+
     fn control_with<S, F>(&mut self, closure: F) -> RobotResult<()>
     where
         S: ControlSpace<Self>,

@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use crate::{RobotException, RobotResult};
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+use crate::RobotException;
+use crate::RobotResult;
 
 pub trait RealtimeBehavior<C, H> {
     fn enter_realtime(&mut self, realtime_config: C) -> RobotResult<H>;

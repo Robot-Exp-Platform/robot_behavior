@@ -31,7 +31,6 @@ where
 {
     type Input = (RobotResult<R>, S::Target);
     type Output = RobotResult<R>;
-    type Error = ::roplat::RoplatError;
 
     async fn process(&mut self, input: Self::Input) -> Self::Output {
         let (robot, target) = input;
@@ -67,7 +66,6 @@ where
 {
     type Input = M::Input;
     type Output = RobotResult<M::Output>;
-    type Error = ::roplat::RoplatError;
 
     async fn process(&mut self, input: Self::Input) -> Self::Output {
         self.model.map(input)
@@ -100,9 +98,20 @@ where
 {
     type Input = (Command, bool);
     type Output = (Command, bool);
-    type Error = ::roplat::RoplatError;
 
     async fn process(&mut self, input: Self::Input) -> Self::Output {
         (self.filter)(input)
     }
+}
+
+impl<R, S> ::roplat::Lifecycle for MotionNode<R, S> {
+    type Error = ::roplat::RoplatError;
+}
+
+impl<M, From, To> ::roplat::Lifecycle for SpaceMapNode<M, From, To> {
+    type Error = ::roplat::RoplatError;
+}
+
+impl<F, Command> ::roplat::Lifecycle for SafetyNode<F, Command> {
+    type Error = ::roplat::RoplatError;
 }

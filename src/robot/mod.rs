@@ -1,4 +1,5 @@
 pub mod arm;
+pub mod async_control;
 pub mod category;
 pub mod control;
 pub mod dh;
@@ -14,10 +15,11 @@ pub mod state;
 pub mod types;
 
 pub use arm::{Arm, ArmState};
+pub use async_control::{AsyncControl, AsyncControlCallback, AsyncControlWith};
 pub use category::{Humanoid, MobileBase, Quadruped};
 pub use control::{
     ArmTorqueControl, BalanceControl, BaseVelocityControl, CartesianPoseControl,
-    CartesianVelocityControl, Control, ControlSpace, ControlWith, JointPositionControl,
+    CartesianVelocityControl, Control, ControlSpace, ControlStep, ControlWith, JointPositionControl,
     JointVelocityControl, TorqueControl,
 };
 pub use dh::DhParam;
@@ -135,6 +137,6 @@ pub trait Robot {
 /// A robot description, used for dynamic dispatch and configuration.
 pub trait RobotDescription {
     /// A robot with a URDF file.
-    /// This path is relative to the [`roplat_data_dir`](roplat_data_dir) directory.
+    /// This path is relative to the [`roplat_data_dir`](crate::roplat_data_dir) directory.
     const URDF: Option<&'static str> = None;
 }

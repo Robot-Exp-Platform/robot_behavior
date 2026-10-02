@@ -8,7 +8,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-#[pyclass(name = "JointSample")]
+#[pyclass(name = "JointSample", from_py_object)]
 pub struct PyJointSample {
     #[pyo3(get, set)]
     pub q: Option<Vec<f64>>,
@@ -49,7 +49,7 @@ impl<const N: usize> From<JointSample<N>> for PyJointSample {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(name = "SpatialSample")]
+#[pyclass(name = "SpatialSample", from_py_object)]
 pub struct PySpatialSample {
     #[pyo3(get, set)]
     pub pose: Option<PyPose>,
@@ -86,7 +86,7 @@ impl From<SpatialSample> for PySpatialSample {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(name = "JointState")]
+#[pyclass(name = "JointState", from_py_object)]
 pub struct PyJointState {
     #[pyo3(get, set)]
     pub meas: PyJointSample,
@@ -115,7 +115,7 @@ impl<const N: usize> From<JointState<N>> for PyJointState {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(name = "SpatialState")]
+#[pyclass(name = "SpatialState", from_py_object)]
 pub struct PySpatialState {
     #[pyo3(get, set)]
     pub meas: PySpatialSample,
@@ -144,7 +144,7 @@ impl From<StateView<SpatialSample>> for PySpatialState {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(name = "ArmState")]
+#[pyclass(name = "ArmState", from_py_object)]
 pub struct PyArmState {
     #[pyo3(get, set)]
     pub joint: PyJointState,

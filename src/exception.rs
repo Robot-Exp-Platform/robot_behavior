@@ -9,6 +9,15 @@ use thiserror::Error;
 /// the `?` operator works across transport, command and (de)serialization
 /// failures. With the `to_py` feature it also converts into a Python exception.
 pub enum RobotException {
+    /// A control operation failed and its device-specific cleanup also failed.
+    /// Allocation occurs only on this double-failure path.
+    #[error("{primary}; control session cleanup also failed: {cleanup}")]
+    ControlSession {
+        #[source]
+        primary: Box<RobotException>,
+        cleanup: Box<RobotException>,
+    },
+
     /// Sentinel "no error" value (not an actual failure).
     #[error("none")]
     NoException,
