@@ -1,305 +1,135 @@
 # robot_behavior
 
-[English](README.md) | [简体中文](README_zh.md) | [Documentation](../robot_behavior_page/docs/en/index.md)
+[English](README.md) | [简体中文](README_zh.md) | [crates.io](https://crates.io/crates/robot_behavior)
 
-`robot_behavior` is the shared Rust behavior layer for robot drivers, simulators and Roplat adapters. It defines the common language for "what a robot can do": move in typed spaces, expose structured state, run realtime control closures, and provide kinematics / dynamics maps when a driver has a model.
+`robot_behavior` is a Rust interface library for writing robot applications against **capabilities**: move to a target, read a structured state, or calculate a command each control cycle. A hardware driver or simulator implements those capabilities; this crate supplies their shared types and contracts.
 
-It is not a hardware SDK and it is not a motion-planning framework. It is the contract crate that lets different backends feel like the same kind of robot from application code.
+Use it when you want to reuse application or controller code across compatible backends, or implement a new driver in the same vocabulary. To connect to a robot, also choose its driver. To simulate physics, choose a physics backend such as [RsBullet](https://github.com/Robot-Exp-Platform/rsbullet). This crate alone does neither.
 
-## What It Does
+## Design: share the contract, keep the device-specific work in the driver
 
-`robot_behavior` gives downstream crates a common API for:
+A joint position and a joint torque can both be `[f64; 6]`, but they mean different things. `JointSpace<6>` identifies a motion target; `JointPositionControl<6>` and `TorqueControl<6>` identify cyclic command channels. These marker types select the observation and command types and keep application calls explicit.
 
-- Moving robots in typed spaces such as `JointSpace<N>`, `FlangeSpace`, `TcpSpace`, base spaces and whole-body spaces.
-- Running realtime control loops through typed channels such as `TorqueControl<N>`, `ArmTorqueControl<N>`, `CartesianPoseControl<N>` and `BaseVelocityControl`.
-- Reading structured state through `JointState<N>`, `ArmState<N>`, `BaseState`, `QuadrupedState<N>` and `HumanoidState<N>`.
-- Sharing controller skills such as PD/PID tracking, impedance control, gravity compensation and computed-torque control.
-- Expressing FK, IK, Jacobian and dynamics as typed `SpaceMap` implementations.
-- Letting arms, humanoids, quadrupeds, mobile bases and simulators share reusable behavior without forcing them into one root robot type.
+Capabilities are implemented separately. A driver supporting joint motion does not automatically support torque control, inverse kinematics, or native asynchronous I/O. Generic application code requests the traits it needs, rather than assuming every robot offers the same features.
 
-## Why Use It
+The driver owns transport, timing, state acquisition, and session termination. Your control callback receives an observation and a `Duration`, then produces the next command. Controller helpers are ordinary closures; they do not create a scheduler or make a hardware timing guarantee.
 
-The main advantage is consistency across very different robots and backends.
+| You want to… | Application API | Backend implements |
+|---|---|---|
+| Reach a target | `Motion::move_to::<S>` | `MoveTo<S>` |
+| Send a sampled trajectory | `Motion::move_traj::<S>` | `MoveTraj<S>` |
+| Compute a command every cycle | `Control::control_with::<S, _>` | `ControlWith<S>` |
+| Await a complete control session | `AsyncControl::control_native_async::<S, _>` | `AsyncControlWith<S>` |
+| Read a backend's native state | `Robot::read_state` | `Robot` |
+| Work with arm state or a model | `Arm<N>`, `SpaceMap` and model traits | Only the supported capabilities |
 
-- **Typed commands instead of ambiguous arrays**: `[f64; 7]` becomes meaningful only when paired with `JointSpace<7>`, `TorqueControl<7>` or another marker.
-- **One application style across drivers**: user code can call `move_to::<JointSpace<N>>()` or `control_with::<TorqueControl<N>, _>()` against any compatible backend.
-- **Driver-friendly abstraction**: drivers implement only the spaces and control channels they actually support.
-- **Reusable controller closures**: controller helpers return plain `FnMut` closures, so they plug directly into realtime control loops.
-- **Robot form is compositional**: an arm, dog or humanoid can be modeled as capabilities plus state, rather than being forced into one rigid inheritance tree.
-- **Model APIs are optional**: kinematics and dynamics live behind typed maps, so a simple driver can skip them and a rich driver can expose them cleanly.
+## First example: a complete program without a robot
 
-## Who Depends On It
+The current release is **0.6.1**. Dependency builds need a C++ toolchain (on Windows, MSVC Build Tools and the Windows SDK). It uses nightly Rust features, so install a nightly toolchain:
 
-In this workspace, `robot_behavior` is used by:
-
-- `franka-rust`: Franka Emika / FR3 driver.
-- `libjaka-rs`: JAKA robot driver.
-- `libhans-rs`: Hans robot driver.
-- `libaubo-rs`: AUBO robot driver.
-- `rsbullet`: Bullet-based simulation backend.
-- `roplat_exrobot`: example / adapter robots exposed as Roplat nodes.
-- `roplat_rerun` and `utils/rerun_urdf`: visualization-related crates.
-- `examples/jaka_dual` and other workspace examples.
-
-It is also patched into downstream experiment workspaces so experiments can consume the same behavior interface without depending on a specific hardware crate.
-
-## Core Idea
-
-Application code selects behavior through type-level spaces:
-
-```rust
-use robot_behavior::{JointSpace, Motion, RobotResult};
-
-fn home<R>(robot: &mut R) -> RobotResult<()>
-where
-    R: robot_behavior::MoveTo<JointSpace<6>>,
-{
-    robot.move_to::<JointSpace<6>>([0.0; 6])
-}
+```sh
+rustup toolchain install nightly
+cargo new behavior-demo --edition 2024
+cd behavior-demo
 ```
 
-Realtime control is selected through type-level control channels:
+Add these dependencies to the generated `Cargo.toml`:
 
-```rust
-use robot_behavior::{Control, RobotResult, TorqueControl};
-
-fn one_torque_command<R>(robot: &mut R) -> RobotResult<()>
-where
-    R: robot_behavior::ControlWith<TorqueControl<7>>,
-{
-    robot.control_with::<TorqueControl<7>, _>(|_state, _dt| {
-        ([0.0; 7], true)
-    })
-}
+```toml
+[dependencies]
+robot_behavior = "0.6.1"
+roplat_exrobot = "0.2.0"
 ```
 
-The channel determines what state the closure receives. For example, `TorqueControl<N>` observes `JointState<N>`, while `ArmTorqueControl<N>` observes full `ArmState<N>` for Cartesian impedance, Jacobians or dynamics-aware control.
-
-## Controller Skills
-
-The controller helpers are intentionally small and composable. They build realtime closures rather than controller objects:
+`roplat_exrobot` supplies a console-backed reference robot. It prints commands and returns synthetic observations, so the example needs no device, SDK, robot model, or Roplat runtime. Replace `src/main.rs` with:
 
 ```rust
 use robot_behavior::{
-    Control, RobotResult, TorqueControl,
-    utils::controller::joint_traj_pd_control,
+    Control, JointPositionControl, JointSpace, Motion, Robot, RobotResult,
 };
+use roplat_exrobot::ExRobot;
 
-fn track_traj<R>(robot: &mut R, traj: Vec<[f64; 7]>) -> RobotResult<()>
-where
-    R: robot_behavior::ControlWith<TorqueControl<7>>,
-{
-    let controller = joint_traj_pd_control(traj, [80.0; 7], [12.0; 7]);
-    robot.control_with::<TorqueControl<7>, _>(controller)
+fn main() -> RobotResult<()> {
+    let mut arm = ExRobot::<6>::new();
+    arm.init()?;
+    arm.move_to::<JointSpace<6>>([0.1; 6])?;
+
+    let mut cycles = 0;
+    arm.control_with::<JointPositionControl<6>, _>(|_state, _dt| {
+        cycles += 1;
+        ([0.1; 6], cycles == 3)
+    })?;
+
+    println!("completed {cycles} control cycles");
+    arm.shutdown()
 }
 ```
 
-Available controller families include:
+Run it with `cargo +nightly run`. You will see the reference robot's lifecycle and command messages, followed by `completed 3 control cycles` and shutdown. The final callback returns `true`, so its command is sent and the session finishes. The example demonstrates dispatch and termination; the reference robot does not move or integrate a physical state.
 
-- Joint PD / PID fixed target, dynamic target and trajectory tracking.
-- Joint impedance fixed target, dynamic target, trajectory tracking and handle-driven sessions.
-- Cartesian impedance with FK / Jacobian model support.
-- Gravity compensation.
-- Computed-torque tracking.
-- Base velocity PID.
+To use a device next, replace `ExRobot` with the appropriate driver's constructor and follow that driver's connection and operating-mode setup. Keep only the channels that driver implements. Matching Rust types make code reusable; they do not make robot limits, frames, timing, or controller gains interchangeable.
 
-## State Model
+## Reading state
 
-State is represented as measured / commanded / desired views:
+`Robot::State` is backend-specific. For portable arm-oriented code, use the driver's `Arm<N>` implementation and the structured state types:
 
-```rust
-pub struct StateView<T> {
-    pub meas: T,
-    pub cmd: T,
-    pub des: T,
-}
-```
+- `JointState<N>` contains `meas`, `cmd`, and `des` views: measured feedback, accepted commands, and desired references.
+- A `JointSample<N>` contains optional fields such as `q`, `dq`, and `tau`. `None` means that value was not supplied; it should not be silently treated as zero.
+- `ArmState<N>` adds flange state and optional TCP, stiffness-frame, and load information. A native state and this portable view are not necessarily acquired through the same device operation.
 
-For arms, the primary state is:
+Read the backend's state documentation for units, frames, field availability, and freshness. A default value, or the presence of `Some`, is not proof that a new sensor sample has arrived.
 
-```rust
-pub struct ArmState<const N: usize> {
-    pub joint: JointState<N>,
-    pub flange: StateView<SpatialSample>,
-    pub tcp: Option<StateView<SpatialSample>>,
-    pub stiffness: Option<StateView<SpatialSample>>,
-    pub load: Option<LoadState>,
-}
-```
+## Motion and control sessions
 
-The field names are explicit at the robot-structure level (`joint`, `flange`, `tcp`) and use standard robotics notation inside samples (`q`, `dq`, `tau`).
+Use a motion call when the backend should execute a target or trajectory. Use a control session when your code must produce each cycle's command. `control_with` receives a callback returning `(command, done)` and blocks until the session ends.
 
-## For Driver Authors
+For an exit without an algorithm command, use `control_with_flow` and return a `ControlStep<Command>`:
 
-A typical arm driver implements:
+| Callback result | Meaning |
+|---|---|
+| `ControlFlow::Continue((command, false))` | Send the command; continue. |
+| `ControlFlow::Continue((command, true))` | Send this final command; complete normally. |
+| `ControlFlow::Break(())` | Send no algorithm command for this cycle; perform the driver's session termination. |
 
-- `Robot` for lifecycle and native state.
-- `Joints<N>` and `EndPoint` for limits.
-- `MoveTo<S>` and optionally `MoveTraj<S>` for supported motion spaces.
-- `ControlWith<S>` for supported realtime channels.
-- `Arm<N>` for the unified arm surface.
-- Optional `SpaceMap` / model traits for FK, IK, Jacobian and dynamics.
+Termination depends on the device protocol. `Break` does not prescribe a zero command or represent an emergency stop.
 
-Driver crates should normally import:
+There are two different uses of async:
 
-```rust
-use robot_behavior::driver::*;
-```
+- `control_with_async` / `control_with_flow_async` accept async **callbacks inside a blocking session**. They do not return a session future.
+- `control_native_async(&mut callback)` returns the **whole session future**, including its I/O and termination. It requires an `AsyncControlWith<S>` implementation and the runtime specified by the driver. Dropping that future is not cooperative session shutdown.
 
-Application crates should normally import:
+## Features and Roplat integration
 
-```rust
-use robot_behavior::behavior::*;
-```
+Default features are empty. The Rust motion, control, state, and model interfaces work without Roplat.
 
-## Feature Flags
+| Feature | Purpose |
+|---|---|
+| `roplat` | `ControlRhythm`, `AsyncControlRhythm`, and motion/model/safety node adapters. |
+| `ffi` / `to_c` | Enable the foreign-interface modules / C-facing feature gate. |
+| `to_cxx` | Enable the C++ bridge support. |
+| `to_py` | Enable PyO3 support and exported state types. |
 
-- `ffi`: FFI module gates.
-- `to_py`: PyO3 support.
-- `to_cxx`: `cxx` support.
-- `to_c`: C-facing gates.
-- `roplat`: optional Node, blocking ControlRhythm and native AsyncControlRhythm adapters.
+For a Roplat application, add `features = ["roplat"]` to the dependency and use `roplat = "0.3.0"`. Build the application graph with `#[roplat::system]`; choose `ControlRhythm` for a blocking backend or `AsyncControlRhythm` for a native async backend. The adapters connect the same observations and commands to a graph; they do not add capabilities missing from the device driver.
 
-The core Rust behavior API works with default features.
+The creating scope manages node lifecycle. A device passed as a rhythm's input is returned as output on normal completion; failure handling must not assume it is recoverable simply because graph nodes are returned. See the [adapter implementation and API comments](src/roplat) and [complete System examples](tests/control_rhythm.rs) when integrating a graph.
 
-## Status
+## Going further
 
-`robot_behavior` is still evolving with the driver workspace. The current direction is stable at the design level: represent robots as capabilities, typed spaces and reusable controller / model skills. Some trait details may still change as more drivers and robot forms are integrated.
+- [Motion and trajectory APIs](src/robot/motion.rs): targets, dense trajectories, and driver-provided path/waypoint handling.
+- [Control contracts](src/robot/control.rs) and [native async contracts](src/robot/async_control.rs).
+- [State types](src/robot/state.rs) and [model mappings](src/robot/model.rs).
+- [Controller helpers](src/utils/controller): joint PD/PID, impedance, gravity compensation, and other reusable calculations. Choose gains and required model data for your backend.
+- [Executable contract examples](tests/control_flow.rs), [async examples](tests/async_control.rs), and [foreign-interface examples](examples).
+- [Companion documentation](https://github.com/Robot-Exp-Platform/robot_behavior_page).
 
-## Control sessions and Roplat
+Driver authors can import `robot_behavior::driver::*`; applications can import `robot_behavior::behavior::*`. Implement the device's lifecycle and state in `Robot`, then each supported motion/control/model capability. Default lifecycle hooks are no-ops and some unimplemented operations return errors; inheriting a default is not an implementation of device behavior.
 
-The driver implements `ControlWith<S>::control_with_flow`. Its callback returns
-`ControlStep<Command> = ControlFlow<(), (Command, bool)>`:
+## Working from source
 
-- `Continue((command, false))`: send the command and continue.
-- `Continue((command, true))`: send this final command, then complete normally.
-- `Break(())`: send no algorithm command this cycle, then perform device-specific
-  session termination. This does not prescribe a zero command, hold or emergency stop.
+Registry dependencies are the simplest way to use a released version. This repository's manifest also records pinned Git sources for integration development, including optional dependencies. A source checkout may therefore need GitHub SSH access even when an optional feature is disabled; it does not need a sibling `drives` checkout.
 
-The existing tuple callback methods `control_with` and `control_with_async` are
-wrappers. Both `control_with_async` and `control_with_flow_async` are **blocking
-sessions with async per-cycle callbacks**, preserving version 0.6 semantics.
-They do not return a session Future or promise that siblings on an outer
-executor can run while the session blocks.
+From a source checkout, `cargo +nightly check --lib` checks the default Rust library. The tests under `tests/` provide finite mock examples of contracts, not evidence of hardware timing. For workspace development, see [drives](https://github.com/Robot-Exp-Platform/drives).
 
-Default features are empty: using Robot, ControlWith, motion, state or models
-requires no roplat dependency. Enable `features = ["roplat"]` to import
-`robot_behavior::roplat::{ControlRhythm, MotionNode, SpaceMapNode, SafetyNode}`.
-ControlRhythm accepts `RobotResult<R>`, yields `(Obs, Duration)`, receives
-`(Command, bool)`, and returns `Execution<R>`. Domain or device failure is a
-framework error; a stopped/failed cycle does not require an invented command.
-Every cooperative exit returns N. The robot Input is outside N, so the robot
-itself is only returned as Output on completion. The creating scope owns
-Lifecycle; repeated drives do not reset or reactivate external nodes.
+## License
 
-A domain failure alone retains its original RoplatError. Device failures use
-`RoplatError::Io` with a downcastable `ControlSessionError`, retaining both the
-domain exit and device error when needed. Drivers retain operation and cleanup
-failures with `RobotException::ControlSession`. Allocations for these wrappers
-occur only on failure.
-
-Use `#[roplat::system]` for application graphs; see the executable multi-layer
-examples in [control_rhythm tests](tests/control_rhythm.rs) and
-[roplat-skills](https://github.com/Robot-Exp-Platform/roplat-skills). Implementing
-a Node's process method is normal; replacing the application's entire graph
-with manual process calls bypasses System semantics.
-
-Finite checks (from the parent drives workspace):
-
-```sh
-cargo check -p robot_behavior --no-default-features --lib
-cargo test -p robot_behavior --features roplat --lib --tests
-cargo check -p robot_behavior --all-features --all-targets
-cargo bench -p robot_behavior --features roplat --bench control_flow
-```
-
-The benchmark compares CPU-only successful paths with 48, 56 and 1024-byte
-commands. Its legacy path reproduces pre-change loop code because that older
-adapter cannot compile against the current core. It does not measure physical
-robot latency or runtime fairness. Foreign-language examples are compileable
-mock wrappers, not complete deployment packages or device demonstrations.
-
-## Independent source checkout
-
-The optional roplat adapter uses the full Git revision pinned in Cargo.toml.
-It does not require a sibling roplat checkout or the drives workspace. This is
-an internal Git baseline: the crates.io package with the same version number
-predates the current core execution API. Repository SSH access must already be
-configured; set `CARGO_NET_GIT_FETCH_WITH_CLI=true` to use your existing SSH key
-or agent. Do not put credentials in project files.
-
-```sh
-CARGO_NET_GIT_FETCH_WITH_CLI=true cargo check --no-default-features --lib
-CARGO_NET_GIT_FETCH_WITH_CLI=true cargo check --no-default-features --features roplat --lib
-```
-
-Cargo may inspect the pinned source while resolving optional dependencies even
-when the feature is off. Feature separation removes core compilation/runtime
-dependencies from the default build; it is not an offline download guarantee.
-
-
-## Native asynchronous control
-
-`AsyncControlWith<S>::control_native_async` returns a **complete session Future**,
-including asynchronous entry and termination. It is a separate driver capability:
-implementing the blocking `ControlWith` does not automatically implement it, and
-none of the version 0.6 blocking methods change meaning. Drivers document their
-I/O runtime requirements; the behavior interfaces themselves have no Tokio or
-roplat dependency.
-
-```rust
-use robot_behavior::{AsyncControl, AsyncControlWith, JointPositionControl, RobotResult};
-use std::ops::ControlFlow;
-
-async fn one_command<R>(robot: &mut R, command: [f64; 7]) -> RobotResult<()>
-where
-    R: AsyncControlWith<JointPositionControl<7>>,
-{
-    let mut callback = move |_state, _dt| async move {
-        ControlFlow::Continue((command, true))
-    };
-    AsyncControl::control_native_async::<JointPositionControl<7>, _>(robot, &mut callback).await
-}
-```
-
-The canonical callback is `AsyncControlCallback<Obs, Command>::call(&mut self, ...)
--> impl Future<Output = ControlStep<Command>> + Send`. A driver borrows the callback
-for the whole session and awaits every call before starting another. State is
-available to its caller after success or error. Ordinary `FnMut -> Send Future`
-closures work directly. A controller that needs to borrow its own mutable state
-across await can implement the trait on a named struct; this avoids a boxed future
-or a copied state value per cycle. It does not promise that every lending async
-closure automatically meets the callback contract.
-
-Enable `roplat` and use `robot_behavior::roplat::AsyncControlRhythm<R, S>` for the
-native session in a System graph. Its Input/Yield/Feed/Output, creator lifecycle,
-error retention and N-return rules match ControlRhythm. It neither constructs a
-nested runtime nor spawns or boxes a future per cycle. Native async makes I/O
-suspension visible to the caller's executor; synchronous computation inside a
-callback can still occupy that executor until it yields.
-
-A successful Feed is committed for the current cycle even if stop was requested
-while it was computing. Stop is observed before the next callback; a valid final
-Feed with `done = true` completes normally. A domain with no command must return
-`Stopped` or `Err`. Stopping while waiting for device input follows the driver's
-wait/termination policy, not an automatically imposed timing guarantee. Dropping
-the session future is not cooperative shutdown.
-
-[Native tests](tests/async_control.rs) run on a current-thread runtime and include
-a callback that can only resume when a same-task join sibling signals it. They
-also exercise pending-domain stop, original plus cleanup errors, non-Clone node
-return, real nested System execution and the complete graph's Send bound. These
-are finite mock checks, not hardware timing or safety validation.
-
-```sh
-cargo test -p robot_behavior --no-default-features --test async_control
-cargo test -p robot_behavior --features roplat --test async_control
-CONTROL_BENCH_CYCLES=1000000 cargo bench -p robot_behavior --features roplat --bench native_async_control
-```
-
-The independent native benchmark compares existing ControlRhythm with
-AsyncControlRhythm using the same synthetic 48/56/1024-byte command work and 21
-alternating paired batches. It reports batch-average nanoseconds per cycle and
-the maximum batch mean, not individual-cycle p99, device latency or a claim that
-an always-ready callback is fairly scheduled. The older control_flow benchmark
-remains unchanged for separate regression comparison.
+Apache-2.0; see [LICENSE](LICENSE).
