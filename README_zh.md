@@ -1,153 +1,135 @@
 # robot_behavior
 
-[English](README.md) | [简体中文](README_zh.md) | [在线文档](../robot_behavior_page/docs/zh/index.md)
+[English](README.md) | [简体中文](README_zh.md) | [crates.io](https://crates.io/crates/robot_behavior)
 
-`robot_behavior` 是机器人驱动、仿真器和 Roplat 适配层共享的 Rust 行为抽象库。它描述的是机器人“能做什么”：在类型化空间中运动，暴露结构化状态，运行实时控制闭包，并在驱动具备模型能力时提供运动学、Jacobian 和动力学映射。
+`robot_behavior` 是一个 Rust 机器人接口库，让应用围绕**能力**编写：到达目标、读取结构化状态，或在每个控制周期计算下一条指令。硬件驱动或仿真后端实现这些能力，本库提供共同的类型和接口契约。
 
-它不是某个硬件 SDK，也不是完整运动规划框架。它是一个契约 crate，让 Franka、JAKA、Hans、AUBO、仿真器和示例机器人在应用层呈现一致的接口。
+如果你希望在兼容的后端之间复用应用与控制器，或为新驱动建立一致的接口，可以使用本库。连接真机还需要选择对应驱动；物理仿真需要 [RsBullet](https://github.com/Robot-Exp-Platform/rsbullet) 等后端。本库自身不完成这两项工作。
 
-## 能力
+## 设计理念：统一接口，把设备差异留在驱动中
 
-- 使用 `JointSpace<N>`、`FlangeSpace`、`TcpSpace`、base space 和 whole-body space 描述运动目标。
-- 使用 `TorqueControl<N>`、`ArmTorqueControl<N>`、`JointPositionControl<N>`、`CartesianPoseControl<N>`、`BaseVelocityControl` 等类型化通道运行实时控制。
-- 使用 `JointState<N>`、`ArmState<N>`、`BaseState`、`QuadrupedState<N>`、`HumanoidState<N>` 读取结构化状态。
-- 复用 PD/PID、阻抗控制、重力补偿、computed torque 等控制器闭包。
-- 用 `SpaceMap` 表达 FK、IK、Jacobian、动力学等模型能力。
-- 让机械臂、四足、人形、移动底盘和仿真器以“能力 + 状态”的方式组合，而不是继承同一个根机器人类型。
+关节位置与关节力矩都可能是 `[f64; 6]`，但含义不同。`JointSpace<6>` 表示运动目标空间，`JointPositionControl<6>` 与 `TorqueControl<6>` 表示周期控制通道。这些类型选择对应的观测和指令类型，让应用明确表达操作意图。
 
-## 依赖者
+各项能力独立实现。支持关节运动的驱动，不会自动获得力矩控制、逆运动学或原生异步 I/O。泛型应用声明需要的 trait，不必假定所有机器人都提供相同功能。
 
-当前 workspace 中使用 `robot_behavior` 的主要 crate 包括：
+驱动负责通信、周期组织、状态采集和会话收尾。控制闭包接收观测值与 `Duration`，计算下一条指令。控制器辅助函数返回普通闭包，不自行创建调度器，也不提供硬件实时性保证。
 
-- `franka-rust`
-- `libjaka-rs`
-- `libhans-rs`
-- `libaubo-rs`
-- `rsbullet`
-- `roplat_exrobot`
-- `roplat_rerun`
-- `examples/jaka_dual`
+| 想完成的操作 | 应用入口 | 后端实现 |
+|---|---|---|
+| 到达一个目标 | `Motion::move_to::<S>` | `MoveTo<S>` |
+| 发送采样轨迹 | `Motion::move_traj::<S>` | `MoveTraj<S>` |
+| 每周期计算指令 | `Control::control_with::<S, _>` | `ControlWith<S>` |
+| 等待完整异步控制会话 | `AsyncControl::control_native_async::<S, _>` | `AsyncControlWith<S>` |
+| 读取后端原生状态 | `Robot::read_state` | `Robot` |
+| 使用机械臂状态或模型 | `Arm<N>`、`SpaceMap` 等模型 trait | 后端实际支持的能力 |
 
-下游实验 workspace 也通过 Cargo patch 使用同一套行为接口，从而避免实验代码绑定到某个具体硬件 crate。
+## 第一个程序：不连接机器人
 
-## 基本用法
+当前发布版本为 **0.6.1**。依赖构建需要 C++ 工具链（Windows 使用 MSVC Build Tools 和 Windows SDK），库本身使用 nightly Rust 特性。先安装工具链并创建项目：
 
-应用代码通过类型参数选择运动空间：
-
-```rust
-use robot_behavior::{JointSpace, Motion, RobotResult};
-
-fn home<R>(robot: &mut R) -> RobotResult<()>
-where
-    R: robot_behavior::MoveTo<JointSpace<6>>,
-{
-    robot.move_to::<JointSpace<6>>([0.0; 6])
-}
+```sh
+rustup toolchain install nightly
+cargo new behavior-demo --edition 2024
+cd behavior-demo
 ```
 
-实时控制通过 `ControlWith<S>` 表示驱动支持的控制通道，通过 `control_with` 执行闭包：
+在生成的 `Cargo.toml` 中添加依赖：
 
-```rust
-use robot_behavior::{Control, RobotResult, TorqueControl};
-
-fn one_torque_command<R>(robot: &mut R) -> RobotResult<()>
-where
-    R: robot_behavior::ControlWith<TorqueControl<7>>,
-{
-    robot.control_with::<TorqueControl<7>, _>(|_state, _dt| ([0.0; 7], true))
-}
+```toml
+[dependencies]
+robot_behavior = "0.6.1"
+roplat_exrobot = "0.2.0"
 ```
 
-控制器 helper 返回普通 `FnMut` 闭包，可直接传入 `control_with`：
+`roplat_exrobot` 提供把指令打印到控制台的参考机器人，返回合成观测值。这个例子不需要设备、SDK、机器人模型或 Roplat 运行时。将 `src/main.rs` 替换为：
 
 ```rust
 use robot_behavior::{
-    Control, RobotResult, TorqueControl,
-    utils::controller::joint_traj_pd_control,
+    Control, JointPositionControl, JointSpace, Motion, Robot, RobotResult,
 };
+use roplat_exrobot::ExRobot;
 
-fn track_traj<R>(robot: &mut R, traj: Vec<[f64; 7]>) -> RobotResult<()>
-where
-    R: robot_behavior::ControlWith<TorqueControl<7>>,
-{
-    let controller = joint_traj_pd_control(traj, [80.0; 7], [12.0; 7]);
-    robot.control_with::<TorqueControl<7>, _>(controller)
+fn main() -> RobotResult<()> {
+    let mut arm = ExRobot::<6>::new();
+    arm.init()?;
+    arm.move_to::<JointSpace<6>>([0.1; 6])?;
+
+    let mut cycles = 0;
+    arm.control_with::<JointPositionControl<6>, _>(|_state, _dt| {
+        cycles += 1;
+        ([0.1; 6], cycles == 3)
+    })?;
+
+    println!("completed {cycles} control cycles");
+    arm.shutdown()
 }
 ```
 
-COPP 轨迹也可以整理成实时控制闭包：
+执行 `cargo +nightly run`。程序会打印参考机器人的生命周期与指令信息，随后输出 `completed 3 control cycles` 并结束。第三次闭包返回 `true`，表示发送本次指令后完成会话。这里演示的是接口调用和退出流程；参考机器人不会产生物理运动或积分更新状态。
 
-```rust
-use robot_behavior::{
-    Control, JointPositionControl, RobotResult,
-    utils::trajectory::copp_waypoints_joint_position_control,
-};
+接下来接入设备时，替换 `ExRobot` 的构造过程，按对应驱动完成连接与运行模式配置，并仅保留它支持的通道。相同的 Rust 类型便于复用代码，但机器人限位、坐标系、周期和控制器增益仍需分别确认。
 
-fn follow_waypoints<R>(robot: &mut R, waypoints: &[[f64; 7]]) -> RobotResult<()>
-where
-    R: robot_behavior::ControlWith<JointPositionControl<7>> + robot_behavior::Joints<7>,
-{
-    let generator = copp_waypoints_joint_position_control::<R, 7>(waypoints, 1.0)?;
-    robot.control_with::<JointPositionControl<7>, _>(generator)
-}
-```
+## 理解状态
 
-## 设计脉络
+`Robot::State` 由后端定义。需要跨后端使用机械臂状态时，查看驱动的 `Arm<N>` 实现和统一状态类型：
 
-- `Robot`：生命周期和原生状态。
-- `MoveTo<S>` / `MoveTraj<S>`：驱动支持的运动空间。
-- `ControlWith<S>`：驱动支持的实时控制通道。
-- `Arm<N>`、`MobileBase`、`Quadruped<N>`、`Humanoid<N>`：可组合的机器人能力束。
-- `StateView<T>`：以 `meas` / `cmd` / `des` 表达 measured、commanded、desired 三类状态视角。
-- `SpaceMap`：模型映射统一入口，例如 FK、Jacobian、质量矩阵、重力和科氏力。
+- `JointState<N>` 包含 `meas`、`cmd`、`des` 三种视图，分别表示测量反馈、接受的指令和期望参考。
+- `JointSample<N>` 中的 `q`、`dq`、`tau` 等字段使用 `Option`。`None` 表示没有提供该值，不应直接解释为零。
+- `ArmState<N>` 还包含法兰状态，以及可选的 TCP、刚度坐标系和负载信息。原生状态与统一视图不一定通过同一个设备操作获取。
 
-`WholeBodyJointSpace<N>` 等 whole-body 运动空间仍用于区分整机关节运动；控制通道则统一复用 `TorqueControl<N>`、`JointPositionControl<N>`、`JointVelocityControl<N>`，避免为相同的输入输出形状重复定义控制类型。
+各后端文档会说明单位、坐标系、字段可用性与状态新鲜度。默认值或 `Some` 的存在本身，不能证明新传感器数据已经到达。
 
-## 控制退出与可选 roplat 适配
+## 运动调用与控制会话
 
-驱动实现统一入口 `ControlWith<S>::control_with_flow`。其闭包返回
-`ControlStep<Command> = ControlFlow<(), (Command, bool)>`：
+希望由后端执行目标或轨迹时，使用运动接口；需要自己的代码逐周期产生指令时，使用控制会话。`control_with` 的闭包返回 `(command, done)`，整个调用阻塞到会话结束。
 
-- `Continue((command, false))`：发送有效命令，继续周期。
-- `Continue((command, true))`：先发送最后一条命令，再正常结束。
-- `Break(())`：本周期不发送算法命令，进入设备协议规定的会话收尾。不统一替换成零命令、hold 或急停。
+如果需要在本周期没有算法指令时退出，使用 `control_with_flow`，返回 `ControlStep<Command>`：
 
-原有 `control_with`、`control_with_async` 保留为便利包装。`control_with_async` 和 `control_with_flow_async` 均延续 0.6 的**阻塞会话 + async 周期闭包**：并不返回会话 Future，也不保证外层同任务其他分支能在会话期间继续轮询。
+| 闭包返回值 | 含义 |
+|---|---|
+| `ControlFlow::Continue((command, false))` | 发送指令，继续执行。 |
+| `ControlFlow::Continue((command, true))` | 发送这条最终指令，然后正常完成。 |
+| `ControlFlow::Break(())` | 本周期不发送算法指令，按驱动协议收尾。 |
 
-默认 feature 为空，Robot / ControlWith / 状态 / 模型能力不依赖 roplat。显式启用 `features = ["roplat"]` 才提供 `ControlRhythm` 与三类节点适配。控制节律的 Input 为 `RobotResult<R>`，Yield 为 `(Obs, Duration)`，Feed 为 `(Command, bool)`，完整 drive 返回 `Execution<R>`。域错误和设备错误进入框架错误通道；无有效指令的周期通过 Break 结束。
+收尾行为由设备协议决定。`Break` 不统一替换成零指令，也不等同于急停。
 
-合作退出都归还 N。设备作为 Input、不在 N 中时，只有正常完成才通过 Output 返回设备本身。生命周期属于创建层；反复进入 drive 不会重置或重新启用外部节点。域单独失败时保留原 RoplatError；设备失败通过 `RoplatError::Io` 包装可 downcast 的 `ControlSessionError`，其字段保留同时发生的域退出和设备错误；驱动双错用 `RobotException::ControlSession` 保留。错误包装仅在失败路径分配。
+异步接口有两种不同含义：
 
-应用图使用 `#[roplat::system]`；可执行多层域示例见 [control_rhythm 测试](tests/control_rhythm.rs)，AI 开发配合 [roplat-skills](https://github.com/Robot-Exp-Platform/roplat-skills)。不要以手写应用 process 链替代 System 的生命周期和退出管理。
+- `control_with_async` / `control_with_flow_async` 是**阻塞会话中的异步闭包**，不会返回整个会话的 Future。
+- `control_native_async(&mut callback)` 返回包含 I/O 与收尾的**完整会话 Future**。它要求驱动实现 `AsyncControlWith<S>`，并使用驱动规定的运行时。直接丢弃 Future 不等同于合作退出。
 
-从 drives 根可执行：
+## Feature 与 Roplat 集成
 
-```sh
-cargo check -p robot_behavior --no-default-features --lib
-cargo test -p robot_behavior --features roplat --lib --tests
-cargo check -p robot_behavior --all-features --all-targets
-cargo bench -p robot_behavior --features roplat --bench control_flow
-```
+默认 feature 为空。Rust 运动、控制、状态和模型接口不依赖 Roplat。
 
-性能样例比较 48、56、1024 字节命令的纯 CPU 成功路径；旧路径是对原控制循环的复现，因为旧适配不能直接对当前核心编译。结果不是实物机器人延迟，也不验证外层 runtime 公平性。Python/C++ 示例是可编译 mock wrapper，不是完整部署包或真机演示。
+| Feature | 用途 |
+|---|---|
+| `roplat` | `ControlRhythm`、`AsyncControlRhythm`，以及运动、模型和约束节点适配。 |
+| `ffi` / `to_c` | 外部语言接口模块 / C 接口特性入口。 |
+| `to_cxx` | C++ bridge 支持。 |
+| `to_py` | PyO3 支持和导出的状态类型。 |
 
+在 Roplat 应用中，为本库依赖添加 `features = ["roplat"]`，并使用 `roplat = "0.3.0"`。应用图通过 `#[roplat::system]` 构建：阻塞后端使用 `ControlRhythm`，原生异步后端使用 `AsyncControlRhythm`。适配器把同一套观测和指令接到图中，不会补齐设备驱动缺少的能力。
 
-## 原生异步控制会话
+节点生命周期由创建它的作用域管理。作为节律输入传入的设备，在正常完成时作为输出返回；错误处理不能因为图节点被归还，就假设设备对象也一定能够取回。接入图时可继续阅读[适配层源码与接口注释](src/roplat)及[完整 System 示例](tests/control_rhythm.rs)。
 
-新增 `AsyncControlWith<S>::control_native_async` 返回整个设备会话的 Future，包括异步进入与结束会话。它是单独的驱动能力，不会为仅实现 `ControlWith` 的阻塞驱动自动伪造异步实现；已有 0.6 接口语义保持不变。具体驱动说明其 I/O runtime 要求，行为接口本身不依赖 Tokio 或 roplat。
+## 继续阅读
 
-其回调为 `AsyncControlCallback<Obs, Command>`，`call(&mut self, ...)` 返回 `Send` Future。驱动在整个会话期间借用回调，并完整等待当前调用后再开始下一次；会话返回后，调用方可以取回回调中的状态。普通 `FnMut -> Send Future` 闭包直接适配；需要跨 await 借用自身可变状态的控制器可以实现这个静态分发 trait，无需每周期装箱、创建任务或复制状态。这里不承诺所有 lending async 闭包都能自动满足约束。
+- [运动与轨迹接口](src/robot/motion.rs)：目标、稠密轨迹，以及驱动提供的路径和途经点处理。
+- [控制契约](src/robot/control.rs)与[原生异步契约](src/robot/async_control.rs)。
+- [状态类型](src/robot/state.rs)与[模型映射](src/robot/model.rs)。
+- [控制器辅助函数](src/utils/controller)：关节 PD/PID、阻抗、重力补偿等计算；增益和模型数据按具体后端配置。
+- [可执行契约示例](tests/control_flow.rs)、[异步示例](tests/async_control.rs)与[外部语言接口示例](examples)。
+- [配套文档仓库](https://github.com/Robot-Exp-Platform/robot_behavior_page)。
 
-启用 `roplat` feature 后，使用 `robot_behavior::roplat::AsyncControlRhythm<R, S>` 将原生会话加入 System。Input/Yield/Feed/Output、创建层生命周期、错误保留和 N 归还规则与原 ControlRhythm 相同。新适配器不创建嵌套 runtime，不在每个周期 spawn 或装箱 Future。原生异步使 I/O 等待能够让出外层 executor；回调中的同步计算仍会占据 executor，直到其主动让出。
+驱动作者可导入 `robot_behavior::driver::*`，应用可导入 `robot_behavior::behavior::*`。先在 `Robot` 中实现设备生命周期和状态，再逐项实现支持的运动、控制与模型能力。默认生命周期钩子是空操作，部分未实现操作会返回错误；继承默认方法不代表完成了对应设备功能。
 
-成功 Feed 按本周期提交：计算期间收到停止请求，但域仍返回有效 Feed，则发送该指令，下一 callback 前观察停止；若该有效 Feed 的 done=true，则正常完成。没有有效命令的域应返回 Stopped 或 Err。等待设备状态期间如何退出仍取决于驱动的等待及收尾协议，不自动给出统一时限；丢弃会话 Future 不等于合作关闭。
+## 从源码开发
 
-[原生异步测试](tests/async_control.rs) 在 current-thread runtime 下，让周期闭包真正等待同一任务 join 兄弟分支的信号，验证能够共同推进；同时覆盖挂起期间停止、主错与收尾错、非 Clone 节点归还、真实两层 System、整图 Send 编译约束与跨 drive 生命周期。这些有限 mock 测试不代表真机时序或物理安全认证。
+使用已发布版本时，优先选择 registry 依赖。本仓 manifest 为集成开发记录了固定 Git 来源，包括可选依赖。因此源码构建即使关闭某个 feature，也可能需要 GitHub SSH 访问；它不要求同级存在 `drives` 仓库。
 
-```sh
-cargo test -p robot_behavior --no-default-features --test async_control
-cargo test -p robot_behavior --features roplat --test async_control
-CONTROL_BENCH_CYCLES=1000000 cargo bench -p robot_behavior --features roplat --bench native_async_control
-```
+在源码目录执行 `cargo +nightly check --lib` 可检查默认 Rust 库。`tests/` 中的有限 mock 示例验证接口契约，不代表硬件时序结果。整合工作区开发见 [drives](https://github.com/Robot-Exp-Platform/drives)。
 
-新增独立 CPU 基准比较 ControlRhythm 与 AsyncControlRhythm，采用相同的 48/56/1024 字节命令计算和 21 组交替先后的配对批次。输出每批平均 ns/周期及最大批均值，不是逐周期 p99、设备延迟，也不证明一直 Ready 的计算会自动公平调度。既有 control_flow 基准保持不变，用于独立回归对照。
+## 许可
+
+Apache-2.0，详见 [LICENSE](LICENSE)。
