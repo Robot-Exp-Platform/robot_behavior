@@ -1,6 +1,10 @@
 //! Device-paced roplat control, enabled with the `roplat` feature.
 //!
-//! The robot enters as `RobotResult<R>` and returns as `R` on completion.
+//! The robot enters as `R` and returns as `R` on completion. In a System graph
+//! it is lent with `&mut robot >> control >> |..| { .. }` and returned with
+//! `control >> &mut robot`. When a drive does not complete, the rhythm keeps
+//! the robot and gives it back through [`Rhythm::reclaim_input`], so the
+//! creating layer still owns and closes it.
 //! Framework failures and cooperative stops live in `Execution`, not in Feed:
 //! a successful Feed remains `(Command, done)`. The creating layer owns object
 //! lifecycle; entering a drive never activates, resets or shuts down its nodes.
@@ -19,7 +23,7 @@ use std::{future::Future, marker::PhantomData, ops::ControlFlow, time::Duration}
 
 use roplat::{Completion, Execution, ExecutionContext, Lifecycle, RoplatError, rhythm::Rhythm};
 
-use crate::{ControlSpace, ControlWith, RobotException, RobotResult};
+use crate::{ControlSpace, ControlWith, RobotException};
 
 /// Why a domain asked the device session to end without another command.
 #[derive(Debug)]
@@ -43,18 +47,22 @@ pub struct ControlSessionError {
     pub device: RobotException,
 }
 
-pub(super) fn device_error(device: RobotException, domain: Option<ControlDomainExit>) -> RoplatError {
+pub(super) fn device_error(
+    device: RobotException,
+    domain: Option<ControlDomainExit>,
+) -> RoplatError {
     std::io::Error::other(ControlSessionError { domain, device }).into()
 }
 
 /// A blocking device session driving one complete domain per control cycle.
 pub struct ControlRhythm<R, S> {
+    held: Option<R>,
     _types: PhantomData<fn(R) -> S>,
 }
 
 impl<R, S> ControlRhythm<R, S> {
     pub fn new() -> Self {
-        Self { _types: PhantomData }
+        Self { held: None, _types: PhantomData }
     }
 }
 
@@ -77,14 +85,14 @@ where
 {
     type Yield = (S::Obs, Duration);
     type Feed = (S::Command, bool);
-    type Input = RobotResult<R>;
+    type Input = R;
     type Output = R;
 
     async fn drive<N, F, Fut>(
         &mut self,
         nodes: N,
         mut op_domain: F,
-        input: Self::Input,
+        mut robot: R,
         context: ExecutionContext,
     ) -> (Execution<Self::Output>, N)
     where
@@ -93,15 +101,9 @@ where
         Fut: Future<Output = (Execution<Self::Feed>, N)> + Send,
     {
         if context.is_stopping() {
+            self.held = Some(robot);
             return (Ok(Completion::Stopped), nodes);
         }
-        let mut robot = match input {
-            Ok(robot) => robot,
-            Err(error) => {
-                context.request_stop();
-                return (Err(device_error(error, None)), nodes);
-            }
-        };
 
         let mut nodes = Some(nodes);
         let mut domain_exit = None;
@@ -141,9 +143,14 @@ where
             Ok(()) => match domain_exit {
                 Some(ControlDomainExit::Failed(error)) => Err(error),
                 Some(ControlDomainExit::Stopped) => Ok(Completion::Stopped),
-                None => Ok(Completion::Completed(robot)),
+                None => return (Ok(Completion::Completed(robot)), nodes),
             },
         };
+        self.held = Some(robot);
         (execution, nodes)
+    }
+
+    fn reclaim_input(&mut self) -> Option<R> {
+        self.held.take()
     }
 }

@@ -25,7 +25,7 @@ The driver owns transport, timing, state acquisition, and session termination. Y
 
 ## First example: a complete program without a robot
 
-The current release is **0.6.1**. Dependency builds need a C++ toolchain (on Windows, MSVC Build Tools and the Windows SDK). It uses nightly Rust features, so install a nightly toolchain:
+The current release is **0.7.0**. Dependency builds need a C++ toolchain (on Windows, MSVC Build Tools and the Windows SDK). It uses nightly Rust features, so install a nightly toolchain:
 
 ```sh
 rustup toolchain install nightly
@@ -37,7 +37,7 @@ Add these dependencies to the generated `Cargo.toml`:
 
 ```toml
 [dependencies]
-robot_behavior = "0.6.1"
+robot_behavior = "0.7.0"
 roplat_exrobot = "0.2.0"
 ```
 
@@ -109,9 +109,28 @@ Default features are empty. The Rust motion, control, state, and model interface
 | `to_cxx` | Enable the C++ bridge support. |
 | `to_py` | Enable PyO3 support and exported state types. |
 
-For a Roplat application, add `features = ["roplat"]` to the dependency and use `roplat = "0.3.0"`. Build the application graph with `#[roplat::system]`; choose `ControlRhythm` for a blocking backend or `AsyncControlRhythm` for a native async backend. The adapters connect the same observations and commands to a graph; they do not add capabilities missing from the device driver.
+For a Roplat application, add `features = ["roplat"]` to the dependency and use `roplat = "0.4.0"`. Build the application graph with `#[roplat::system]`; choose `ControlRhythm` for a blocking backend or `AsyncControlRhythm` for a native async backend. The adapters connect the same observations and commands to a graph; they do not add capabilities missing from the device driver.
 
-The creating scope manages node lifecycle. A device passed as a rhythm's input is returned as output on normal completion; failure handling must not assume it is recoverable simply because graph nodes are returned. See the [adapter implementation and API comments](src/roplat) and [complete System examples](tests/control_rhythm.rs) when integrating a graph.
+The robot is a resource: the graph lends it with `&mut robot` and gets it back from the user's Output.
+
+```rust
+#[roplat::system]
+async fn session(robot: MyRobot, mut law: MyLaw) -> RoplatResult<MyRobot> {
+    let mut control = ControlRhythm::<MyRobot, JointPositionControl<7>>::new();
+    let mut reach = MotionNode::<MyRobot, JointSpace<7>>::new();
+    let mut goal = Goal::new();
+
+    &mut robot >> reach.input.0;          // MotionNode: (R, Target) -> (R, RobotResult<()>)
+    goal >> reach.input.1;
+    reach.0 >> &mut robot;
+    &mut robot >> control >> |state| state >> law;   // the session holds the robot
+    control >> &mut robot;
+
+    Ok(robot.into_inner())
+}
+```
+
+The creating scope manages node and robot lifecycle. When a control session does not complete, the rhythm keeps the robot and the graph takes it back through `Rhythm::reclaim_input`, so the creating scope can still close it. See the [adapter implementation and API comments](src/roplat) and [complete System examples](tests/control_rhythm.rs) when integrating a graph.
 
 ## Going further
 

@@ -4,7 +4,7 @@ use std::{future::Future, marker::PhantomData, ops::ControlFlow, time::Duration}
 
 use roplat::{Completion, Execution, ExecutionContext, Lifecycle, RoplatError, rhythm::Rhythm};
 
-use crate::{AsyncControlCallback, AsyncControlWith, ControlSpace, ControlStep, RobotResult};
+use crate::{AsyncControlCallback, AsyncControlWith, ControlSpace, ControlStep};
 
 use super::rhythm::{ControlDomainExit, device_error};
 
@@ -20,17 +20,19 @@ use super::rhythm::{ControlDomainExit, device_error};
 /// A domain that has no command must return `Stopped` or `Err`.
 ///
 /// An in-flight domain is always awaited to recover `N`. Creating scopes retain
-/// lifecycle responsibility. The input robot lies outside `N` and is returned
-/// only on successful completion. Dropping this future or panic does not promise
+/// lifecycle responsibility. The input robot is returned as Output on
+/// completion; otherwise the rhythm keeps it for [`Rhythm::reclaim_input`].
+/// Dropping this future or panic does not promise
 /// asynchronous shutdown or node return. Device I/O/runtime requirements and
 /// wait timeouts remain part of the driver's native session contract.
 pub struct AsyncControlRhythm<R, S> {
+    held: Option<R>,
     _types: PhantomData<fn(R) -> S>,
 }
 
 impl<R, S> AsyncControlRhythm<R, S> {
     pub fn new() -> Self {
-        Self { _types: PhantomData }
+        Self { held: None, _types: PhantomData }
     }
 }
 
@@ -98,7 +100,7 @@ where
 {
     type Yield = (S::Obs, Duration);
     type Feed = (S::Command, bool);
-    type Input = RobotResult<R>;
+    type Input = R;
     type Output = R;
 
     // Keep the explicit Send return bound: an async-fn implementation loses
@@ -109,7 +111,7 @@ where
         &mut self,
         nodes: N,
         op_domain: F,
-        input: Self::Input,
+        mut robot: R,
         context: ExecutionContext,
     ) -> impl Future<Output = (Execution<R>, N)> + Send
     where
@@ -119,15 +121,9 @@ where
     {
         async move {
             if context.is_stopping() {
+                self.held = Some(robot);
                 return (Ok(Completion::Stopped), nodes);
             }
-            let mut robot = match input {
-                Ok(robot) => robot,
-                Err(error) => {
-                    context.request_stop();
-                    return (Err(device_error(error, None)), nodes);
-                }
-            };
             let mut callback = DomainCallback {
                 nodes: Some(nodes),
                 op_domain,
@@ -147,10 +143,15 @@ where
                 Ok(()) => match callback.exit {
                     Some(ControlDomainExit::Failed(error)) => Err(error),
                     Some(ControlDomainExit::Stopped) => Ok(Completion::Stopped),
-                    None => Ok(Completion::Completed(robot)),
+                    None => return (Ok(Completion::Completed(robot)), nodes),
                 },
             };
+            self.held = Some(robot);
             (execution, nodes)
         }
+    }
+
+    fn reclaim_input(&mut self) -> Option<R> {
+        self.held.take()
     }
 }

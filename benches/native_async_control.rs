@@ -95,7 +95,7 @@ fn rhythm_path<const W: usize>(native: bool, cycles: usize, runtime: &tokio::run
             black_box(n + 1),
         )
     };
-    let input = Ok(CpuRobot::<W>::new());
+    let input = CpuRobot::<W>::new();
     let context = ExecutionContext::new();
     let (outcome, nodes) = if native {
         runtime.block_on(

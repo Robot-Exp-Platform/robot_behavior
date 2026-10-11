@@ -25,7 +25,7 @@
 
 ## 第一个程序：不连接机器人
 
-当前发布版本为 **0.6.1**。依赖构建需要 C++ 工具链（Windows 使用 MSVC Build Tools 和 Windows SDK），库本身使用 nightly Rust 特性。先安装工具链并创建项目：
+当前发布版本为 **0.7.0**。依赖构建需要 C++ 工具链（Windows 使用 MSVC Build Tools 和 Windows SDK），库本身使用 nightly Rust 特性。先安装工具链并创建项目：
 
 ```sh
 rustup toolchain install nightly
@@ -37,7 +37,7 @@ cd behavior-demo
 
 ```toml
 [dependencies]
-robot_behavior = "0.6.1"
+robot_behavior = "0.7.0"
 roplat_exrobot = "0.2.0"
 ```
 
@@ -109,9 +109,28 @@ fn main() -> RobotResult<()> {
 | `to_cxx` | C++ bridge 支持。 |
 | `to_py` | PyO3 支持和导出的状态类型。 |
 
-在 Roplat 应用中，为本库依赖添加 `features = ["roplat"]`，并使用 `roplat = "0.3.0"`。应用图通过 `#[roplat::system]` 构建：阻塞后端使用 `ControlRhythm`，原生异步后端使用 `AsyncControlRhythm`。适配器把同一套观测和指令接到图中，不会补齐设备驱动缺少的能力。
+在 Roplat 应用中，为本库依赖添加 `features = ["roplat"]`，并使用 `roplat = "0.4.0"`。应用图通过 `#[roplat::system]` 构建：阻塞后端使用 `ControlRhythm`，原生异步后端使用 `AsyncControlRhythm`。适配器把同一套观测和指令接到图中，不会补齐设备驱动缺少的能力。
 
-节点生命周期由创建它的作用域管理。作为节律输入传入的设备，在正常完成时作为输出返回；错误处理不能因为图节点被归还，就假设设备对象也一定能够取回。接入图时可继续阅读[适配层源码与接口注释](src/roplat)及[完整 System 示例](tests/control_rhythm.rs)。
+机器人是资源：图用 `&mut robot` 借出本体，并从使用者的 Output 归还。
+
+```rust
+#[roplat::system]
+async fn session(robot: MyRobot, mut law: MyLaw) -> RoplatResult<MyRobot> {
+    let mut control = ControlRhythm::<MyRobot, JointPositionControl<7>>::new();
+    let mut reach = MotionNode::<MyRobot, JointSpace<7>>::new();
+    let mut goal = Goal::new();
+
+    &mut robot >> reach.input.0;          // MotionNode：(R, Target) -> (R, RobotResult<()>)
+    goal >> reach.input.1;
+    reach.0 >> &mut robot;
+    &mut robot >> control >> |state| state >> law;   // 控制会话期间由节律持有
+    control >> &mut robot;
+
+    Ok(robot.into_inner())
+}
+```
+
+节点与机器人的生命周期由创建它们的作用域管理。控制会话未完成时，节律保留机器人，图通过 `Rhythm::reclaim_input` 取回，创建层仍能关闭它。接入图时可继续阅读[适配层源码与接口注释](src/roplat)及[完整 System 示例](tests/control_rhythm.rs)。
 
 ## 继续阅读
 
