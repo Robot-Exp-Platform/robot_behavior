@@ -829,8 +829,9 @@ fn finite_difference_weights(offsets: &[f64; 5], derivative_order: usize) -> [f6
                 continue;
             }
             let factor = matrix[row][pivot];
-            for col in pivot..6 {
-                matrix[row][col] -= factor * matrix[pivot][col];
+            let pivot_values = matrix[pivot];
+            for (value, pivot_value) in matrix[row].iter_mut().zip(pivot_values).skip(pivot) {
+                *value -= factor * pivot_value;
             }
         }
     }

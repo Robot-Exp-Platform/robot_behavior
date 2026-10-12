@@ -497,8 +497,8 @@ impl<const N: usize> JointSCurve<N> {
 
         let progress = self.profile.sample(time.as_secs_f64()).min(1.);
         let mut result = self.start;
-        for i in 0..N {
-            result[i] += self.delta[i] * progress;
+        for (value, delta) in result.iter_mut().zip(&self.delta) {
+            *value += delta * progress;
         }
 
         if time >= self.total {
@@ -808,35 +808,32 @@ mod test {
         let f_dot = |t: Duration| {
             let dt: Duration = Duration::from_secs_f64(0.001);
             let t_dot = t + dt;
-            let result = f(t_dot)
+            f(t_dot)
                 .iter()
                 .zip(f(t).iter())
                 .map(|(a, b)| (a - b) / dt.as_secs_f64())
-                .collect::<Vec<f64>>();
-            result
+                .collect::<Vec<f64>>()
         };
         let f_ddot = |t: Duration| {
             let dt = Duration::from_secs_f64(0.001);
             let t_dot = t + dt;
             let t_ddot = t_dot + dt;
-            let result = f_dot(t_ddot)
+            f_dot(t_ddot)
                 .iter()
                 .zip(f_dot(t_dot).iter())
                 .map(|(a, b)| (a - b) / dt.as_secs_f64())
-                .collect::<Vec<f64>>();
-            result
+                .collect::<Vec<f64>>()
         };
         let f_dddot = |t: Duration| {
             let dt = Duration::from_secs_f64(0.001);
             let t_dot = t + dt;
             let t_ddot = t_dot + dt;
             let t_dddot = t_ddot + dt;
-            let result = f_ddot(t_dddot)
+            f_ddot(t_dddot)
                 .iter()
                 .zip(f_ddot(t_ddot).iter())
                 .map(|(a, b)| (a - b) / dt.as_secs_f64())
-                .collect::<Vec<f64>>();
-            result
+                .collect::<Vec<f64>>()
         };
 
         let root = plotters::prelude::SVGBackend::new("plot.svg", (640, 480)).into_drawing_area();
@@ -956,23 +953,21 @@ mod test {
         let f_dot = |t: Duration| {
             let dt: Duration = Duration::from_secs_f64(0.001);
             let t_dot = t + dt;
-            let result = f(t_dot)
+            f(t_dot)
                 .iter()
                 .zip(f(t).iter())
                 .map(|(a, b)| (a - b) / dt.as_secs_f64())
-                .collect::<Vec<f64>>();
-            result
+                .collect::<Vec<f64>>()
         };
         let f_ddot = |t: Duration| {
             let dt = Duration::from_secs_f64(0.001);
             let t_dot = t + dt;
             let t_ddot = t_dot + dt;
-            let result = f_dot(t_ddot)
+            f_dot(t_ddot)
                 .iter()
                 .zip(f_dot(t_dot).iter())
                 .map(|(a, b)| (a - b) / dt.as_secs_f64())
-                .collect::<Vec<f64>>();
-            result
+                .collect::<Vec<f64>>()
         };
 
         for i in 0..210 {
