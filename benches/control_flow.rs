@@ -151,7 +151,7 @@ fn rhythm_path<const W: usize>(flow: bool, cycles: usize, runtime: &tokio::runti
                     black_box(n + 1),
                 )
             },
-            Ok(BenchRobot::new()),
+            BenchRobot::new(),
             ExecutionContext::new(),
         ));
         let Completion::Completed(robot) = out.unwrap() else {

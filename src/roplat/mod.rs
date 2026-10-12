@@ -13,3 +13,13 @@ pub mod rhythm;
 pub use async_rhythm::*;
 pub use node::*;
 pub use rhythm::*;
+
+/// Lets a graph raise a device result with `?`, e.g. `motion.1?;` after the
+/// robot has been returned. The exception is carried as an I/O error source;
+/// `io_error.get_ref().and_then(|e| e.downcast_ref::<RobotException>())`
+/// recovers it.
+impl From<crate::RobotException> for ::roplat::RoplatError {
+    fn from(error: crate::RobotException) -> Self {
+        std::io::Error::other(error).into()
+    }
+}

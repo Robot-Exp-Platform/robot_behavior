@@ -185,7 +185,7 @@ mod rhythm {
                 n.0 += 1;
                 (Ok(Completion::Completed((42, true))), (n, None))
             },
-            Ok(robot),
+            robot,
             ExecutionContext::new(),
         ));
         let sibling = async {
@@ -228,7 +228,7 @@ mod rhythm {
                     *n += 1;
                     (Ok(Completion::Completed((42, final_command))), (n, None))
                 },
-                Ok(robot),
+                robot,
                 context.clone(),
             );
             let stop = async {
@@ -261,7 +261,8 @@ mod rhythm {
             robot.fail_exit = fail_exit;
             let trace = robot.trace.clone();
             let context = ExecutionContext::new();
-            let (result, nodes) = TestRhythm::new()
+            let mut rhythm = TestRhythm::new();
+            let (result, nodes) = rhythm
                 .drive(
                     Box::new(7),
                     |mut n, _, _| async move {
@@ -269,10 +270,11 @@ mod rhythm {
                         *n += 1;
                         (Err(RoplatError::NodeProcessing("domain failed".into())), n)
                     },
-                    Ok(robot),
+                    robot,
                     context.clone(),
                 )
                 .await;
+            assert!(rhythm.reclaim_input().is_some());
             let error = result.err().unwrap();
             if fail_exit {
                 let failure = session_error(&error);
@@ -307,7 +309,7 @@ mod rhythm {
                         tokio::task::yield_now().await;
                         (Ok(Completion::Stopped), n)
                     },
-                    Ok(robot),
+                    robot,
                     ExecutionContext::new(),
                 )
                 .await;
@@ -336,7 +338,7 @@ mod rhythm {
             .drive(
                 nodes,
                 |_, _, _| async { panic!("no callback") },
-                Ok(robot),
+                robot,
                 context,
             )
             .await;
@@ -346,26 +348,23 @@ mod rhythm {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn failed_input_and_failed_entry_return_nodes_without_domain_call() {
+    async fn failed_entry_returns_nodes_and_robot_without_domain_call() {
         let mut robot = AsyncRobot::new();
         robot.fail_entry = true;
-        for input in [
-            Err(RobotException::NetworkError("input failed".into())),
-            Ok(robot),
-        ] {
-            let context = ExecutionContext::new();
-            let (result, nodes) = TestRhythm::new()
-                .drive(
-                    Box::new(3),
-                    |_, _, _| async { panic!("no callback") },
-                    input,
-                    context.clone(),
-                )
-                .await;
-            assert!(session_error(&result.err().unwrap()).domain.is_none());
-            assert_eq!(*nodes, 3);
-            assert!(context.is_stopping());
-        }
+        let context = ExecutionContext::new();
+        let mut rhythm = TestRhythm::new();
+        let (result, nodes) = rhythm
+            .drive(
+                Box::new(3),
+                |_, _, _| async { panic!("no callback") },
+                robot,
+                context.clone(),
+            )
+            .await;
+        assert!(session_error(&result.err().unwrap()).domain.is_none());
+        assert_eq!(*nodes, 3);
+        assert!(context.is_stopping());
+        assert!(rhythm.reclaim_input().is_some());
     }
 
     struct Controller {
@@ -399,9 +398,9 @@ mod rhythm {
     }
     impl Node for Source {
         type Input = ();
-        type Output = RobotResult<AsyncRobot>;
+        type Output = AsyncRobot;
         async fn process(&mut self, (): ()) -> Self::Output {
-            Ok(self.0.take().unwrap())
+            self.0.take().unwrap()
         }
     }
     struct ChildDomain {
@@ -450,6 +449,33 @@ mod rhythm {
         let mut source = Source(Some(robot));
         source >> rhythm >> |state| state >> child >> |state| state >> controller;
         Ok((rhythm.outcome, rhythm, child, controller))
+    }
+
+    /// The robot is lent to the session and returned by its Output.
+    #[roplat::system]
+    async fn lent_session(
+        mut rhythm: TestRhythm,
+        mut controller: Controller,
+        robot: AsyncRobot,
+    ) -> RoplatResult<(AsyncRobot, TestRhythm, Controller)> {
+        &mut robot >> rhythm >> |state| state >> controller;
+        rhythm >> &mut robot;
+        Ok((robot.into_inner(), rhythm, controller))
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn lent_robot_returns_after_the_session() {
+        let controller = Controller { calls: 0, inits: Arc::default(), shutdowns: Arc::default() };
+        let (robot, _, controller) = tokio::spawn(assert_send(lent_session(
+            TestRhythm::new(),
+            controller,
+            AsyncRobot::new(),
+        )))
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(controller.calls, 2);
+        assert_eq!(robot.trace.lock().unwrap().commands, [0, 1]);
     }
 
     #[tokio::test(flavor = "current_thread")]

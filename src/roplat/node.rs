@@ -4,9 +4,9 @@ use crate::{MotionSpace, MoveTo, RobotResult, SpaceMap};
 
 /// Node adapter for a one-shot [`MoveTo<S>`] command.
 ///
-/// The robot flows through the node as a resource value. A previous motion
-/// failure short-circuits the node, while a successful input robot is used for
-/// one blocking motion and then returned.
+/// The robot is lent to the node with `&mut robot >> motion.input.0` and comes
+/// back with `motion.0 >> &mut robot`. The motion result travels beside the
+/// robot, so the body returns whether the motion succeeded or not.
 pub struct MotionNode<R, S> {
     _types: PhantomData<fn(R) -> S>,
 }
@@ -29,14 +29,12 @@ where
     S: MotionSpace<R> + Send,
     S::Target: Send,
 {
-    type Input = (RobotResult<R>, S::Target);
-    type Output = RobotResult<R>;
+    type Input = (R, S::Target);
+    type Output = (R, RobotResult<()>);
 
-    async fn process(&mut self, input: Self::Input) -> Self::Output {
-        let (robot, target) = input;
-        let mut robot = robot?;
-        robot.move_to(target)?;
-        Ok(robot)
+    async fn process(&mut self, (mut robot, target): Self::Input) -> Self::Output {
+        let result = robot.move_to(target);
+        (robot, result)
     }
 }
 
