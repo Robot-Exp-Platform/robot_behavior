@@ -143,6 +143,7 @@ where
 }
 fn rhythm_path<const W: usize>(flow: bool, cycles: usize, runtime: &tokio::runtime::Runtime) {
     if flow {
+        let mut robot = BenchRobot::<W>::new();
         let (out, n) = runtime.block_on(ControlRhythm::<BenchRobot<W>, Channel>::new().drive(
             0_u64,
             |n, (t, _), _| async move {
@@ -151,10 +152,11 @@ fn rhythm_path<const W: usize>(flow: bool, cycles: usize, runtime: &tokio::runti
                     black_box(n + 1),
                 )
             },
-            BenchRobot::new(),
+            (),
+            (&mut robot,),
             ExecutionContext::new(),
         ));
-        let Completion::Completed(robot) = out.unwrap() else {
+        let Completion::Completed(()) = out.unwrap() else {
             panic!()
         };
         black_box((robot.checksum, n));

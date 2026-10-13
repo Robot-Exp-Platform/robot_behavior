@@ -4,9 +4,9 @@ use crate::{MotionSpace, MoveTo, RobotResult, SpaceMap};
 
 /// Node adapter for a one-shot [`MoveTo<S>`] command.
 ///
-/// The robot is lent to the node with `&mut robot >> motion.input.0` and comes
-/// back with `motion.0 >> &mut robot`. The motion result travels beside the
-/// robot, so the body returns whether the motion succeeded or not.
+/// The node borrows the robot with `&mut robot >> motion.resources.0`.
+/// Input carries only the target, and Output carries only the motion result.
+/// The resource owner retains the robot on success and failure.
 pub struct MotionNode<R, S> {
     _types: PhantomData<fn(R) -> S>,
 }
@@ -29,12 +29,16 @@ where
     S: MotionSpace<R> + Send,
     S::Target: Send,
 {
-    type Input = (R, S::Target);
-    type Output = (R, RobotResult<()>);
+    type Input = S::Target;
+    type Output = RobotResult<()>;
+    type Resources = (R,);
 
-    async fn process(&mut self, (mut robot, target): Self::Input) -> Self::Output {
-        let result = robot.move_to(target);
-        (robot, result)
+    async fn process<'call>(
+        &'call mut self,
+        target: Self::Input,
+        (robot,): (&'call mut R,),
+    ) -> Self::Output {
+        robot.move_to(target)
     }
 }
 
@@ -64,8 +68,9 @@ where
 {
     type Input = M::Input;
     type Output = RobotResult<M::Output>;
+    type Resources = ();
 
-    async fn process(&mut self, input: Self::Input) -> Self::Output {
+    async fn process(&mut self, input: Self::Input, _resources: ()) -> Self::Output {
         self.model.map(input)
     }
 }
@@ -96,8 +101,9 @@ where
 {
     type Input = (Command, bool);
     type Output = (Command, bool);
+    type Resources = ();
 
-    async fn process(&mut self, input: Self::Input) -> Self::Output {
+    async fn process(&mut self, input: Self::Input, _resources: ()) -> Self::Output {
         (self.filter)(input)
     }
 }

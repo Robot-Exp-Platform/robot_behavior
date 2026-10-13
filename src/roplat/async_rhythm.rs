@@ -20,19 +20,18 @@ use super::rhythm::{ControlDomainExit, device_error};
 /// A domain that has no command must return `Stopped` or `Err`.
 ///
 /// An in-flight domain is always awaited to recover `N`. Creating scopes retain
-/// lifecycle responsibility. The input robot is returned as Output on
-/// completion; otherwise the rhythm keeps it for [`Rhythm::reclaim_input`].
+/// lifecycle responsibility. The robot is borrowed through `Resources` for
+/// the entire drive; its owner retains it on completion, failure and stop.
 /// Dropping this future or panic does not promise
 /// asynchronous shutdown or node return. Device I/O/runtime requirements and
 /// wait timeouts remain part of the driver's native session contract.
 pub struct AsyncControlRhythm<R, S> {
-    held: Option<R>,
     _types: PhantomData<fn(R) -> S>,
 }
 
 impl<R, S> AsyncControlRhythm<R, S> {
     pub fn new() -> Self {
-        Self { held: None, _types: PhantomData }
+        Self { _types: PhantomData }
     }
 }
 
@@ -100,20 +99,22 @@ where
 {
     type Yield = (S::Obs, Duration);
     type Feed = (S::Command, bool);
-    type Input = R;
-    type Output = R;
+    type Input = ();
+    type Output = ();
+    type Resources = (R,);
 
     // Keep the explicit Send return bound: an async-fn implementation loses
     // the bound in nested System lifetime inference on the current toolchain.
     // The nested_system test includes assert_send to prevent this regression.
     #[allow(clippy::manual_async_fn)]
-    fn drive<N, F, Fut>(
-        &mut self,
+    fn drive<'call, N, F, Fut>(
+        &'call mut self,
         nodes: N,
         op_domain: F,
-        mut robot: R,
+        _input: (),
+        (robot,): (&'call mut R,),
         context: ExecutionContext,
-    ) -> impl Future<Output = (Execution<R>, N)> + Send
+    ) -> impl Future<Output = (Execution<()>, N)> + Send
     where
         N: Send,
         F: FnMut(N, Self::Yield, ExecutionContext) -> Fut + Send,
@@ -121,7 +122,6 @@ where
     {
         async move {
             if context.is_stopping() {
-                self.held = Some(robot);
                 return (Ok(Completion::Stopped), nodes);
             }
             let mut callback = DomainCallback {
@@ -131,7 +131,7 @@ where
                 exit: None,
             };
             let result =
-                <R as AsyncControlWith<S>>::control_native_async(&mut robot, &mut callback).await;
+                <R as AsyncControlWith<S>>::control_native_async(robot, &mut callback).await;
             let nodes = callback
                 .nodes
                 .expect("control domain did not return its node state");
@@ -143,15 +143,10 @@ where
                 Ok(()) => match callback.exit {
                     Some(ControlDomainExit::Failed(error)) => Err(error),
                     Some(ControlDomainExit::Stopped) => Ok(Completion::Stopped),
-                    None => return (Ok(Completion::Completed(robot)), nodes),
+                    None => return (Ok(Completion::Completed(())), nodes),
                 },
             };
-            self.held = Some(robot);
             (execution, nodes)
         }
-    }
-
-    fn reclaim_input(&mut self) -> Option<R> {
-        self.held.take()
     }
 }

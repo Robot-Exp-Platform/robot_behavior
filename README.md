@@ -109,28 +109,28 @@ Default features are empty. The Rust motion, control, state, and model interface
 | `to_cxx` | Enable the C++ bridge support. |
 | `to_py` | Enable PyO3 support and exported state types. |
 
-For a Roplat application, add `features = ["roplat"]` to the dependency and use `roplat = "0.4.0"`. Build the application graph with `#[roplat::system]`; choose `ControlRhythm` for a blocking backend or `AsyncControlRhythm` for a native async backend. The adapters connect the same observations and commands to a graph; they do not add capabilities missing from the device driver.
+For a Roplat application, add `features = ["roplat"]` to the dependency and use the matching pinned Git source for Roplat 0.5.0 (not yet published to crates.io). Build the application graph with `#[roplat::system]`; choose `ControlRhythm` for a blocking backend or `AsyncControlRhythm` for a native async backend. The adapters connect the same observations and commands to a graph; they do not add capabilities missing from the device driver.
 
-The robot is a resource: the graph lends it with `&mut robot` and gets it back from the user's Output.
+The robot stays owned by its creating scope. Nodes and rhythms receive a mutable reference through their separate `Resources` channel; business Input and Output never need to carry it.
 
 ```rust
 #[roplat::system]
-async fn session(robot: MyRobot, mut law: MyLaw) -> RoplatResult<MyRobot> {
+async fn session(mut robot: MyRobot, mut law: MyLaw) -> RoplatResult<MyRobot> {
     let mut control = ControlRhythm::<MyRobot, JointPositionControl<7>>::new();
     let mut reach = MotionNode::<MyRobot, JointSpace<7>>::new();
     let mut goal = Goal::new();
 
-    &mut robot >> reach.input.0;          // MotionNode: (R, Target) -> (R, RobotResult<()>)
-    goal >> reach.input.1;
-    reach.0 >> &mut robot;
-    &mut robot >> control >> |state| state >> law;   // the session holds the robot
-    control >> &mut robot;
+    &mut robot >> reach.resources.0;
+    goal >> reach;
+    reach.output?;
+    &mut robot >> control.resources.0;
+    control >> |state| state >> law;
 
-    Ok(robot.into_inner())
+    Ok(robot)
 }
 ```
 
-The creating scope manages node and robot lifecycle. When a control session does not complete, the rhythm keeps the robot and the graph takes it back through `Rhythm::reclaim_input`, so the creating scope can still close it. See the [adapter implementation and API comments](src/roplat) and [complete System examples](tests/control_rhythm.rs) when integrating a graph.
+The creating scope manages node and robot lifecycle. `MotionNode` declares `Resources = (R,)`, `Input = S::Target`, and `Output = RobotResult<()>`; both control rhythms declare `Resources = (R,)` with `Input = Output = ()`. The borrow lasts for one process or complete drive, including failure and stop paths. No restore edge or reclaim hook is needed. The `?` on `reach.output` explicitly promotes its business error to a System failure. See the [adapter implementation and API comments](src/roplat) and [complete System examples](tests/control_rhythm.rs) when integrating a graph.
 
 ## Going further
 

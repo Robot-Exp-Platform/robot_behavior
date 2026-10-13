@@ -22,7 +22,8 @@ fn session_error(error: &RoplatError) -> &ControlSessionError {
 }
 
 #[tokio::test]
-async fn complete_returns_robot_and_same_nonclone_node_allocation() {
+async fn complete_preserves_robot_and_same_nonclone_node_allocation() {
+    let mut robot = TestRobot::new();
     let mut rhythm = TestRhythm::new();
     let nodes = Box::new(10);
     let address = (&*nodes) as *const i32 as usize;
@@ -33,11 +34,12 @@ async fn complete_returns_robot_and_same_nonclone_node_allocation() {
                 *nodes += 1;
                 (Ok(Completion::Completed((obs, obs == 2))), nodes)
             },
-            TestRobot::new(),
+            (),
+            (&mut robot,),
             ExecutionContext::new(),
         )
         .await;
-    let Completion::Completed(robot) = result.unwrap() else {
+    let Completion::Completed(()) = result.unwrap() else {
         panic!()
     };
     assert_eq!(robot.trace.lock().unwrap().commands, [0, 1, 2]);
@@ -47,7 +49,7 @@ async fn complete_returns_robot_and_same_nonclone_node_allocation() {
 
 #[tokio::test]
 async fn domain_failure_returns_nodes_and_original_error_without_command() {
-    let robot = TestRobot::new();
+    let mut robot = TestRobot::new();
     let trace = robot.trace.clone();
     let context = ExecutionContext::new();
     let mut rhythm = TestRhythm::new();
@@ -60,16 +62,14 @@ async fn domain_failure_returns_nodes_and_original_error_without_command() {
                     n + 1,
                 )
             },
-            robot,
+            (),
+            (&mut robot,),
             context.clone(),
         )
         .await;
     assert!(matches!(result, Err(RoplatError::Arithmetic(ref s)) if s == "controller failed"));
     assert_eq!(nodes, 8);
     assert!(context.is_stopping());
-    // The rhythm keeps the robot for the graph to take back.
-    assert!(rhythm.reclaim_input().is_some());
-    assert!(rhythm.reclaim_input().is_none());
     let trace = trace.lock().unwrap();
     assert!(trace.commands.is_empty());
     assert_eq!(trace.callbacks, 1);
@@ -78,14 +78,15 @@ async fn domain_failure_returns_nodes_and_original_error_without_command() {
 
 #[tokio::test]
 async fn stopped_is_not_failure_and_returns_nodes_after_cleanup() {
-    let robot = TestRobot::new();
+    let mut robot = TestRobot::new();
     let trace = robot.trace.clone();
     let context = ExecutionContext::new();
     let (result, nodes) = TestRhythm::new()
         .drive(
             7,
             |n, _, _| async move { (Ok(Completion::Stopped), n + 1) },
-            robot,
+            (),
+            (&mut robot,),
             context.clone(),
         )
         .await;
@@ -99,33 +100,39 @@ async fn stopped_is_not_failure_and_returns_nodes_after_cleanup() {
 
 #[tokio::test]
 async fn stopped_context_never_enters_device_session() {
-    let robot = TestRobot::new();
+    let mut robot = TestRobot::new();
     let trace = robot.trace.clone();
     let context = ExecutionContext::new();
     context.request_stop();
     let mut rhythm = TestRhythm::new();
     let (result, nodes) = rhythm
-        .drive(7, |_, _, _| async { panic!("no callback") }, robot, context)
+        .drive(
+            7,
+            |_, _, _| async { panic!("no callback") },
+            (),
+            (&mut robot,),
+            context,
+        )
         .await;
     assert!(matches!(result, Ok(Completion::Stopped)));
     assert_eq!(nodes, 7);
     assert_eq!(trace.lock().unwrap().entries, 0);
-    assert!(rhythm.reclaim_input().is_some());
 }
 
 #[tokio::test]
-async fn completed_drive_leaves_nothing_to_reclaim() {
+async fn completed_drive_releases_its_resource_borrow() {
+    let mut robot = TestRobot::new();
     let mut rhythm = TestRhythm::new();
     let (result, _) = rhythm
         .drive(
             7,
             |n, (obs, _), _| async move { (Ok(Completion::Completed((obs, true))), n) },
-            TestRobot::new(),
+            (),
+            (&mut robot,),
             ExecutionContext::new(),
         )
         .await;
     assert!(matches!(result, Ok(Completion::Completed(_))));
-    assert!(rhythm.reclaim_input().is_none());
 }
 
 #[tokio::test]
@@ -138,14 +145,14 @@ async fn device_entry_failure_becomes_execution_failure() {
         .drive(
             7,
             |_, _, _| async { panic!("no callback") },
-            robot,
+            (),
+            (&mut robot,),
             context.clone(),
         )
         .await;
     assert!(session_error(&result.unwrap_err()).domain.is_none());
     assert_eq!(nodes, 7);
     assert!(context.is_stopping());
-    assert!(rhythm.reclaim_input().is_some());
 }
 
 #[tokio::test]
@@ -156,7 +163,8 @@ async fn domain_and_device_cleanup_failures_are_both_retained() {
         .drive(
             7,
             |n, _, _| async move { (Err(RoplatError::NodeProcessing("original".into())), n + 1) },
-            robot,
+            (),
+            (&mut robot,),
             ExecutionContext::new(),
         )
         .await;
@@ -179,7 +187,8 @@ async fn cleanup_failure_takes_priority_over_cooperative_stop() {
         .drive(
             7,
             |n, _, _| async move { (Ok(Completion::Stopped), n + 1) },
-            robot,
+            (),
+            (&mut robot,),
             ExecutionContext::new(),
         )
         .await;
@@ -192,7 +201,7 @@ async fn cleanup_failure_takes_priority_over_cooperative_stop() {
 
 #[tokio::test]
 async fn completed_feed_is_sent_and_external_stop_is_observed_next_cycle() {
-    let robot = TestRobot::new();
+    let mut robot = TestRobot::new();
     let trace = robot.trace.clone();
     let (result, nodes) = TestRhythm::new()
         .drive(
@@ -201,7 +210,8 @@ async fn completed_feed_is_sent_and_external_stop_is_observed_next_cycle() {
                 context.request_stop();
                 (Ok(Completion::Completed((42, false))), n + 1)
             },
-            robot,
+            (),
+            (&mut robot,),
             ExecutionContext::new(),
         )
         .await;
@@ -229,33 +239,23 @@ impl Lifecycle for Controller {
 impl Node for Controller {
     type Input = (u32, std::time::Duration);
     type Output = (u32, bool);
-    async fn process(&mut self, (obs, _): Self::Input) -> Self::Output {
+    type Resources = ();
+    async fn process(&mut self, (obs, _): Self::Input, _resources: ()) -> Self::Output {
         self.calls += 1;
         (obs, obs == 1)
     }
 }
-struct Source(Option<TestRobot>);
-impl Lifecycle for Source {
-    type Error = RoplatError;
-}
-impl Node for Source {
-    type Input = ();
-    type Output = TestRobot;
-    async fn process(&mut self, (): ()) -> Self::Output {
-        self.0.take().unwrap()
-    }
-}
 
-/// The robot is lent to the control rhythm and returned by its Output.
+/// The rhythm borrows the externally owned robot for its drive.
 #[roplat::system]
 async fn run_system(
     mut rhythm: TestRhythm,
     mut controller: Controller,
-    robot: TestRobot,
+    mut robot: TestRobot,
 ) -> RoplatResult<(TestRobot, TestRhythm, Controller)> {
-    &mut robot >> rhythm >> |state| state >> controller;
-    rhythm >> &mut robot;
-    Ok((robot.into_inner(), rhythm, controller))
+    &mut robot >> rhythm.resources.0;
+    rhythm >> |state| state >> controller;
+    Ok((robot, rhythm, controller))
 }
 
 #[tokio::test]
@@ -288,11 +288,13 @@ impl Rhythm for CommandDomain {
     type Yield = Self::Input;
     type Feed = (u32, bool);
     type Output = Self::Feed;
+    type Resources = ();
     async fn drive<N, F, Fut>(
         &mut self,
         nodes: N,
         mut domain: F,
         input: Self::Input,
+        _resources: (),
         context: ExecutionContext,
     ) -> (roplat::Execution<Self::Output>, N)
     where
@@ -318,16 +320,17 @@ async fn nested_system(
     mut rhythm: TestRhythm,
     mut inner: CommandDomain,
     mut controller: Controller,
-    robot: TestRobot,
+    mut robot: TestRobot,
 ) -> RoplatResult<(
-    roplat::Execution<TestRobot>,
+    roplat::Execution<()>,
+    TestRobot,
     TestRhythm,
     CommandDomain,
     Controller,
 )> {
-    let mut source = Source(Some(robot));
-    source >> rhythm >> |state| state >> inner >> |state| state >> controller;
-    Ok((rhythm.outcome, rhythm, inner, controller))
+    &mut robot >> rhythm.resources.0;
+    rhythm >> |state| state >> inner >> |state| state >> controller;
+    Ok((rhythm.outcome, robot, rhythm, inner, controller))
 }
 
 #[tokio::test]
@@ -335,7 +338,7 @@ async fn nested_system_failure_returns_external_nodes_and_isolates_outcome() {
     let robot = TestRobot::new();
     let trace = robot.trace.clone();
     let controller = Controller { calls: 0, inits: Arc::default(), shutdowns: Arc::default() };
-    let (outcome, mut rhythm, inner, controller) = nested_system(
+    let (outcome, robot, rhythm, mut inner, controller) = nested_system(
         TestRhythm::new(),
         CommandDomain { fail: true },
         controller,
@@ -346,18 +349,23 @@ async fn nested_system_failure_returns_external_nodes_and_isolates_outcome() {
     assert!(
         matches!(outcome,Err(RoplatError::NodeProcessing(ref message)) if message == "nested domain")
     );
-    assert!(rhythm.reclaim_input().is_some());
     assert!(inner.fail);
     assert_eq!(controller.calls, 1);
-    let trace = trace.lock().unwrap();
-    assert!(trace.commands.is_empty());
-    assert_eq!(trace.exits, 1);
+    assert!(trace.lock().unwrap().commands.is_empty());
+    assert_eq!(trace.lock().unwrap().exits, 1);
+    inner.fail = false;
+    let (outcome, robot, _, _, controller) = nested_system(rhythm, inner, controller, robot)
+        .await
+        .unwrap();
+    assert!(matches!(outcome, Ok(Completion::Completed(()))));
+    assert_eq!(robot.trace.lock().unwrap().commands, [0, 1]);
+    assert_eq!(controller.calls, 3);
 }
 
 #[tokio::test]
 async fn nested_system_returns_complete_child_feed_each_cycle() {
     let controller = Controller { calls: 0, inits: Arc::default(), shutdowns: Arc::default() };
-    let (outcome, _, _, controller) = nested_system(
+    let (outcome, robot, _, _, controller) = nested_system(
         TestRhythm::new(),
         CommandDomain { fail: false },
         controller,
@@ -365,7 +373,7 @@ async fn nested_system_returns_complete_child_feed_each_cycle() {
     )
     .await
     .unwrap();
-    let Completion::Completed(robot) = outcome.unwrap() else {
+    let Completion::Completed(()) = outcome.unwrap() else {
         panic!()
     };
     assert_eq!(robot.trace.lock().unwrap().commands, [0, 1]);
@@ -374,6 +382,7 @@ async fn nested_system_returns_complete_child_feed_each_cycle() {
 
 #[tokio::test]
 async fn final_valid_feed_completes_even_if_stop_is_requested_in_that_cycle() {
+    let mut robot = TestRobot::new();
     let context = ExecutionContext::new();
     let (result, nodes) = TestRhythm::new()
         .drive(
@@ -382,11 +391,12 @@ async fn final_valid_feed_completes_even_if_stop_is_requested_in_that_cycle() {
                 context.request_stop();
                 (Ok(Completion::Completed((42, true))), n + 1)
             },
-            TestRobot::new(),
+            (),
+            (&mut robot,),
             context.clone(),
         )
         .await;
-    let Completion::Completed(robot) = result.unwrap() else {
+    let Completion::Completed(()) = result.unwrap() else {
         panic!()
     };
     assert_eq!(robot.trace.lock().unwrap().commands, [42]);

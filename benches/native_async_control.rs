@@ -95,18 +95,26 @@ fn rhythm_path<const W: usize>(native: bool, cycles: usize, runtime: &tokio::run
             black_box(n + 1),
         )
     };
-    let input = CpuRobot::<W>::new();
+    let mut robot = CpuRobot::<W>::new();
     let context = ExecutionContext::new();
     let (outcome, nodes) = if native {
-        runtime.block_on(
-            AsyncControlRhythm::<CpuRobot<W>, Channel>::new().drive(0_u64, domain, input, context),
-        )
+        runtime.block_on(AsyncControlRhythm::<CpuRobot<W>, Channel>::new().drive(
+            0_u64,
+            domain,
+            (),
+            (&mut robot,),
+            context,
+        ))
     } else {
-        runtime.block_on(
-            ControlRhythm::<CpuRobot<W>, Channel>::new().drive(0_u64, domain, input, context),
-        )
+        runtime.block_on(ControlRhythm::<CpuRobot<W>, Channel>::new().drive(
+            0_u64,
+            domain,
+            (),
+            (&mut robot,),
+            context,
+        ))
     };
-    let Completion::Completed(robot) = outcome.unwrap() else {
+    let Completion::Completed(()) = outcome.unwrap() else {
         panic!("unexpected stop")
     };
     assert_eq!(nodes, cycles as u64);
