@@ -25,7 +25,7 @@ The driver owns transport, timing, state acquisition, and session termination. Y
 
 ## First example: a complete program without a robot
 
-The current release is **0.7.0**. Dependency builds need a C++ toolchain (on Windows, MSVC Build Tools and the Windows SDK). It uses nightly Rust features, so install a nightly toolchain:
+The registry example below uses `robot_behavior 0.6.1` with `roplat_exrobot 0.2.0`. This branch prepares **0.8.0** with Roplat 0.5.0 through pinned Git sources; these prepared versions have not been uploaded to crates.io. Dependency builds need a C++ toolchain (on Windows, MSVC Build Tools and the Windows SDK). It uses nightly Rust features, so install a nightly toolchain:
 
 ```sh
 rustup toolchain install nightly
@@ -37,7 +37,7 @@ Add these dependencies to the generated `Cargo.toml`:
 
 ```toml
 [dependencies]
-robot_behavior = "0.7.0"
+robot_behavior = "0.6.1"
 roplat_exrobot = "0.2.0"
 ```
 

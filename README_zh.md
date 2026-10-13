@@ -25,7 +25,7 @@
 
 ## 第一个程序：不连接机器人
 
-当前发布版本为 **0.7.0**。依赖构建需要 C++ 工具链（Windows 使用 MSVC Build Tools 和 Windows SDK），库本身使用 nightly Rust 特性。先安装工具链并创建项目：
+下方 registry 入门示例使用 `robot_behavior 0.6.1` 和 `roplat_exrobot 0.2.0`。本分支通过固定 Git 来源准备 **0.8.0** 与配套 Roplat 0.5.0；这些准备版本尚未上传 crates.io。依赖构建需要 C++ 工具链（Windows 使用 MSVC Build Tools 和 Windows SDK），库本身使用 nightly Rust 特性。先安装工具链并创建项目：
 
 ```sh
 rustup toolchain install nightly
@@ -37,7 +37,7 @@ cd behavior-demo
 
 ```toml
 [dependencies]
-robot_behavior = "0.7.0"
+robot_behavior = "0.6.1"
 roplat_exrobot = "0.2.0"
 ```
 
