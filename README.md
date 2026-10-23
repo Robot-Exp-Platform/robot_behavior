@@ -25,7 +25,7 @@ The driver owns transport, timing, state acquisition, and session termination. Y
 
 ## First example: a complete program without a robot
 
-The registry example below uses `robot_behavior 0.6.1` with `roplat_exrobot 0.2.0`. This branch prepares **0.8.0** with Roplat 0.5.0 through pinned Git sources; these prepared versions have not been uploaded to crates.io. Dependency builds need a C++ toolchain (on Windows, MSVC Build Tools and the Windows SDK). It uses nightly Rust features, so install a nightly toolchain:
+The example below uses `robot_behavior 0.8.0` with `roplat_exrobot 0.4.0` from crates.io. Dependency builds need a C++ toolchain (on Windows, MSVC Build Tools and the Windows SDK). It uses nightly Rust features, so install a nightly toolchain:
 
 ```sh
 rustup toolchain install nightly
@@ -37,8 +37,8 @@ Add these dependencies to the generated `Cargo.toml`:
 
 ```toml
 [dependencies]
-robot_behavior = "0.6.1"
-roplat_exrobot = "0.2.0"
+robot_behavior = "0.8.0"
+roplat_exrobot = "0.4.0"
 ```
 
 `roplat_exrobot` supplies a console-backed reference robot. It prints commands and returns synthetic observations, so the example needs no device, SDK, robot model, or Roplat runtime. Replace `src/main.rs` with:
@@ -109,7 +109,7 @@ Default features are empty. The Rust motion, control, state, and model interface
 | `to_cxx` | Enable the C++ bridge support. |
 | `to_py` | Enable PyO3 support and exported state types. |
 
-For a Roplat application, add `features = ["roplat"]` to the dependency and use the matching pinned Git source for Roplat 0.5.0 (not yet published to crates.io). Build the application graph with `#[roplat::system]`; choose `ControlRhythm` for a blocking backend or `AsyncControlRhythm` for a native async backend. The adapters connect the same observations and commands to a graph; they do not add capabilities missing from the device driver.
+For a Roplat application, add `features = ["roplat"]` to the dependency and depend on the matching `roplat = "0.5.0"` from crates.io. Build the application graph with `#[roplat::system]`; choose `ControlRhythm` for a blocking backend or `AsyncControlRhythm` for a native async backend. The adapters connect the same observations and commands to a graph; they do not add capabilities missing from the device driver.
 
 The robot stays owned by its creating scope. Nodes and rhythms receive a mutable reference through their separate `Resources` channel; business Input and Output never need to carry it.
 
@@ -145,7 +145,7 @@ Driver authors can import `robot_behavior::driver::*`; applications can import `
 
 ## Working from source
 
-Registry dependencies are the simplest way to use a released version. This repository's manifest also records pinned Git sources for integration development, including optional dependencies. A source checkout may therefore need GitHub SSH access even when an optional feature is disabled; it does not need a sibling `drives` checkout.
+This repository's manifest uses the same crates.io dependencies as the released package, including the optional Roplat core. A source checkout needs neither GitHub SSH access nor a sibling `drives` checkout.
 
 From a source checkout, `cargo +nightly check --lib` checks the default Rust library. The tests under `tests/` provide finite mock examples of contracts, not evidence of hardware timing. For workspace development, see [drives](https://github.com/Robot-Exp-Platform/drives).
 
