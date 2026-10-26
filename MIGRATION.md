@@ -17,7 +17,7 @@ roplat_control = "0.9.0"      # PID, impedance, computed torque
 roplat_trajectory = "0.9.0"   # interpolation, COPP time scaling
 ```
 
-Replace `robot_behavior::` with `roplat_behavior::` in paths. Features are unchanged (`roplat`, `ffi`, `to_c`, `to_cxx`, `to_py`), and `roplat` now asks for `roplat = "0.5.1"`.
+Replace `robot_behavior::` with `roplat_behavior::` in paths. Features are unchanged (`roplat`, `ffi`, `to_c`, `to_cxx`, `to_py`), and `roplat` now asks for `roplat = "0.6.0-rc.1"`.
 
 ## Where items moved
 

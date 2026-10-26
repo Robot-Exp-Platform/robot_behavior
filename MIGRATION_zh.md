@@ -17,7 +17,7 @@ roplat_control = "0.9.0"      # PID、阻抗、计算力矩
 roplat_trajectory = "0.9.0"   # 插值、COPP 时间缩放
 ```
 
-路径中的 `robot_behavior::` 改为 `roplat_behavior::`。feature 不变（`roplat`、`ffi`、`to_c`、`to_cxx`、`to_py`），`roplat` 现在要求 `roplat = "0.5.1"`。
+路径中的 `robot_behavior::` 改为 `roplat_behavior::`。feature 不变（`roplat`、`ffi`、`to_c`、`to_cxx`、`to_py`），`roplat` 现在要求 `roplat = "0.6.0-rc.1"`。
 
 ## 各项的新位置
 

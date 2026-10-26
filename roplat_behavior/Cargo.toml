@@ -15,8 +15,8 @@ name = "roplat_behavior"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-roplat = { version = "0.5.1", optional = true }
-roplat_msgs = { version = "0.5.1", features = ["nalgebra", "serde"] }
+roplat = { version = "0.6.0-rc.1", optional = true }
+roplat_msgs = { version = "0.6.0-rc.1", features = ["nalgebra", "serde"] }
 pyo3 = { version = "0.28.3", optional = true, features = [
     "extension-module",
     "multiple-pymethods",
