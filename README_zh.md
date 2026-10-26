@@ -1,10 +1,22 @@
-# robot_behavior
+# roplat_behavior
 
-[English](README.md) | [简体中文](README_zh.md) | [crates.io](https://crates.io/crates/robot_behavior)
+[English](README.md) | [简体中文](README_zh.md) | [从 robot_behavior 迁移](MIGRATION_zh.md)
 
-`robot_behavior` 是一个 Rust 机器人接口库，让应用围绕**能力**编写：到达目标、读取结构化状态，或在每个控制周期计算下一条指令。硬件驱动或仿真后端实现这些能力，本库提供共同的类型和接口契约。
+> [!NOTE]
+> **0.9 尚未发布到 crates.io。** 这些包以新名字延续 `robot_behavior` 0.8，并依赖 roplat 核心中同样尚未发布的 `roplat_msgs`。两者发布之前请从源码构建（见[从源码开发](#从源码开发)）。`robot_behavior` 的最后一个版本 0.8.1 只用于指向这里。
 
-如果你希望在兼容的后端之间复用应用与控制器，或为新驱动建立一致的接口，可以使用本库。连接真机还需要选择对应驱动；物理仿真需要 [RsBullet](https://github.com/Robot-Exp-Platform/rsbullet) 等后端。本库自身不完成这两项工作。
+`roplat_behavior` 是一个 Rust 机器人接口库，让应用围绕**能力**编写：到达目标、读取结构化状态，或在每个控制周期计算下一条指令。硬件驱动或仿真后端实现这些能力，本仓库提供共同的接口契约以及建立在契约之上的算法。
+
+| 包 | 内容 |
+|---|---|
+| `roplat_behavior` | 能力契约（`Robot`、运动空间、控制通道、模型映射）、机械臂/底盘/腿足状态，可选的 roplat 适配与 C / C++ / Python 绑定。 |
+| `roplat_kinematics` | DH 正运动学、雅可比与迭代逆运动学；`dh_kinematics!` 把机械臂接入模型映射。 |
+| `roplat_control` | 关节 PD/PID、底盘速度 PID、关节与笛卡尔阻抗、重力补偿、计算力矩、实时线程优先级。 |
+| `roplat_trajectory` | 关节与笛卡尔插值（直线、梯形、S 曲线、四次曲线）和 COPP 时间缩放。 |
+
+采样与几何类型（`Pose`、`JointSample`、`SpatialSample`、`LoadState`、`Twist` 等）来自 roplat 核心的 [`roplat_msgs`](https://github.com/Robot-Exp-Platform/roplat)，由 `roplat_behavior` 重新导出。每个类型只有一种表示和固定的原生布局，同一份数据可以跨进程、跨语言传递。除非打开 `roplat` feature，这些包都不依赖 roplat 运行时。
+
+如果你希望在兼容的后端之间复用应用与控制器，或为新驱动建立一致的接口，可以使用它们。连接真机还需要选择对应驱动；物理仿真需要 [RsBullet](https://github.com/Robot-Exp-Platform/rsbullet) 等后端。
 
 ## 设计理念：统一接口，把设备差异留在驱动中
 
@@ -25,26 +37,16 @@
 
 ## 第一个程序：不连接机器人
 
-下方入门示例使用 crates.io 上的 `robot_behavior 0.8.0` 和 `roplat_exrobot 0.4.0`。依赖构建需要 C++ 工具链（Windows 使用 MSVC Build Tools 和 Windows SDK），库本身使用 nightly Rust 特性。先安装工具链并创建项目：
-
-```sh
-rustup toolchain install nightly
-cargo new behavior-demo --edition 2024
-cd behavior-demo
-```
-
-在生成的 `Cargo.toml` 中添加依赖：
+示例使用 `roplat_behavior` 和 [drives](https://github.com/Robot-Exp-Platform/drives) 工作区中的控制台参考机器人 `roplat_exrobot`。库使用 nightly Rust 特性，依赖构建需要 C++ 工具链（Windows 使用 MSVC Build Tools 和 Windows SDK）：
 
 ```toml
 [dependencies]
-robot_behavior = "0.8.0"
-roplat_exrobot = "0.4.0"
+roplat_behavior = "0.9.0"
+roplat_exrobot = "0.5.0"
 ```
 
-`roplat_exrobot` 提供把指令打印到控制台的参考机器人，返回合成观测值。这个例子不需要设备、SDK、机器人模型或 Roplat 运行时。将 `src/main.rs` 替换为：
-
 ```rust
-use robot_behavior::{
+use roplat_behavior::{
     Control, JointPositionControl, JointSpace, Motion, Robot, RobotResult,
 };
 use roplat_exrobot::ExRobot;
@@ -65,53 +67,59 @@ fn main() -> RobotResult<()> {
 }
 ```
 
-执行 `cargo +nightly run`。程序会打印参考机器人的生命周期与指令信息，随后输出 `completed 3 control cycles` 并结束。第三次闭包返回 `true`，表示发送本次指令后完成会话。这里演示的是接口调用和退出流程；参考机器人不会产生物理运动或积分更新状态。
+用 `cargo +nightly run` 运行。程序打印参考机器人的生命周期和指令，输出 `completed 3 control cycles` 后关闭。最后一次回调返回 `true`，这条指令发送后会话结束。参考机器人不会运动，也不积分物理状态。
 
-接下来接入设备时，替换 `ExRobot` 的构造过程，按对应驱动完成连接与运行模式配置，并仅保留它支持的通道。相同的 Rust 类型便于复用代码，但机器人限位、坐标系、周期和控制器增益仍需分别确认。
+接下来连接设备时，把 `ExRobot` 换成对应驱动的构造方式，并按该驱动的说明配置连接和运行模式。相同的 Rust 类型让代码可以复用，但不会让限位、坐标系、周期或控制增益变得通用。
 
-## 理解状态
+## 读取状态
 
-`Robot::State` 由后端定义。需要跨后端使用机械臂状态时，查看驱动的 `Arm<N>` 实现和统一状态类型：
+`Robot::State` 由后端决定。编写通用机械臂代码时，使用驱动的 `Arm<N>` 实现和结构化状态类型：
 
-- `JointState<N>` 包含 `meas`、`cmd`、`des` 三种视图，分别表示测量反馈、接受的指令和期望参考。
-- `JointSample<N>` 中的 `q`、`dq`、`tau` 等字段使用 `Option`。`None` 表示没有提供该值，不应直接解释为零。
-- `ArmState<N>` 还包含法兰状态，以及可选的 TCP、刚度坐标系和负载信息。原生状态与统一视图不一定通过同一个设备操作获取。
+- `JointState<N>` 包含 `meas`、`cmd`、`des` 三个视图：测量反馈、已接受指令和期望参考。
+- `JointSample<N>` 带有 `q`、`dq`、`ddq`、`tau`、`dtau`，通过 `sample.q()` 这类访问器读取。`None` 表示该值没有提供，绝不是伪造的零值。生产者使用 `JointSample::EMPTY.with_q(q)` 或 `sample.set_q(Some(q))`。
+- `ArmState<N>` 增加法兰状态，以及可选的 TCP、刚度坐标系和负载信息。原生状态与这个通用视图不一定来自同一次设备读取。
 
-各后端文档会说明单位、坐标系、字段可用性与状态新鲜度。默认值或 `Some` 的存在本身，不能证明新传感器数据已经到达。
+单位、坐标系、字段是否可用以及数据新鲜度，以后端的状态说明为准。字段有值并不证明刚收到了新的传感器样本。
 
-## 运动调用与控制会话
+## 运动与控制会话
 
-希望由后端执行目标或轨迹时，使用运动接口；需要自己的代码逐周期产生指令时，使用控制会话。`control_with` 的闭包返回 `(command, done)`，整个调用阻塞到会话结束。
+需要后端执行一个目标或一段轨迹时，使用运动调用；需要由你的代码计算每个周期的指令时，使用控制会话。`control_with` 的回调返回 `(command, done)`，调用会阻塞到会话结束。
 
-如果需要在本周期没有算法指令时退出，使用 `control_with_flow`，返回 `ControlStep<Command>`：
+如果需要在没有算法指令的情况下退出，使用 `control_with_flow` 并返回 `ControlStep<Command>`：
 
-| 闭包返回值 | 含义 |
+| 回调结果 | 含义 |
 |---|---|
-| `ControlFlow::Continue((command, false))` | 发送指令，继续执行。 |
-| `ControlFlow::Continue((command, true))` | 发送这条最终指令，然后正常完成。 |
-| `ControlFlow::Break(())` | 本周期不发送算法指令，按驱动协议收尾。 |
+| `ControlFlow::Continue((command, false))` | 发送指令，继续。 |
+| `ControlFlow::Continue((command, true))` | 发送这条最终指令，正常结束。 |
+| `ControlFlow::Break(())` | 本周期不发送算法指令，执行驱动的会话收尾。 |
 
-收尾行为由设备协议决定。`Break` 不统一替换成零指令，也不等同于急停。
+收尾方式取决于设备协议。`Break` 不规定发送零指令，也不代表急停。
 
-异步接口有两种不同含义：
+async 有两种不同用法：
 
-- `control_with_async` / `control_with_flow_async` 是**阻塞会话中的异步闭包**，不会返回整个会话的 Future。
-- `control_native_async(&mut callback)` 返回包含 I/O 与收尾的**完整会话 Future**。它要求驱动实现 `AsyncControlWith<S>`，并使用驱动规定的运行时。直接丢弃 Future 不等同于合作退出。
+- `control_with_async` / `control_with_flow_async` 在**阻塞会话中使用 async 回调**，不返回会话 future。
+- `control_native_async(&mut callback)` 返回**整个会话的 future**，包括 I/O 与收尾。它要求后端实现 `AsyncControlWith<S>`，并使用驱动规定的运行时。丢弃这个 future 不等于合作式关闭会话。
+
+## 运动学、控制器与轨迹
+
+带 DH 参数表的机械臂实现 `roplat_kinematics::ArmForwardKinematics<N>`（迭代求解器还需要 `ArmInverseKinematics<N>`）。`dh_kinematics!(MyArm, 6)` 随后实现法兰位姿与雅可比映射，`dh_kinematics!(MyArm, 6, inverse)` 还实现逆映射，泛型代码就能通过 `roplat_behavior` 的 `ForwardKinematics`、`JacobianModel`、`InverseKinematics` 使用它。
+
+`roplat_control` 与 `roplat_trajectory` 返回可直接交给 `control_with` 的普通闭包。增益与模型数据需按后端选择；它们不提供时序保证。
 
 ## Feature 与 Roplat 集成
 
-默认 feature 为空。Rust 运动、控制、状态和模型接口不依赖 Roplat。
+默认 feature 为空。Rust 的运动、控制、状态和模型接口不依赖 Roplat。
 
-| Feature | 用途 |
+| `roplat_behavior` 的 feature | 用途 |
 |---|---|
-| `roplat` | `ControlRhythm`、`AsyncControlRhythm`，以及运动、模型和约束节点适配。 |
-| `ffi` / `to_c` | 外部语言接口模块 / C 接口特性入口。 |
-| `to_cxx` | C++ bridge 支持。 |
-| `to_py` | PyO3 支持和导出的状态类型。 |
+| `roplat` | `ControlRhythm`、`AsyncControlRhythm`，以及运动/模型/安全节点适配器。 |
+| `ffi` / `to_c` | 启用外部接口模块 / 面向 C 的 feature 开关。 |
+| `to_cxx` | 启用 C++ bridge 支持。 |
+| `to_py` | 启用 PyO3 支持；Python 模块名为 `roplat_behavior`。 |
 
-在 Roplat 应用中，为本库依赖添加 `features = ["roplat"]`，并依赖 crates.io 上匹配的 `roplat = "0.5.0"`。应用图通过 `#[roplat::system]` 构建：阻塞后端使用 `ControlRhythm`，原生异步后端使用 `AsyncControlRhythm`。适配器把同一套观测和指令接到图中，不会补齐设备驱动缺少的能力。
+编写 Roplat 应用时，为依赖添加 `features = ["roplat"]`，并依赖匹配的 `roplat = "0.5"`。用 `#[roplat::system]` 组织应用图；阻塞式后端使用 `ControlRhythm`，原生异步后端使用 `AsyncControlRhythm`。适配器把相同的观测和指令接入图中，不会为驱动补出缺失的能力。
 
-机器人始终由创建层持有；节点和节律通过独立的 `Resources` 通道接收可变借用，业务 Input 和 Output 不承载机器人。
+机器人始终归创建层所有。节点和节律通过独立的 `Resources` 通道获得可变引用，业务 Input 和 Output 不需要携带机器人。
 
 ```rust
 #[roplat::system]
@@ -130,25 +138,30 @@ async fn session(mut robot: MyRobot, mut law: MyLaw) -> RoplatResult<MyRobot> {
 }
 ```
 
-节点与机器人的生命周期由创建它们的作用域管理。`MotionNode` 的 `Resources = (R,)`、`Input = S::Target`、`Output = RobotResult<()>`；两个控制节律的 `Resources = (R,)`、`Input = Output = ()`。可变借用持续一次 process 或完整 drive，成功、失败和停止均不需要归还边或 reclaim 钩子。`reach.output?` 显式将业务错误提升为 System 失败。接入图时可继续阅读[适配层源码与接口注释](src/roplat)及[完整 System 示例](tests/control_rhythm.rs)。
+创建层管理节点和机器人的生命周期。`MotionNode` 声明 `Resources = (R,)`、`Input = S::Target`、`Output = RobotResult<()>`；两种控制节律都声明 `Resources = (R,)`，`Input = Output = ()`。借用覆盖一次 process 或完整的 drive，包括失败与停止路径。`reach.output?` 显式把业务错误提升为 System 失败。接入图时参见[适配器实现](roplat_behavior/src/roplat)和[完整 System 示例](roplat_behavior/tests/control_rhythm.rs)。
 
 ## 继续阅读
 
-- [运动与轨迹接口](src/robot/motion.rs)：目标、稠密轨迹，以及驱动提供的路径和途经点处理。
-- [控制契约](src/robot/control.rs)与[原生异步契约](src/robot/async_control.rs)。
-- [状态类型](src/robot/state.rs)与[模型映射](src/robot/model.rs)。
-- [控制器辅助函数](src/utils/controller)：关节 PD/PID、阻抗、重力补偿等计算；增益和模型数据按具体后端配置。
-- [可执行契约示例](tests/control_flow.rs)、[异步示例](tests/async_control.rs)与[外部语言接口示例](examples)。
-- [配套文档仓库](https://github.com/Robot-Exp-Platform/robot_behavior_page)。
+- [运动与轨迹接口](roplat_behavior/src/robot/motion.rs)、[控制契约](roplat_behavior/src/robot/control.rs)、[原生异步契约](roplat_behavior/src/robot/async_control.rs)。
+- [状态类型](roplat_behavior/src/robot/state.rs)与[模型映射](roplat_behavior/src/robot/model.rs)。
+- [运动学](roplat_kinematics/src)、[控制器](roplat_control/src)、[轨迹](roplat_trajectory/src)。
+- [契约示例](roplat_behavior/tests/control_flow.rs)、[异步示例](roplat_behavior/tests/async_control.rs)和[外部接口示例](roplat_behavior/examples)。
+- [相对 robot_behavior 0.8 的变化](MIGRATION_zh.md)。
 
-驱动作者可导入 `robot_behavior::driver::*`，应用可导入 `robot_behavior::behavior::*`。先在 `Robot` 中实现设备生命周期和状态，再逐项实现支持的运动、控制与模型能力。默认生命周期钩子是空操作，部分未实现操作会返回错误；继承默认方法不代表完成了对应设备功能。
+驱动作者可以导入 `roplat_behavior::driver::*`，应用可以导入 `roplat_behavior::behavior::*`。先在 `Robot` 中实现设备生命周期与状态，再分别实现支持的运动、控制和模型能力。默认生命周期钩子是空操作，部分未实现操作会返回错误；继承默认实现不等于实现了设备行为。
 
 ## 从源码开发
 
-本仓 manifest 使用与已发布包相同的 crates.io 依赖，包括可选的 Roplat 核心。源码构建既不需要 GitHub SSH 访问，也不要求同级存在 `drives` 仓库。
+本仓库是四个包组成的 Cargo 工作区，共用一个版本。`roplat_msgs` 发布之前，根清单把 `roplat` 与 `roplat_msgs` 指向同级的 roplat 核心检出，因此需要并排克隆：
 
-在源码目录执行 `cargo +nightly check --lib` 可检查默认 Rust 库。`tests/` 中的有限 mock 示例验证接口契约，不代表硬件时序结果。整合工作区开发见 [drives](https://github.com/Robot-Exp-Platform/drives)。
+```text
+Robot-Exp-Platform/
+├── roplat/
+└── roplat_behavior/
+```
 
-## 许可
+`cargo +nightly test --workspace` 运行默认测试；加 `--features roplat_behavior/roplat` 运行适配器测试。这些测试是契约的有限模拟示例，不代表硬件时序。驱动集成见 [drives](https://github.com/Robot-Exp-Platform/drives)。
 
-Apache-2.0，详见 [LICENSE](LICENSE)。
+## 许可证
+
+Apache-2.0，见 [LICENSE](LICENSE)。

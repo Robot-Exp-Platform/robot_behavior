@@ -1,0 +1,22 @@
+[package]
+name = "roplat_control"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+readme = "../README.md"
+description = "PID, impedance and model-based controllers for roplat_behavior robots"
+keywords = ["robot", "robotics", "control", "roplat"]
+
+[dependencies]
+roplat_behavior = { version = "0.9.0", path = "../roplat_behavior" }
+roplat_trajectory = { version = "0.9.0", path = "../roplat_trajectory" }
+nalgebra = "0.34.1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2.177"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = { version = "0.3.9", features = ["processthreadsapi", "winbase"] }

@@ -1,0 +1,15 @@
+[package]
+name = "roplat_kinematics"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+readme = "../README.md"
+description = "Denavit-Hartenberg kinematics and inverse kinematics for roplat_behavior arms"
+keywords = ["robot", "robotics", "kinematics", "roplat"]
+
+[dependencies]
+roplat_behavior = { version = "0.9.0", path = "../roplat_behavior" }
+nalgebra = "0.34.1"
