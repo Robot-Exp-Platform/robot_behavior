@@ -9,10 +9,11 @@
 
 | Crate | Contents |
 |---|---|
-| `roplat_behavior` | Capability contracts (`Robot`, motion spaces, control channels, model maps), arm / base / legged state, optional roplat adapters and C / C++ / Python bindings. |
+| `roplat_behavior` | Capability contracts (`Robot`, motion spaces, control channels, model maps; gripper, force/torque, IMU and camera contracts), arm / base / legged state, optional roplat adapters and C / C++ / Python bindings. |
 | `roplat_kinematics` | Denavit–Hartenberg forward kinematics, Jacobians and iterative inverse kinematics; `dh_kinematics!` connects an arm to the model maps. |
 | `roplat_control` | Joint PD/PID, base-velocity PID, joint and Cartesian impedance, gravity compensation, computed torque, real-time thread priority. |
 | `roplat_trajectory` | Joint and Cartesian interpolation (linear, trapezoid, S-curve, fourth-order) and COPP time scaling. |
+| `roplat_description` | One robot model read from URDF: kinematic tree, inertia, visual/collision geometry, joint limits and chain forward kinematics, shared by kinematics, simulation, visualization and limit checks. Depends only on `roplat_msgs`. |
 
 Sample and geometry types (`Pose`, `JointSample`, `SpatialSample`, `LoadState`, `Twist`, …) come from [`roplat_msgs`](https://github.com/Robot-Exp-Platform/roplat) and are re-exported by `roplat_behavior`. They have one representation each and a fixed native layout, so the same values cross process and language boundaries. None of these crates depends on the roplat runtime unless you enable the `roplat` feature.
 
@@ -204,7 +205,7 @@ Driver authors can import `roplat_behavior::driver::*`; applications can import 
 
 ## Working from source
 
-This is a Cargo workspace of the four crates, with one version. Until `roplat_msgs` is published, the root manifest patches `roplat` and `roplat_msgs` to a sibling checkout of the roplat core, so clone both side by side:
+This is a Cargo workspace of the five crates, with one version. Until `roplat_msgs` is published, the root manifest patches `roplat` and `roplat_msgs` to a sibling checkout of the roplat core, so clone both side by side:
 
 ```text
 Robot-Exp-Platform/

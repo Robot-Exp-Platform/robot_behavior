@@ -2,6 +2,7 @@ pub mod arm;
 pub mod async_control;
 pub mod category;
 pub mod control;
+pub mod device;
 pub mod endpoint;
 pub mod joint;
 pub mod math;
@@ -20,6 +21,7 @@ pub use control::{
     CartesianVelocityControl, Control, ControlSpace, ControlStep, ControlWith,
     JointPositionControl, JointVelocityControl, TorqueControl,
 };
+pub use device::{Camera, ForceTorqueSensor, Gripper, ImuSensor};
 pub use endpoint::EndPoint;
 pub use joint::Joints;
 pub use math::{Iso3, JMat, JVec, Jaco};
