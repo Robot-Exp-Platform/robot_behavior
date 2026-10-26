@@ -1,3 +1,9 @@
+//! **Renamed.** `robot_behavior` continues as `roplat_behavior` 0.9
+//! (<https://github.com/Robot-Exp-Platform/roplat_behavior>), split into
+//! `roplat_behavior`, `roplat_kinematics`, `roplat_control` and
+//! `roplat_trajectory`. This 0.8.1 release has the same API as 0.8.0 and is the
+//! last one; the README lists every change for migration.
+
 #![allow(incomplete_features)]
 #![feature(async_trait_bounds)]
 #![feature(generic_const_exprs)]

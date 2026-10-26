@@ -1,154 +1,101 @@
-# robot_behavior
+# robot_behavior (renamed: roplat_behavior)
 
-[English](README.md) | [简体中文](README_zh.md) | [crates.io](https://crates.io/crates/robot_behavior)
+[English](README.md) | [简体中文](README_zh.md)
 
-`robot_behavior` is a Rust interface library for writing robot applications against **capabilities**: move to a target, read a structured state, or calculate a command each control cycle. A hardware driver or simulator implements those capabilities; this crate supplies their shared types and contracts.
+> [!IMPORTANT]
+> **`robot_behavior` is renamed `roplat_behavior` and will not be updated again.** 0.8.1 is the final release: its API is identical to 0.8.0, and only this README, the crate documentation and the metadata changed. New development continues in [Robot-Exp-Platform/roplat_behavior](https://github.com/Robot-Exp-Platform/roplat_behavior) (this repository, renamed).
+>
+> As of 2026-10-26, `roplat_behavior` 0.9 and the `roplat_msgs` crate it depends on are **not yet on crates.io**. Keep using `robot_behavior = "0.8"` until they are published, or build them from source; the change is reviewed in [roplat_behavior#17](https://github.com/Robot-Exp-Platform/roplat_behavior/pull/17).
 
-Use it when you want to reuse application or controller code across compatible backends, or implement a new driver in the same vocabulary. To connect to a robot, also choose its driver. To simulate physics, choose a physics backend such as [RsBullet](https://github.com/Robot-Exp-Platform/rsbullet). This crate alone does neither.
+The rest of this page is the migration guide from 0.8 to 0.9.
 
-## Design: share the contract, keep the device-specific work in the driver
+`robot_behavior` is renamed `roplat_behavior` and split into four crates with one version. The contracts and their semantics are unchanged: typed motion spaces and control channels, `StateView`'s measured / accepted-command / desired views, `ControlStep`'s termination, the split between blocking sessions and native async sessions, and `Resources = (R,)` borrowing in the roplat adapters. What changes is where things live, and the sample and pose types, which now come from `roplat_msgs`.
 
-A joint position and a joint torque can both be `[f64; 6]`, but they mean different things. `JointSpace<6>` identifies a motion target; `JointPositionControl<6>` and `TorqueControl<6>` identify cyclic command channels. These marker types select the observation and command types and keep application calls explicit.
+As of 2026-10-26 neither `roplat_behavior` 0.9 nor `roplat_msgs` is on crates.io; build from source until they are released.
 
-Capabilities are implemented separately. A driver supporting joint motion does not automatically support torque control, inverse kinematics, or native asynchronous I/O. Generic application code requests the traits it needs, rather than assuming every robot offers the same features.
-
-The driver owns transport, timing, state acquisition, and session termination. Your control callback receives an observation and a `Duration`, then produces the next command. Controller helpers are ordinary closures; they do not create a scheduler or make a hardware timing guarantee.
-
-| You want to… | Application API | Backend implements |
-|---|---|---|
-| Reach a target | `Motion::move_to::<S>` | `MoveTo<S>` |
-| Send a sampled trajectory | `Motion::move_traj::<S>` | `MoveTraj<S>` |
-| Compute a command every cycle | `Control::control_with::<S, _>` | `ControlWith<S>` |
-| Await a complete control session | `AsyncControl::control_native_async::<S, _>` | `AsyncControlWith<S>` |
-| Read a backend's native state | `Robot::read_state` | `Robot` |
-| Work with arm state or a model | `Arm<N>`, `SpaceMap` and model traits | Only the supported capabilities |
-
-## First example: a complete program without a robot
-
-The example below uses `robot_behavior 0.8.0` with `roplat_exrobot 0.4.0` from crates.io. Dependency builds need a C++ toolchain (on Windows, MSVC Build Tools and the Windows SDK). It uses nightly Rust features, so install a nightly toolchain:
-
-```sh
-rustup toolchain install nightly
-cargo new behavior-demo --edition 2024
-cd behavior-demo
-```
-
-Add these dependencies to the generated `Cargo.toml`:
+## Dependencies
 
 ```toml
 [dependencies]
-robot_behavior = "0.8.0"
-roplat_exrobot = "0.4.0"
+# robot_behavior = "0.8"
+roplat_behavior = "0.9.0"
+roplat_kinematics = "0.9.0"   # DH kinematics, IK
+roplat_control = "0.9.0"      # PID, impedance, computed torque
+roplat_trajectory = "0.9.0"   # interpolation, COPP time scaling
 ```
 
-`roplat_exrobot` supplies a console-backed reference robot. It prints commands and returns synthetic observations, so the example needs no device, SDK, robot model, or Roplat runtime. Replace `src/main.rs` with:
+Replace `robot_behavior::` with `roplat_behavior::` in paths. Features are unchanged (`roplat`, `ffi`, `to_c`, `to_cxx`, `to_py`), and `roplat` now asks for `roplat = "0.5.1"`.
+
+## Where items moved
+
+| 0.8 path | 0.9 path |
+|---|---|
+| `robot_behavior::{Robot, MoveTo, ControlWith, JointSpace, Arm, SpaceMap, …}` | `roplat_behavior::…` (unchanged names) |
+| `Pose`, `JointSample`, `JointState`, `SpatialSample`, `ContactSample`, `StateView`, `LoadState` | `roplat_msgs`, re-exported by `roplat_behavior` |
+| `DhParam`, `dh_param!`, `mdh_param!`, `ArmKineCache`, `ArmForwardKinematics`, `ArmInverseKinematics`, `IKMethod`, `CommonStop`, `AnalyticFamily`, `Link`, `Joint`, `JointType`, `ArmDynamics`, `combine_array` | `roplat_kinematics` |
+| `robot_behavior::controller::*` and the root re-exports (`joint_pd_control`, `joint_impedance_control`, `gravity_compensation_control`, …), `set_realtime_priority`, `is_hardware_realtime`, `RealtimeBehavior` | `roplat_control` |
+| `robot_behavior::utils::path_generate::*` | `roplat_trajectory::path_generate::*` |
+| `plan_waypoints_traj_via_copp`, `plan_path_traj_via_copp`, `plan_s_t_via_copp`, `plan_cartesian_path_traj_via_time_scaling`, `CartesianTimeScalingOptions` | `roplat_trajectory` |
+| `Iso3`, `JVec`, `JMat`, `Jaco` | `roplat_behavior` (unchanged) |
+| nalgebra aliases `Twist`, `Wrench` (6-vectors) | `roplat_kinematics::SpatialVec`; the names `Twist` / `Wrench` are now the `roplat_msgs` structs |
+| `OverrideOnce`, `RobotBound`, `ArmBound`, `limit`, `homo_to_isometry`, `to_radians_array`, … | `roplat_behavior` (unchanged) |
+
+Removed: the uncompiled `src/robot_old` and `src/utils/inverse.rs` sources.
+
+## Pose
+
+`Pose` is one struct, `{ position: Vector3, orientation: Quaternion }` with the quaternion stored `x, y, z, w`, instead of five enum variants. The accessors keep their names: `euler()`, `quat()`, `quat_array()`, `homo()`, `axis_angle()`, `position()`.
+
+| 0.8 | 0.9 |
+|---|---|
+| `Pose::Euler(p, rpy)` | `Pose::from_euler(p, rpy)` |
+| `Pose::Quat(isometry)` | `Pose::from_isometry(isometry)` or `isometry.into()` |
+| `Pose::Homo(m)` | `Pose::from_homo(m)` |
+| `Pose::AxisAngle(p, axis, angle)` | `Pose::from_axis_angle(p, axis, angle)` |
+| `Pose::Position(p)` | `Pose::from_position(p)` |
+| `match pose { Pose::Homo(m) => … }` | `pose.homo()` |
+| `pose_a * pose_b` | unchanged (composition, now always through quaternions) |
+| `pose_a / pose_b` | removed; it summed `2^(a - b)` over the position and had no callers |
+
+The array `From` conversions keep their meaning (`[f64; 3]` position, `[f64; 6]` Euler, `[f64; 7]` with its zero / unit / axis-angle rule, `[f64; 16]` homogeneous, slices and `Vec`). `Vec<f64>::from(pose)` always yields `[x, y, z, qx, qy, qz, qw]`; in 0.8 the quaternion variant produced only six numbers.
+
+Serialized poses: JSON written by 0.8 (`{"Euler": …}`, `{"Quat": …}`, `{"Homo": …}`, `{"AxisAngle": …}`, `{"Position": …}`) still deserializes. New output is `{"position": …, "orientation": …}`.
+
+The C, C++ and Python bindings return poses in the quaternion form; their constructors still accept every form. A C/C++ `Quat` input is now read as a quaternion directly instead of through the seven-number heuristic, which could misread a quaternion whose norm was not exactly 1.
+
+## Samples
+
+Fields that may be absent are tracked by a validity mask behind accessors, so the samples have a fixed layout.
+
+| 0.8 | 0.9 |
+|---|---|
+| `sample.q` (`Option<[f64; N]>`) | `sample.q()` |
+| `JointSample { q: Some(q), dq: Some(dq), ..Default::default() }` | `JointSample::EMPTY.with_q(q).with_dq(dq)` |
+| `sample.q = Some(q)` / `= None` | `sample.set_q(Some(q))` / `set_q(None)` |
+| `spatial.pose`, `spatial.vel`, `spatial.acc`, `spatial.wrench` | `spatial.pose()`, `spatial.twist()`, `spatial.accel()`, `spatial.wrench()` returning `Pose`, `Twist`, `Accel`, `Wrench` |
+| `vel: Some([f64; 6])` | `.with_twist(array.into())`; read back with `.twist().map(<[f64; 6]>::from)` |
+| `contact.on`, `contact.f`, `contact.p`, `contact.n` | `contact.is_active()`, `force()`, `point()`, `normal()` (as `Vector3`) |
+| `LoadState { m, x, i }` | `LoadState { mass, center_of_mass, inertia }` |
+
+Defaults are unchanged: `JointSample::default()` has nothing present; `SpatialSample::default()` and `ContactSample::default()` have every field present with identity / zero values, as before. `SpatialSample::EMPTY` and `ContactSample::EMPTY` have nothing present.
+
+`JacobianModel::twist` returns the `Twist` struct instead of a nalgebra 6-vector.
+
+## Kinematics
+
+A type implementing `ArmForwardKinematics<N>` no longer gets the `SpaceMap` flange-pose and Jacobian maps automatically; the blanket impls would have tied the contract crate to the DH implementation. Add one line next to the DH table:
 
 ```rust
-use robot_behavior::{
-    Control, JointPositionControl, JointSpace, Motion, Robot, RobotResult,
-};
-use roplat_exrobot::ExRobot;
-
-fn main() -> RobotResult<()> {
-    let mut arm = ExRobot::<6>::new();
-    arm.init()?;
-    arm.move_to::<JointSpace<6>>([0.1; 6])?;
-
-    let mut cycles = 0;
-    arm.control_with::<JointPositionControl<6>, _>(|_state, _dt| {
-        cycles += 1;
-        ([0.1; 6], cycles == 3)
-    })?;
-
-    println!("completed {cycles} control cycles");
-    arm.shutdown()
-}
+roplat_kinematics::dh_kinematics!(MyArm, 6);           // FK + Jacobian maps
+roplat_kinematics::dh_kinematics!(MyArm, 6, inverse);  // also the IK map
 ```
 
-Run it with `cargo +nightly run`. You will see the reference robot's lifecycle and command messages, followed by `completed 3 control cycles` and shutdown. The final callback returns `true`, so its command is sent and the session finishes. The example demonstrates dispatch and termination; the reference robot does not move or integrate a physical state.
+Calls such as `<MyArm as ArmInverseKinematics<6>>::ik_solve` work as before.
 
-To use a device next, replace `ExRobot` with the appropriate driver's constructor and follow that driver's connection and operating-mode setup. Keep only the channels that driver implements. Matching Rust types make code reusable; they do not make robot limits, frames, timing, or controller gains interchangeable.
+## Python and C++
 
-## Reading state
+The Python module is `roplat_behavior` (was `robot_behavior`); its classes and fields are unchanged, including `LoadState(m, x, i)`. The C++ header is `roplat_behavior.hpp`, namespace `roplat_behavior`.
 
-`Robot::State` is backend-specific. For portable arm-oriented code, use the driver's `Arm<N>` implementation and the structured state types:
+## Nightly
 
-- `JointState<N>` contains `meas`, `cmd`, and `des` views: measured feedback, accepted commands, and desired references.
-- A `JointSample<N>` contains optional fields such as `q`, `dq`, and `tau`. `None` means that value was not supplied; it should not be silently treated as zero.
-- `ArmState<N>` adds flange state and optional TCP, stiffness-frame, and load information. A native state and this portable view are not necessarily acquired through the same device operation.
-
-Read the backend's state documentation for units, frames, field availability, and freshness. A default value, or the presence of `Some`, is not proof that a new sensor sample has arrived.
-
-## Motion and control sessions
-
-Use a motion call when the backend should execute a target or trajectory. Use a control session when your code must produce each cycle's command. `control_with` receives a callback returning `(command, done)` and blocks until the session ends.
-
-For an exit without an algorithm command, use `control_with_flow` and return a `ControlStep<Command>`:
-
-| Callback result | Meaning |
-|---|---|
-| `ControlFlow::Continue((command, false))` | Send the command; continue. |
-| `ControlFlow::Continue((command, true))` | Send this final command; complete normally. |
-| `ControlFlow::Break(())` | Send no algorithm command for this cycle; perform the driver's session termination. |
-
-Termination depends on the device protocol. `Break` does not prescribe a zero command or represent an emergency stop.
-
-There are two different uses of async:
-
-- `control_with_async` / `control_with_flow_async` accept async **callbacks inside a blocking session**. They do not return a session future.
-- `control_native_async(&mut callback)` returns the **whole session future**, including its I/O and termination. It requires an `AsyncControlWith<S>` implementation and the runtime specified by the driver. Dropping that future is not cooperative session shutdown.
-
-## Features and Roplat integration
-
-Default features are empty. The Rust motion, control, state, and model interfaces work without Roplat.
-
-| Feature | Purpose |
-|---|---|
-| `roplat` | `ControlRhythm`, `AsyncControlRhythm`, and motion/model/safety node adapters. |
-| `ffi` / `to_c` | Enable the foreign-interface modules / C-facing feature gate. |
-| `to_cxx` | Enable the C++ bridge support. |
-| `to_py` | Enable PyO3 support and exported state types. |
-
-For a Roplat application, add `features = ["roplat"]` to the dependency and depend on the matching `roplat = "0.5.0"` from crates.io. Build the application graph with `#[roplat::system]`; choose `ControlRhythm` for a blocking backend or `AsyncControlRhythm` for a native async backend. The adapters connect the same observations and commands to a graph; they do not add capabilities missing from the device driver.
-
-The robot stays owned by its creating scope. Nodes and rhythms receive a mutable reference through their separate `Resources` channel; business Input and Output never need to carry it.
-
-```rust
-#[roplat::system]
-async fn session(mut robot: MyRobot, mut law: MyLaw) -> RoplatResult<MyRobot> {
-    let mut control = ControlRhythm::<MyRobot, JointPositionControl<7>>::new();
-    let mut reach = MotionNode::<MyRobot, JointSpace<7>>::new();
-    let mut goal = Goal::new();
-
-    &mut robot >> reach.resources.0;
-    goal >> reach;
-    reach.output?;
-    &mut robot >> control.resources.0;
-    control >> |state| state >> law;
-
-    Ok(robot)
-}
-```
-
-The creating scope manages node and robot lifecycle. `MotionNode` declares `Resources = (R,)`, `Input = S::Target`, and `Output = RobotResult<()>`; both control rhythms declare `Resources = (R,)` with `Input = Output = ()`. The borrow lasts for one process or complete drive, including failure and stop paths. No restore edge or reclaim hook is needed. The `?` on `reach.output` explicitly promotes its business error to a System failure. See the [adapter implementation and API comments](src/roplat) and [complete System examples](tests/control_rhythm.rs) when integrating a graph.
-
-## Going further
-
-- [Motion and trajectory APIs](src/robot/motion.rs): targets, dense trajectories, and driver-provided path/waypoint handling.
-- [Control contracts](src/robot/control.rs) and [native async contracts](src/robot/async_control.rs).
-- [State types](src/robot/state.rs) and [model mappings](src/robot/model.rs).
-- [Controller helpers](src/utils/controller): joint PD/PID, impedance, gravity compensation, and other reusable calculations. Choose gains and required model data for your backend.
-- [Executable contract examples](tests/control_flow.rs), [async examples](tests/async_control.rs), and [foreign-interface examples](examples).
-- [Companion documentation](https://github.com/Robot-Exp-Platform/robot_behavior_page).
-
-Driver authors can import `robot_behavior::driver::*`; applications can import `robot_behavior::behavior::*`. Implement the device's lifecycle and state in `Robot`, then each supported motion/control/model capability. Default lifecycle hooks are no-ops and some unimplemented operations return errors; inheriting a default is not an implementation of device behavior.
-
-## Working from source
-
-This repository's manifest uses the same crates.io dependencies as the released package, including the optional Roplat core. A source checkout needs neither GitHub SSH access nor a sibling `drives` checkout.
-
-From a source checkout, `cargo +nightly check --lib` checks the default Rust library. The tests under `tests/` provide finite mock examples of contracts, not evidence of hardware timing. For workspace development, see [drives](https://github.com/Robot-Exp-Platform/drives).
-
-## License
-
-Apache-2.0; see [LICENSE](LICENSE).
+`roplat_behavior` no longer needs `generic_const_exprs`; it uses only `async_trait_bounds`. `roplat_kinematics` still uses `generic_const_exprs` for its `N + 1` frame cache.

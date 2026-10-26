@@ -1,12 +1,12 @@
 [package]
 name = "robot_behavior"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2024"
 authors = ["Yixing <yanjizhou312@163.com>"]
 readme = "README.md"
-repository = "https://github.com/Robot-Exp-Platform/robot_behavior"
+repository = "https://github.com/Robot-Exp-Platform/roplat_behavior"
 license = "Apache-2.0"
-description = "a library for robot common behavior"
+description = "Renamed to roplat_behavior; this final release only points there (API identical to 0.8.0)"
 categories = ["science::robotics"]
 keywords = ["robot", "robotics", "behavior", "roplat"]
 
