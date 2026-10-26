@@ -1,7 +1,7 @@
 # Robot Example Checklist
 
 This checklist describes the example set a robot driver should provide before it
-can be treated as a reasonably proven `robot_behavior` implementation.
+can be treated as a reasonably proven `roplat_behavior` implementation.
 
 - [ ] 00 connection and lifecycle
   - [ ] Lifecycle smoke test
@@ -85,7 +85,7 @@ can be treated as a reasonably proven `robot_behavior` implementation.
   - [ ] Use a joint impedance controller
     - Recommended file: `05_00_controller_joint_impedance.rs`
     - Trait: `Control`, `ControlWith<TorqueControl<N>>`
-    - Expected result: a controller from `robot_behavior::controller` can be passed directly to `control_with`.
+    - Expected result: a controller from `roplat_control` can be passed directly to `control_with`.
   - [ ] Use a Cartesian impedance controller
     - Recommended file: `05_01_controller_cartesian_impedance.rs`
     - Trait: `Control`, `ControlWith<ArmTorqueControl<N>>`, `ForwardKinematics`, `JacobianModel`

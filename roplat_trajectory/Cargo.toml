@@ -1,0 +1,21 @@
+[package]
+name = "roplat_trajectory"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+readme = "../README.md"
+description = "Trajectory interpolation and COPP time scaling for roplat_behavior robots"
+keywords = ["robot", "robotics", "trajectory", "roplat"]
+
+[dependencies]
+roplat_behavior = { version = "0.9.0", path = "../roplat_behavior" }
+copp = "=0.2.2"
+nalgebra = "0.34.1"
+
+# The interpolation tests plot their curves; plotters' font stack does not
+# build on macOS with current nightly, so they run on Linux and Windows.
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dev-dependencies]
+plotters = "0.3.7"
