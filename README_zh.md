@@ -140,6 +140,48 @@ async fn session(mut robot: MyRobot, mut law: MyLaw) -> RoplatResult<MyRobot> {
 
 创建层管理节点和机器人的生命周期。`MotionNode` 声明 `Resources = (R,)`、`Input = S::Target`、`Output = RobotResult<()>`；两种控制节律都声明 `Resources = (R,)`，`Input = Output = ()`。借用覆盖一次 process 或完整的 drive，包括失败与停止路径。`reach.output?` 显式把业务错误提升为 System 失败。接入图时参见[适配器实现](roplat_behavior/src/roplat)和[完整 System 示例](roplat_behavior/tests/control_rhythm.rs)。
 
+## 组合机器人模型与仿真后端
+
+同一种设备可以在 `RobotDescription::SIMULATION_MODELS` 中提供多个模型。
+加载器实现 `SimulationBackend`，声明后端标识与实际接受的格式，再通过
+`select_robot_model::<R>()` 选择模型。只声明旧 `URDF` 常量的设备仍可由接受
+URDF 的后端使用。
+
+```rust
+use roplat_behavior::{ModelFormat, RobotDescription, SimulationModel};
+
+struct ArmModels;
+impl RobotDescription for ArmModels {
+    const SIMULATION_MODELS: &'static [SimulationModel] = &[
+        SimulationModel::new(ModelFormat::Urdf, "arm/robot.urdf"),
+        SimulationModel::new(ModelFormat::Mjcf, "arm/scene.xml").for_backend("mujoco"),
+    ];
+}
+```
+
+选择顺序是：指定后端的模型、通用模型、旧 `URDF`；每层先按后端的格式优先级，
+再按设备的声明顺序。`SelectedSimulationModel` 记录选择来源；不匹配时返回
+带有后端和接受格式的 `ModelSelectionError`。路径遵循后端的资源搜索规则。
+选中的文件加载失败时应报告失败，不应静默换用另一份模型并改变物理条件。
+
+这层接口只选择模型，不自动转换文件或实现仿真器。后端仍需验证模型，并提供
+实际支持的关节、控制、传感器和场景能力。操作系统与构建条件由后端安装契约
+说明；接受 MJCF 不表示当前电脑已安装或支持 MuJoCo。仿真步进继续使用独立
+的 `PhysicsEngine`，不改变真机的运动与控制语义。
+[选择测试](roplat_behavior/tests/simulation_models.rs) 覆盖设备与后端匹配及不匹配的组合，
+不启动仿真器。
+
+可选的 `roplat_behavior::roplat::SimulationRhythm<E>` 为任意兼容的
+`PhysicsEngine` 提供有限步数与墙钟节律，并在真实 `#[roplat::system]` 图中运行。
+`logical(engine).with_max_steps(n)` 按引擎速度推进；`new(engine, period)`
+只限制墙钟节奏，不改变物理步长。每次驱动重新计算步数预算，但不会重置世界。
+引擎报错保留错误来源、停止后续图执行；合作退出可打断等待，仍会等待正在执行的
+子域归还其节点。状态刷新、命令顺序及物理语义由具体后端负责。
+
+这层适配不依赖 Bullet 或 MuJoCo，Tokio 仅随 `roplat` feature 启用。
+它不会代替后端调用消耗所有权的 `shutdown`；后端可使用 RAII 清理，或由应用
+通过 `into_engine()` 取回引擎并显式关闭。
+
 ## 继续阅读
 
 - [运动与轨迹接口](roplat_behavior/src/robot/motion.rs)、[控制契约](roplat_behavior/src/robot/control.rs)、[原生异步契约](roplat_behavior/src/robot/async_control.rs)。

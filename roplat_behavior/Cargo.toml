@@ -29,13 +29,14 @@ thiserror = "2.0.17"
 anyhow = "1.0.100"
 paste = "1.0.15"
 futures = "0.3"
+tokio = { version = "1", optional = true, features = ["rt", "time"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 
 [features]
 default = []
-roplat = ["dep:roplat"]
+roplat = ["dep:roplat", "dep:tokio"]
 ffi = []
 to_c = ["ffi"]
 to_cxx = ["ffi", "cxx"]

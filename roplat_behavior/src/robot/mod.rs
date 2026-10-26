@@ -133,4 +133,12 @@ pub trait RobotDescription {
     /// A robot with a URDF file.
     /// This path is relative to the [`roplat_data_dir`](crate::roplat_data_dir) directory.
     const URDF: Option<&'static str> = None;
+
+    /// Models available for simulation, optionally adapted to particular backends.
+    ///
+    /// A [`crate::SimulationBackend`] selects only formats its robot loader
+    /// accepts. The legacy [`Self::URDF`] remains a final URDF-only fallback.
+    /// Declaring a model does not implement any robot control capability or
+    /// guarantee that two backends simulate equivalent dynamics.
+    const SIMULATION_MODELS: &'static [crate::SimulationModel] = &[];
 }

@@ -18,6 +18,7 @@ mod renderer;
 mod robot;
 #[cfg(feature = "roplat")]
 pub mod roplat;
+mod simulation;
 pub mod utils;
 mod world;
 
@@ -31,6 +32,7 @@ pub use robot::*;
 /// The shared message vocabulary, re-exported.
 pub use roplat_msgs as msgs;
 pub use roplat_msgs::{Accel, FrameId, Header, Quaternion, Stamp, Stamped, Twist, Vector3, Wrench};
+pub use simulation::*;
 pub use utils::*;
 pub use world::*;
 
@@ -70,6 +72,10 @@ pub mod behavior {
 
     pub use crate::physics_engine::{AddSearchPath, PhysicsEngine};
     pub use crate::renderer::{AttachFrom, Renderer};
+    pub use crate::simulation::{
+        ModelFormat, ModelSelectionError, ModelSource, SelectedSimulationModel, SimulationBackend,
+        SimulationModel, select_simulation_model,
+    };
     pub use crate::world::{AddCollision, AddRobot, AddVisual, EntityBuilder};
 }
 
