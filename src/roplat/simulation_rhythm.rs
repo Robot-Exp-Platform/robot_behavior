@@ -1,3 +1,5 @@
+// Adapted from rsbullet's SimRhythm; upstream MIT notice is preserved in
+// licenses/rsbullet-MIT.txt. New behavior and tests were added during migration.
 use std::error::Error;
 use std::future::Future;
 use std::time::{Duration, Instant};
