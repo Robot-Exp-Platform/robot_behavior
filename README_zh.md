@@ -25,7 +25,7 @@
 
 ## 第一个程序：不连接机器人
 
-下方 registry 入门示例使用 `robot_behavior 0.6.1` 和 `roplat_exrobot 0.2.0`。本分支通过固定 Git 来源准备 **0.8.0** 与配套 Roplat 0.5.0；这些准备版本尚未上传 crates.io。依赖构建需要 C++ 工具链（Windows 使用 MSVC Build Tools 和 Windows SDK），库本身使用 nightly Rust 特性。先安装工具链并创建项目：
+下方入门示例使用 crates.io 上的 `robot_behavior 0.8.0` 和 `roplat_exrobot 0.4.0`。依赖构建需要 C++ 工具链（Windows 使用 MSVC Build Tools 和 Windows SDK），库本身使用 nightly Rust 特性。先安装工具链并创建项目：
 
 ```sh
 rustup toolchain install nightly
@@ -37,8 +37,8 @@ cd behavior-demo
 
 ```toml
 [dependencies]
-robot_behavior = "0.6.1"
-roplat_exrobot = "0.2.0"
+robot_behavior = "0.8.0"
+roplat_exrobot = "0.4.0"
 ```
 
 `roplat_exrobot` 提供把指令打印到控制台的参考机器人，返回合成观测值。这个例子不需要设备、SDK、机器人模型或 Roplat 运行时。将 `src/main.rs` 替换为：
@@ -109,7 +109,7 @@ fn main() -> RobotResult<()> {
 | `to_cxx` | C++ bridge 支持。 |
 | `to_py` | PyO3 支持和导出的状态类型。 |
 
-在 Roplat 应用中，为本库依赖添加 `features = ["roplat"]`，并使用匹配的 Roplat 0.5.0 固定 Git 来源（尚未上传 crates.io）。应用图通过 `#[roplat::system]` 构建：阻塞后端使用 `ControlRhythm`，原生异步后端使用 `AsyncControlRhythm`。适配器把同一套观测和指令接到图中，不会补齐设备驱动缺少的能力。
+在 Roplat 应用中，为本库依赖添加 `features = ["roplat"]`，并依赖 crates.io 上匹配的 `roplat = "0.5.0"`。应用图通过 `#[roplat::system]` 构建：阻塞后端使用 `ControlRhythm`，原生异步后端使用 `AsyncControlRhythm`。适配器把同一套观测和指令接到图中，不会补齐设备驱动缺少的能力。
 
 机器人始终由创建层持有；节点和节律通过独立的 `Resources` 通道接收可变借用，业务 Input 和 Output 不承载机器人。
 
@@ -145,7 +145,7 @@ async fn session(mut robot: MyRobot, mut law: MyLaw) -> RoplatResult<MyRobot> {
 
 ## 从源码开发
 
-使用已发布版本时，优先选择 registry 依赖。本仓 manifest 为集成开发记录了固定 Git 来源，包括可选依赖。因此源码构建即使关闭某个 feature，也可能需要 GitHub SSH 访问；它不要求同级存在 `drives` 仓库。
+本仓 manifest 使用与已发布包相同的 crates.io 依赖，包括可选的 Roplat 核心。源码构建既不需要 GitHub SSH 访问，也不要求同级存在 `drives` 仓库。
 
 在源码目录执行 `cargo +nightly check --lib` 可检查默认 Rust 库。`tests/` 中的有限 mock 示例验证接口契约，不代表硬件时序结果。整合工作区开发见 [drives](https://github.com/Robot-Exp-Platform/drives)。
 
