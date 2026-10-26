@@ -11,6 +11,7 @@ mod renderer;
 mod robot;
 #[cfg(feature = "roplat")]
 pub mod roplat;
+mod simulation;
 pub mod utils;
 mod world;
 
@@ -21,6 +22,7 @@ pub use exception::*;
 pub use physics_engine::*;
 pub use renderer::*;
 pub use robot::*;
+pub use simulation::*;
 pub use utils::*;
 pub use world::*;
 
@@ -44,22 +46,25 @@ pub mod behavior {
     pub use crate::robot::{
         Arm, ArmDynamics, ArmForwardKinematics, ArmInverseKinematics, ArmState, ArmTorqueControl,
         AsyncControl, AsyncControlCallback, BalanceControl, BasePoseSpace, BaseState,
-        BaseVelocityControl, BaseVelocitySpace,
-        CartesianPoseControl, CartesianVelocityControl, CenterOfMassSpace, ContactState, Control,
-        ControlObservation, ControlObserver, ControlSpace, ControlStep, Coord, CoriolisInput,
-        CoriolisInputSpace, DhParam, DynamicsModel, EndEffectorState, EndPoint, EndSpace,
-        FlangeSpace, FootSpace, ForwardKinematics, GaitCommand, GaitSpace, GravityInput,
-        GravityInputSpace, HandSpace, Humanoid, HumanoidState, Inertial, InverseKinematics,
-        JacobianModel, JacobianSpace, JointPositionControl, JointSample, JointSpace, JointState,
-        JointTorqueSpace, JointVelocityControl, Joints, LoadState, MassMatrixSpace, MobileBase,
-        MobileBaseState, Motion, MotionFile, MotionSpace, Pose, Quadruped, QuadrupedState,
-        Relative, Robot, RobotDescription, SpaceMap, SpatialSample, StateView, TcpSpace,
-        TorqueControl, TypedSpaceMap, WholeBodyJointSpace, WholeBodyTorqueSpace,
-        WholeBodyVelocitySpace,
+        BaseVelocityControl, BaseVelocitySpace, CartesianPoseControl, CartesianVelocityControl,
+        CenterOfMassSpace, ContactState, Control, ControlObservation, ControlObserver,
+        ControlSpace, ControlStep, Coord, CoriolisInput, CoriolisInputSpace, DhParam,
+        DynamicsModel, EndEffectorState, EndPoint, EndSpace, FlangeSpace, FootSpace,
+        ForwardKinematics, GaitCommand, GaitSpace, GravityInput, GravityInputSpace, HandSpace,
+        Humanoid, HumanoidState, Inertial, InverseKinematics, JacobianModel, JacobianSpace,
+        JointPositionControl, JointSample, JointSpace, JointState, JointTorqueSpace,
+        JointVelocityControl, Joints, LoadState, MassMatrixSpace, MobileBase, MobileBaseState,
+        Motion, MotionFile, MotionSpace, Pose, Quadruped, QuadrupedState, Relative, Robot,
+        RobotDescription, SpaceMap, SpatialSample, StateView, TcpSpace, TorqueControl,
+        TypedSpaceMap, WholeBodyJointSpace, WholeBodyTorqueSpace, WholeBodyVelocitySpace,
     };
 
     pub use crate::physics_engine::{AddSearchPath, PhysicsEngine};
     pub use crate::renderer::{AttachFrom, Renderer};
+    pub use crate::simulation::{
+        ModelFormat, ModelSelectionError, ModelSource, SelectedSimulationModel, SimulationBackend,
+        SimulationModel, select_simulation_model,
+    };
     pub use crate::world::{AddCollision, AddRobot, AddVisual, EntityBuilder};
 }
 
