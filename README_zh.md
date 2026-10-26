@@ -163,6 +163,17 @@ impl RobotDescription for ArmModels {
 [选择测试](tests/simulation_models.rs) 覆盖设备与后端匹配及不匹配的组合，
 不启动仿真器。
 
+可选的 `robot_behavior::roplat::SimulationRhythm<E>` 为任意兼容的
+`PhysicsEngine` 提供有限步数与墙钟节律，并在真实 `#[roplat::system]` 图中运行。
+`logical(engine).with_max_steps(n)` 按引擎速度推进；`new(engine, period)`
+只限制墙钟节奏，不改变物理步长。每次驱动重新计算步数预算，但不会重置世界。
+引擎报错保留错误来源、停止后续图执行；合作退出可打断等待，仍会等待正在执行的
+子域归还其节点。状态刷新、命令顺序及物理语义由具体后端负责。
+
+这层适配不依赖 Bullet 或 MuJoCo，Tokio 仅随 `roplat` feature 启用。
+它不会代替后端调用消耗所有权的 `shutdown`；后端可使用 RAII 清理，或由应用
+通过 `into_engine()` 取回引擎并显式关闭。
+
 ## 继续阅读
 
 - [运动与轨迹接口](src/robot/motion.rs)：目标、稠密轨迹，以及驱动提供的路径和途经点处理。

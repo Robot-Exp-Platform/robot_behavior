@@ -104,7 +104,7 @@ Default features are empty. The Rust motion, control, state, and model interface
 
 | Feature | Purpose |
 |---|---|
-| `roplat` | `ControlRhythm`, `AsyncControlRhythm`, and motion/model/safety node adapters. |
+| `roplat` | `ControlRhythm`, `AsyncControlRhythm`, `SimulationRhythm`, and motion/model/safety node adapters. |
 | `ffi` / `to_c` | Enable the foreign-interface modules / C-facing feature gate. |
 | `to_cxx` | Enable the C++ bridge support. |
 | `to_py` | Enable PyO3 support and exported state types. |
@@ -167,6 +167,22 @@ installed or supported on the current machine. `PhysicsEngine` continues to own
 stepping separately from the robot's existing motion and control traits. The
 [selection tests](tests/simulation_models.rs) demonstrate compatible and
 incompatible device/backend combinations without starting a simulator.
+
+The optional `roplat::SimulationRhythm<E>` owns any compatible `PhysicsEngine`
+and drives finite unit ticks in a real `#[roplat::system]` graph. Use
+`SimulationRhythm::logical(engine).with_max_steps(n)` for accelerated execution,
+or `SimulationRhythm::new(engine, period)` for wall-clock pacing. Physics dt
+belongs to the engine; pacing never changes it. Budgets reset per drive without
+resetting the world. A step error retains its source, stops the domain, and
+prevents a downstream tick for the failed call. Cooperative stopping cancels
+idle waits but waits for an active domain to return its owned nodes.
+
+This shared adapter depends on no Bullet or MuJoCo package. Its Tokio dependency
+is enabled only with the `roplat` feature; default behavior builds remain free
+of that framework/runtime dependency. The backend retains responsibility for
+state freshness, command ordering, physical semantics and resource cleanup.
+The adapter does not reset an engine on entry or call its consuming `shutdown`
+method on exit; use the backend's RAII cleanup or recover it with `into_engine()`.
 
 ## Going further
 
