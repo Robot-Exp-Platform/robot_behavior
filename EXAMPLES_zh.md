@@ -1,6 +1,6 @@
 # 机器人示例清单
 
-这份清单用于说明：一个机器人驱动最好提供哪些示例，才能较有说服力地证明它已经完成了 `robot_behavior` 的核心能力实现。
+这份清单用于说明：一个机器人驱动最好提供哪些示例，才能较有说服力地证明它已经完成了 `roplat_behavior` 的核心能力实现。
 
 - [ ] 00 连接与生命周期
   - [ ] 生命周期冒烟测试
@@ -84,7 +84,7 @@
   - [ ] 使用关节阻抗控制器
     - 推荐文件名：`05_00_controller_joint_impedance.rs`
     - 对应 trait：`Control`，`ControlWith<TorqueControl<N>>`
-    - 期望结果：`robot_behavior::controller` 生成的控制器可以直接传给 `control_with`。
+    - 期望结果：`roplat_control` 生成的控制器可以直接传给 `control_with`。
   - [ ] 使用笛卡尔阻抗控制器
     - 推荐文件名：`05_01_controller_cartesian_impedance.rs`
     - 对应 trait：`Control`，`ControlWith<ArmTorqueControl<N>>`，`ForwardKinematics`，`JacobianModel`

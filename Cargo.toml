@@ -1,60 +1,18 @@
-[package]
-name = "robot_behavior"
-version = "0.8.0"
+[workspace]
+members = ["roplat_behavior", "roplat_kinematics", "roplat_control", "roplat_trajectory"]
+resolver = "3"
+
+# The four crates share one README and one version.
+[workspace.package]
+version = "0.9.0"
 edition = "2024"
 authors = ["Yixing <yanjizhou312@163.com>"]
-readme = "README.md"
-repository = "https://github.com/Robot-Exp-Platform/robot_behavior"
 license = "Apache-2.0"
-description = "a library for robot common behavior"
+repository = "https://github.com/Robot-Exp-Platform/roplat_behavior"
 categories = ["science::robotics"]
-keywords = ["robot", "robotics", "behavior", "roplat"]
 
-[lib]
-name = "robot_behavior"
-crate-type = ["cdylib", "rlib"]
-
-[dependencies]
-roplat = { version = "0.5.0", git = "ssh://git@github.com/Robot-Exp-Platform/roplat.git", rev = "d6484b1c595b7d69e8727dc04d471f4bbf57def4", optional = true }
-copp = { version = "=0.2.2" }
-pyo3 = { version = "0.28.3", optional = true, features = [
-    "extension-module",
-    "multiple-pymethods",
-] }
-cxx = { version = "1.0.188", optional = true }
-nalgebra = { version = "0.34.1", features = ["serde-serialize"] }
-serde = { version = "1.0.228", features = ["derive", "alloc"] }
-serde_json = "1.0.145"
-thiserror = "2.0.17"
-anyhow = "1.0.100"
-paste = "1.0.15"
-futures = "0.3"
-
-[target.'cfg(target_os = "linux")'.dependencies]
-libc = "0.2.177"
-plotters = "0.3.7"
-
-[target.'cfg(target_os = "windows")'.dependencies]
-winapi = { version = "0.3.9", features = ["processthreadsapi", "winbase"] }
-plotters = "0.3.7"
-
-[dev-dependencies]
-tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
-
-[features]
-default = []
-roplat = ["dep:roplat"]
-ffi = []
-to_c = ["ffi"]
-to_cxx = ["ffi", "cxx"]
-to_py = ["ffi", "pyo3"]
-
-[[bench]]
-name = "control_flow"
-harness = false
-required-features = ["roplat"]
-
-[[bench]]
-name = "native_async_control"
-harness = false
-required-features = ["roplat"]
+# roplat_msgs is not on crates.io yet; develop against the sibling core
+# checkout. Published crates ignore this section.
+[patch.crates-io]
+roplat = { path = "../roplat/roplat" }
+roplat_msgs = { path = "../roplat/roplat_msgs" }

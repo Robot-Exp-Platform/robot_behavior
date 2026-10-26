@@ -443,7 +443,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.59.0",
+ "windows-sys",
 ]
 
 [[package]]
@@ -981,6 +981,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
+name = "memmap2"
+version = "0.9.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b0ca1155a9ecc25aa12e8313a119f32edf0255fea2f44839c4ac0a12b2ac157"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1312,37 +1321,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "robot_behavior"
-version = "0.8.0"
-dependencies = [
- "anyhow",
- "copp",
- "cxx",
- "futures",
- "libc",
- "nalgebra",
- "paste",
- "plotters",
- "pyo3",
- "roplat",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "winapi",
-]
-
-[[package]]
 name = "roplat"
-version = "0.5.0"
-source = "git+ssh://git@github.com/Robot-Exp-Platform/roplat.git?rev=d6484b1c595b7d69e8727dc04d471f4bbf57def4#d6484b1c595b7d69e8727dc04d471f4bbf57def4"
+version = "0.5.1"
 dependencies = [
  "async-trait",
  "bincode",
  "futures",
+ "libc",
+ "memmap2",
  "num-traits",
  "roplat_launch",
  "roplat_macros",
+ "roplat_native",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1351,9 +1341,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "roplat_behavior"
+version = "0.9.0"
+dependencies = [
+ "anyhow",
+ "cxx",
+ "futures",
+ "nalgebra",
+ "paste",
+ "pyo3",
+ "roplat",
+ "roplat_msgs",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "roplat_control"
+version = "0.9.0"
+dependencies = [
+ "libc",
+ "nalgebra",
+ "roplat_behavior",
+ "roplat_trajectory",
+ "winapi",
+]
+
+[[package]]
+name = "roplat_kinematics"
+version = "0.9.0"
+dependencies = [
+ "nalgebra",
+ "roplat_behavior",
+]
+
+[[package]]
 name = "roplat_launch"
-version = "0.5.0"
-source = "git+ssh://git@github.com/Robot-Exp-Platform/roplat.git?rev=d6484b1c595b7d69e8727dc04d471f4bbf57def4#d6484b1c595b7d69e8727dc04d471f4bbf57def4"
+version = "0.5.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1366,8 +1392,7 @@ dependencies = [
 
 [[package]]
 name = "roplat_macros"
-version = "0.5.0"
-source = "git+ssh://git@github.com/Robot-Exp-Platform/roplat.git?rev=d6484b1c595b7d69e8727dc04d471f4bbf57def4#d6484b1c595b7d69e8727dc04d471f4bbf57def4"
+version = "0.5.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1378,15 +1403,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "roplat_msgs"
+version = "0.5.1"
+dependencies = [
+ "nalgebra",
+ "roplat_native",
+ "serde",
+]
+
+[[package]]
+name = "roplat_native"
+version = "0.5.1"
+dependencies = [
+ "roplat_macros",
+]
+
+[[package]]
 name = "roplat_system"
-version = "0.5.0"
-source = "git+ssh://git@github.com/Robot-Exp-Platform/roplat.git?rev=d6484b1c595b7d69e8727dc04d471f4bbf57def4#d6484b1c595b7d69e8727dc04d471f4bbf57def4"
+version = "0.5.1"
 dependencies = [
  "proc-macro2",
  "quote",
  "roplat_launch",
  "serde_json",
  "syn 2.0.111",
+]
+
+[[package]]
+name = "roplat_trajectory"
+version = "0.9.0"
+dependencies = [
+ "copp",
+ "nalgebra",
+ "plotters",
+ "roplat_behavior",
 ]
 
 [[package]]
@@ -1808,7 +1858,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1874,15 +1924,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7837d08f69c77cf6b07689544538e017c1bfcf57e34b4c0ff58e6c2cd3b37091"
 dependencies = [
  "windows-link",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.52.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
-dependencies = [
- "windows-targets",
 ]
 
 [[package]]

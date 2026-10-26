@@ -1,0 +1,27 @@
+//! roplat adapters for roplat_behavior capabilities.
+//!
+//! This module keeps roplat-specific execution glue out of the core behavior
+//! traits. Drivers still implement `Robot`, `MoveTo`, `ControlWith`, `SpaceMap`
+//! and related traits; these adapters make those capabilities usable as roplat
+//! `Rhythm` domains and `Node`s. `AsyncControlRhythm` additionally requires the
+//! explicit native asynchronous capability `AsyncControlWith`.
+
+pub mod async_rhythm;
+pub mod node;
+pub mod rhythm;
+pub mod simulation_rhythm;
+
+pub use async_rhythm::*;
+pub use node::*;
+pub use rhythm::*;
+pub use simulation_rhythm::*;
+
+/// Lets a graph raise a device result with `?`, e.g. `motion.1?;` after the
+/// robot has been returned. The exception is carried as an I/O error source;
+/// `io_error.get_ref().and_then(|e| e.downcast_ref::<RobotException>())`
+/// recovers it.
+impl From<crate::RobotException> for ::roplat::RoplatError {
+    fn from(error: crate::RobotException) -> Self {
+        std::io::Error::other(error).into()
+    }
+}
