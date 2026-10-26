@@ -1,0 +1,17 @@
+[package]
+name = "roplat_description"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+readme = "../README.md"
+description = "One robot model from URDF for kinematics, simulation, visualization and limit checks"
+keywords = ["robot", "robotics", "urdf", "kinematics", "roplat"]
+
+[dependencies]
+roplat_msgs = { version = "0.5.1", features = ["nalgebra"] }
+nalgebra = "0.34.1"
+urdf-rs = "0.9.1"
+thiserror = "2.0.17"
