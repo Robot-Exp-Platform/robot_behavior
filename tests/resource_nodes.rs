@@ -42,6 +42,8 @@ async fn attempt_and_reuse(mut arm: Arm) -> RoplatResult<(Arm, RobotResult<()>, 
     &rejected >> first;
     &mut arm >> second.resources.0;
     &accepted >> second;
+    // A node's business error is ordinary data; `second` still runs after it.
+    first >> second.trigger;
     Ok((arm, first.output, second.output))
 }
 
