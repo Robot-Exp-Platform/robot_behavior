@@ -31,20 +31,18 @@ pub enum JointType {
 /// and a joint vector, it caches every link transform so that link poses,
 /// relative poses, the geometric [`jacobian`](ArmKineCache::jacobian) and the
 /// end-effector [`twist`](ArmKineCache::ee_twist) can be queried without
-/// recomputation. Requires `[(); N + 1]:` because it stores `N + 1` frames
-/// (base + one per joint).
-pub struct ArmKineCache<const N: usize>
-where
-    [(); N + 1]:,
-{
+/// recomputation. The base (link `0`) is the identity frame and is not stored;
+/// the arrays hold links `1..=N`, so no `N + 1`-sized array is needed.
+pub struct ArmKineCache<const N: usize> {
     /// The joint velocities the cache was built with (rad/s).
     pub q_dot: [f64; N],
-    /// Cumulative base-to-link transforms, index `0..=N` (`[0]` = identity base).
-    pub t_prefix: [na::Isometry3<f64>; N + 1],
-    /// World-frame origin of each link frame.
-    pub origins: [na::Vector3<f64>; N + 1],
-    /// World-frame `z` axis of each link frame.
-    pub z_axes: [na::Vector3<f64>; N + 1],
+    /// Cumulative base-to-link transforms of links `1..=N`: `link_frames[i]`
+    /// is link `i + 1`.
+    pub link_frames: [na::Isometry3<f64>; N],
+    /// Base-frame origin of links `1..=N`.
+    pub link_origins: [na::Vector3<f64>; N],
+    /// Base-frame `z` axis of links `1..=N`.
+    pub link_z_axes: [na::Vector3<f64>; N],
     /// Per-joint revolute axis in the WORLD frame, evaluated at the
     /// pre-actuation point (between the constant link transform and the
     /// `Rz(θ+q)` actuation). Independent of DH/MDH convention.
@@ -53,50 +51,74 @@ where
     pub joint_p: [na::Vector3<f64>; N],
 }
 
-impl<const N: usize> ArmKineCache<N>
-where
-    [(); N + 1]:,
-{
+impl<const N: usize> ArmKineCache<N> {
     #[inline(always)]
     /// Build the cache from DH parameters, joint positions `q` and joint
     /// velocities `q_dot`.
     pub fn build(dh: &[DhParam; N], q: &[f64; N], q_dot: &[f64; N]) -> Self {
-        let mut t_prefix = [na::Isometry3::identity(); N + 1];
-        let mut origins = [na::Vector3::zeros(); N + 1];
-        let mut z_axes = [na::Vector3::z(); N + 1];
+        let mut link_frames = [na::Isometry3::identity(); N];
+        let mut link_origins = [na::Vector3::zeros(); N];
+        let mut link_z_axes = [na::Vector3::z(); N];
         let mut joint_z = [na::Vector3::z(); N];
         let mut joint_p = [na::Vector3::zeros(); N];
 
+        let mut prev = na::Isometry3::identity();
         for i in 0..N {
-            let t_pre = t_prefix[i] * dh[i].pre_actuation();
+            let t_pre = prev * dh[i].pre_actuation();
             joint_z[i] = t_pre.rotation * na::Vector3::z();
             joint_p[i] = t_pre.translation.vector;
-            t_prefix[i + 1] = t_prefix[i] * dh[i].to_se3(q[i]);
-            origins[i + 1] = t_prefix[i + 1].translation.vector;
-            z_axes[i + 1] = t_prefix[i + 1].rotation * na::Vector3::z();
+            prev *= dh[i].to_se3(q[i]);
+            link_frames[i] = prev;
+            link_origins[i] = prev.translation.vector;
+            link_z_axes[i] = prev.rotation * na::Vector3::z();
         }
 
-        Self { q_dot: *q_dot, t_prefix, origins, z_axes, joint_z, joint_p }
+        Self {
+            q_dot: *q_dot,
+            link_frames,
+            link_origins,
+            link_z_axes,
+            joint_z,
+            joint_p,
+        }
+    }
+
+    #[inline(always)]
+    fn frame(&self, link: usize) -> na::Isometry3<f64> {
+        if link == 0 {
+            na::Isometry3::identity()
+        } else {
+            self.link_frames[link - 1]
+        }
+    }
+
+    #[inline(always)]
+    fn origin(&self, link: usize) -> na::Vector3<f64> {
+        if link == 0 {
+            na::Vector3::zeros()
+        } else {
+            self.link_origins[link - 1]
+        }
     }
 
     #[inline(always)]
     /// The end-effector pose (transform of link `N`) in the base frame.
     pub fn end_effector_pose(&self) -> na::Isometry3<f64> {
-        self.t_prefix[N]
+        self.frame(N)
     }
 
     #[inline(always)]
     /// The pose of a given [`Link`] in the base frame.
     pub fn link_pose(&self, link: Link) -> na::Isometry3<f64> {
         assert!(link.0 <= N, "link index must be less than or equal to N");
-        self.t_prefix[link.0]
+        self.frame(link.0)
     }
 
     #[inline(always)]
     /// The transform of link `a` expressed in link `b`'s frame.
     pub fn relative_pose(&self, a: Link, b: Link) -> na::Isometry3<f64> {
         assert!(a.0 <= N && b.0 <= N, "Link index out of bounds");
-        self.t_prefix[b.0].inv_mul(&self.t_prefix[a.0])
+        self.frame(b.0).inv_mul(&self.frame(a.0))
     }
 
     #[inline(always)]
@@ -109,7 +131,7 @@ where
     /// The `6 x N` geometric Jacobian at the end effector.
     pub fn jacobian(&self) -> na::SMatrix<f64, 6, N> {
         let mut j = na::SMatrix::<f64, 6, N>::zeros();
-        let p_n = self.origins[N];
+        let p_n = self.origin(N);
         for i in 0..N {
             let z = self.joint_z[i];
             let p = self.joint_p[i];
@@ -129,7 +151,7 @@ where
             "link_index must be less than or equal to N"
         );
         let mut j = na::SMatrix::<f64, 6, N>::zeros();
-        let p_n = self.origins[link_index];
+        let p_n = self.origin(link_index);
         for i in 0..link_index {
             let z = self.joint_z[i];
             let p = self.joint_p[i];
@@ -153,10 +175,7 @@ where
 /// provided methods then build an [`ArmKineCache`] and compute the
 /// end-effector [`Pose`]. This is the FK half of the kinematics API and the
 /// super-trait of [`ArmInverseKinematics`].
-pub trait ArmForwardKinematics<const N: usize>
-where
-    [(); N + 1]:,
-{
+pub trait ArmForwardKinematics<const N: usize> {
     /// The arm's Denavit–Hartenberg parameters, one [`DhParam`] per joint.
     const DH: [DhParam; N];
 
@@ -242,10 +261,7 @@ impl Default for IKMethod {
 /// closed-form solver; otherwise the provided
 /// [`ik_step`](ArmInverseKinematics::ik_step) drives the iterative
 /// [`IKMethod`]s, always projecting results back into the joint limits.
-pub trait ArmInverseKinematics<const N: usize>: ArmForwardKinematics<N> + Joints<N>
-where
-    [(); N + 1]:,
-{
+pub trait ArmInverseKinematics<const N: usize>: ArmForwardKinematics<N> + Joints<N> {
     /// The analytic family this arm belongs to, or `None` for iterative-only.
     const ANALYTIC_FAMILY: Option<AnalyticFamily> = None;
 

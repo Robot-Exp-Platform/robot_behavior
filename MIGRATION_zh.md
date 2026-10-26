@@ -91,4 +91,6 @@ Python 模块名为 `roplat_behavior`（原为 `robot_behavior`）；类与字�
 
 ## Nightly
 
-`roplat_behavior` 不再需要 `generic_const_exprs`，只用 `async_trait_bounds`。`roplat_kinematics` 的 `N + 1` 帧缓存仍需要 `generic_const_exprs`。
+所有包都不再使用 `generic_const_exprs`：`roplat_behavior` 只用 `async_trait_bounds`，`roplat_kinematics` 不需要不稳定特性。nightly 2026-10-20 的新一代 trait solver 不支持 `generic_const_exprs`，依赖它的 crate 会让编译器崩溃，因此请同样去掉自己 crate 中的 `#![feature(generic_const_exprs)]`。
+
+`ArmKineCache` 不再存放 `N + 1` 个坐标系：基座（link 0）恒为单位变换，字段 `t_prefix`、`origins`、`z_axes` 改名为 `link_frames`、`link_origins`、`link_z_axes`，长度为 `N`，对应 link `1..=N`。`link_pose`、`relative_pose`、`end_effector_pose` 与各雅可比不变。`combine_array` 的输出长度改为常量参数，通常可推断：`let joined: [T; 5] = combine_array(&a, &b);`。

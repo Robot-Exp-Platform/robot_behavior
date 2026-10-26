@@ -91,4 +91,6 @@ The Python module is `roplat_behavior` (was `robot_behavior`); its classes and f
 
 ## Nightly
 
-`roplat_behavior` no longer needs `generic_const_exprs`; it uses only `async_trait_bounds`. `roplat_kinematics` still uses `generic_const_exprs` for its `N + 1` frame cache.
+No crate uses `generic_const_exprs` any more: `roplat_behavior` needs only `async_trait_bounds`, and `roplat_kinematics` none. Nightly 2026-10-20's next-generation trait solver does not support `generic_const_exprs` and crashes on crates that depend on it, so remove `#![feature(generic_const_exprs)]` from your crates too.
+
+`ArmKineCache` no longer stores `N + 1` frames: the base (link 0) is the identity and the fields `t_prefix`, `origins`, `z_axes` became `link_frames`, `link_origins`, `link_z_axes` with `N` entries for links `1..=N`. `link_pose`, `relative_pose`, `end_effector_pose` and the Jacobians are unchanged. `combine_array` now takes the output length as a const parameter, usually inferred: `let joined: [T; 5] = combine_array(&a, &b);`.

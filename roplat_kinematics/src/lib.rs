@@ -6,9 +6,10 @@
 //! `roplat_behavior` model maps (`SpaceMap` for flange pose, Jacobian and,
 //! optionally, inverse kinematics), so generic code can use the type through
 //! `ForwardKinematics`, `JacobianModel` and `InverseKinematics`.
-
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
+//!
+//! The crate does not use `generic_const_exprs`: the next-generation trait
+//! solver does not support it, and nightly 2026-10-20 crashes on downstream
+//! crates that depend on it.
 
 mod dh;
 mod kinematics;
@@ -21,24 +22,24 @@ pub mod __private {
     pub use roplat_behavior;
 }
 
-/// Concatenate two fixed-size arrays into a single `[T; N + M]`.
+/// Concatenate two fixed-size arrays into a single `[T; L]`.
+///
+/// The output length `L` is usually inferred from the destination; a length
+/// other than `N + M` is rejected at compile time.
 ///
 /// # Example
 /// ```
-/// #![allow(incomplete_features)]
-/// #![feature(generic_const_exprs)]
 /// use roplat_kinematics::combine_array;
 ///
-/// assert_eq!(combine_array(&[1, 2, 3], &[4, 5]), [1, 2, 3, 4, 5]);
+/// let joined: [i32; 5] = combine_array(&[1, 2, 3], &[4, 5]);
+/// assert_eq!(joined, [1, 2, 3, 4, 5]);
 /// ```
-pub fn combine_array<T: Copy, const N: usize, const M: usize>(
+pub fn combine_array<T: Copy, const N: usize, const M: usize, const L: usize>(
     v1: &[T; N],
     v2: &[T; M],
-) -> [T; N + M] {
-    let mut result = [v1[0]; N + M];
-    result[..N].copy_from_slice(v1);
-    result[N..].copy_from_slice(v2);
-    result
+) -> [T; L] {
+    const { assert!(N + M == L, "combine_array: output length must equal N + M") };
+    core::array::from_fn(|i| if i < N { v1[i] } else { v2[i - N] })
 }
 
 /// Implements the `roplat_behavior` model maps of a Denavit–Hartenberg arm.
@@ -53,8 +54,6 @@ pub fn combine_array<T: Copy, const N: usize, const M: usize>(
 /// the contract crate independent of this one.
 ///
 /// ```
-/// #![allow(incomplete_features)]
-/// #![feature(generic_const_exprs)]
 /// use roplat_behavior::{ForwardKinematics, Joints};
 /// use roplat_kinematics::{ArmForwardKinematics, DhParam, dh_kinematics};
 ///
