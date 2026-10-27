@@ -8,15 +8,18 @@
 //! `ForwardKinematics`, `JacobianModel` and `InverseKinematics`.
 //!
 //! An arm read from URDF needs no DH table: [`ArmKineCache::from_chain`]
-//! builds the same cache from a `roplat_description::Chain`.
+//! builds the same cache from a `roplat_description::Chain`, and [`chain_ik`]
+//! solves its inverse kinematics within the URDF limits.
 //!
 //! The crate does not use `generic_const_exprs`: the next-generation trait
 //! solver does not support it, and nightly 2026-10-20 crashes on downstream
 //! crates that depend on it.
 
+mod chain_ik;
 mod dh;
 mod kinematics;
 
+pub use chain_ik::{ChainIkSolution, chain_ik, dh_chain_discrepancy};
 pub use dh::DhParam;
 pub use kinematics::*;
 
