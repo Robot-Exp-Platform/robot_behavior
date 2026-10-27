@@ -1,0 +1,25 @@
+[package]
+name = "roplat_safety"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+readme = "../README.md"
+description = "Limit, rate, freshness, watchdog and latch gates that refuse commands in roplat control graphs"
+keywords = ["robot", "robotics", "safety", "roplat"]
+
+[dependencies]
+roplat_behavior = { version = "0.9.0", path = "../roplat_behavior" }
+roplat_msgs = "0.6.0-rc.1"
+roplat = { version = "0.6.0-rc.1", optional = true }
+thiserror = "2.0.17"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[features]
+default = []
+# Nodes and error transport; the checks themselves need no runtime.
+roplat = ["dep:roplat", "roplat_behavior/roplat"]

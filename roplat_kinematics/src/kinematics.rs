@@ -1,5 +1,6 @@
 use nalgebra::{self as na, SVector};
 use roplat_behavior::{JVec, Jaco, Joints, Pose};
+use roplat_description::{Chain, DescriptionError, JointKind};
 
 use crate::dh::DhParam;
 
@@ -81,6 +82,54 @@ impl<const N: usize> ArmKineCache<N> {
             joint_z,
             joint_p,
         }
+    }
+
+    /// Build the cache from a URDF [`Chain`] of `N` revolute or continuous
+    /// joints, so a model read with `roplat_description` gets the same link
+    /// poses and geometric Jacobian as a DH table.
+    ///
+    /// Link `i` is the child of the `i`-th movable joint; fixed joints after
+    /// the last one (a flange or tool mount) belong to the end effector, so
+    /// [`end_effector_pose`](Self::end_effector_pose) is the chain's tip.
+    pub fn from_chain(chain: &Chain, q: &[f64; N], q_dot: &[f64; N]) -> Result<Self, ChainError> {
+        let dof = chain.dof();
+        if dof != N {
+            return Err(DescriptionError::DofMismatch { expected: dof, got: N }.into());
+        }
+        let mut link_frames = [na::Isometry3::identity(); N];
+        let mut joint_z = [na::Vector3::z(); N];
+        let mut joint_p = [na::Vector3::zeros(); N];
+
+        let mut frame = na::Isometry3::identity();
+        let mut i = 0;
+        for joint in &chain.joints {
+            if !joint.is_movable() {
+                frame *= joint.transform(0.0);
+                continue;
+            }
+            if joint.kind == JointKind::Prismatic {
+                return Err(ChainError::Prismatic(joint.name.clone()));
+            }
+            let joint_frame = frame * joint.origin.quat();
+            let axis = na::Vector3::new(joint.axis.x, joint.axis.y, joint.axis.z).normalize();
+            joint_z[i] = joint_frame.rotation * axis;
+            joint_p[i] = joint_frame.translation.vector;
+            frame *= joint.transform(q[i]);
+            link_frames[i] = frame;
+            i += 1;
+        }
+        if let Some(tip) = link_frames.last_mut() {
+            *tip = frame;
+        }
+
+        Ok(Self {
+            q_dot: *q_dot,
+            link_frames,
+            link_origins: link_frames.map(|f| f.translation.vector),
+            link_z_axes: link_frames.map(|f| f.rotation * na::Vector3::z()),
+            joint_z,
+            joint_p,
+        })
     }
 
     #[inline(always)]
@@ -167,6 +216,16 @@ impl<const N: usize> ArmKineCache<N> {
     pub fn ee_twist(&self) -> SpatialVec {
         self.jacobian() * SVector::<f64, N>::from_column_slice(&self.q_dot)
     }
+}
+
+/// Why a [`Chain`] cannot become an [`ArmKineCache`].
+#[derive(Debug, thiserror::Error)]
+pub enum ChainError {
+    #[error(transparent)]
+    Description(#[from] DescriptionError),
+    /// The cache's Jacobian treats every joint as revolute.
+    #[error("joint `{0}` is prismatic; ArmKineCache supports revolute joints only")]
+    Prismatic(String),
 }
 
 /// Forward kinematics for an `N`-DoF arm with a fixed DH model.
