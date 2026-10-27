@@ -302,3 +302,61 @@ fn a_copp_plan_plays_back_sample_for_sample() {
         clock.advance(period);
     }
 }
+
+#[test]
+fn a_replacement_before_the_run_takes_the_old_points_place() {
+    let clock = Arc::new(ManualClock::simulation());
+    let mut follower = follower(&clock);
+    follower
+        .replace(vec![point(0, [2., 2.]), point(50, [3., 3.])])
+        .unwrap();
+    assert_eq!(follower.duration(), ms(50));
+    assert_eq!(follower.step(&at([0.; 2])), Ok(([2., 2.], false)));
+}
+
+#[test]
+fn a_replacement_mid_run_carries_on_from_the_current_sample() {
+    let clock = Arc::new(ManualClock::simulation());
+    let mut follower = follower(&clock);
+    follower.step(&at([0.; 2])).unwrap();
+    clock.advance(ms(40));
+    let current = follower.sample(ms(40));
+    assert_eq!(follower.step(&at([0.; 2])), Ok((current.q, false)));
+
+    follower.replace(vec![point(100, [0.2, 0.4])]).unwrap();
+    // The motion goes on from where it was, with its velocity and
+    // acceleration, and the new goal is 100 ms from now.
+    let first = follower.points()[0];
+    assert_eq!(
+        (first.time_from_start, first.q, first.dq, first.ddq),
+        (0, current.q, current.dq, current.ddq)
+    );
+    assert_eq!(follower.duration(), ms(100));
+    assert_eq!(follower.step(&at([0.; 2])), Ok((current.q, false)));
+    let just_after = follower.sample(Duration::from_nanos(1));
+    assert!(
+        (just_after.dq[0] - current.dq[0]).abs() < 1e-6,
+        "{just_after:?}"
+    );
+    clock.advance(ms(100));
+    assert_eq!(follower.step(&at([0.; 2])), Ok(([0.2, 0.4], true)));
+}
+
+#[test]
+fn a_replacement_that_cannot_follow_on_is_refused_and_the_run_goes_on() {
+    let clock = Arc::new(ManualClock::simulation());
+    let mut follower = follower(&clock);
+    follower.step(&at([0.; 2])).unwrap();
+    clock.advance(ms(30));
+    // During a run the new points start after the current sample at now.
+    assert_eq!(
+        follower.replace(vec![point(0, [1.; 2])]),
+        Err(TrackingError::Timing { index: 0 })
+    );
+    assert_eq!(follower.replace(vec![]), Err(TrackingError::Empty));
+    assert_eq!(
+        follower.step(&at([0.; 2])),
+        Ok((follower.sample(ms(30)).q, false))
+    );
+    assert_eq!(follower.duration(), ms(100));
+}
