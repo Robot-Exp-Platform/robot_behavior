@@ -14,6 +14,7 @@
 | `roplat_control` | 关节 PD/PID、底盘速度 PID、关节与笛卡尔阻抗、重力补偿、计算力矩、实时线程优先级。 |
 | `roplat_trajectory` | 关节与笛卡尔插值（直线、梯形、S 曲线、四次曲线）和 COPP 时间缩放。 |
 | `roplat_description` | 从 URDF 读出的同一份机器人模型：运动学树、惯量、可视/碰撞几何、关节限位与链式正运动学，供运动学、仿真、可视化与限位检查共用；只依赖 `roplat_msgs`。 |
+| `roplat_frames` | 机器人工作单元的坐标树：编译期确定的帧 id，来自 URDF 与标定的静态变换，按 `Stamp` 缓冲并查询的关节与动态变换，查询不分配内存；可选的 `JointStateNode`（feature `roplat`）。见[设计](roplat_frames/docs/design_zh.md)。 |
 
 采样与几何类型（`Pose`、`JointSample`、`SpatialSample`、`LoadState`、`Twist` 等）来自 roplat 核心的 [`roplat_msgs`](https://github.com/Robot-Exp-Platform/roplat)，由 `roplat_behavior` 重新导出。每个类型只有一种表示和固定的原生布局，同一份数据可以跨进程、跨语言传递。除非打开 `roplat` feature，这些包都不依赖 roplat 运行时。
 
@@ -195,7 +196,7 @@ impl RobotDescription for ArmModels {
 
 ## 从源码开发
 
-本仓库是五个包组成的 Cargo 工作区，共用一个版本。`roplat_msgs` 发布之前，根清单把 `roplat` 与 `roplat_msgs` 指向同级的 roplat 核心检出，因此需要并排克隆：
+本仓库是六个包组成的 Cargo 工作区，共用一个版本。`roplat_msgs` 发布之前，根清单把 `roplat` 与 `roplat_msgs` 指向同级的 roplat 核心检出，因此需要并排克隆：
 
 ```text
 Robot-Exp-Platform/
