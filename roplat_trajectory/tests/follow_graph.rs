@@ -5,7 +5,7 @@
 
 use std::{ops::ControlFlow, sync::Arc, time::Duration};
 
-use roplat::{Completion, Execution, RoplatResult};
+use roplat::{Completion, Execution, Lifecycle, Node, RoplatError, RoplatResult};
 use roplat_behavior::{
     ControlStep, ControlWith, JointPositionControl, JointSample, JointState, Robot, RobotResult,
     StateView,
@@ -156,4 +156,86 @@ async fn a_stuck_arm_breaks_the_session_with_the_tracking_error() {
     );
     assert_eq!(servo.breaks, 1);
     assert!(servo.q == [0.; 2]);
+}
+
+/// Follows the first plan, then hands the follower a second one after `at`
+/// cycles, as a planner reacting mid-motion would.
+struct Replanning {
+    follower: Follower,
+    next: Option<Vec<JointTrajectoryPoint<2>>>,
+    at: usize,
+    cycles: usize,
+}
+
+impl Lifecycle for Replanning {
+    type Error = RoplatError;
+}
+
+impl Node for Replanning {
+    type Resources = ();
+    type Input = (JointState<2>, Duration);
+    type Output = Result<([f64; 2], bool), TrackingError>;
+
+    async fn process(&mut self, (state, _): Self::Input, _: ()) -> Self::Output {
+        self.cycles += 1;
+        if self.cycles == self.at
+            && let Some(plan) = self.next.take()
+        {
+            self.follower.replace(plan)?;
+        }
+        self.follower.step(&state)
+    }
+}
+
+#[roplat::system]
+async fn replan(
+    mut control: Control,
+    mut planner: Replanning,
+    mut servo: Servo,
+) -> RoplatResult<(Execution<()>, Servo, Control, Replanning)> {
+    &mut servo >> control.resources.0;
+    control
+        >> |sample| {
+            sample >> planner;
+            planner?
+        };
+    Ok((control.outcome, servo, control, planner))
+}
+
+#[tokio::test]
+async fn a_new_plan_mid_motion_takes_over_without_a_jump() {
+    const OTHER: [f64; 2] = [-0.2, 0.4];
+    let servo = Servo::new(0.5);
+    // Halfway through the first plan the arm moves fastest; a jump to the new
+    // plan's first point there would break the path tolerance at once.
+    let planner = Replanning {
+        follower: follower(&servo)
+            .with_path_tolerance([0.03; 2])
+            .with_goal_tolerance([1e-4; 2], Duration::from_millis(50)),
+        next: Some(vec![JointTrajectoryPoint {
+            time_from_start: 150_000_000,
+            q: OTHER,
+            dq: [0.; 2],
+            ddq: [0.; 2],
+        }]),
+        at: 100,
+        cycles: 0,
+    };
+    let (outcome, servo, ..) = replan(Control::new(), planner, servo).await.unwrap();
+    assert!(
+        matches!(outcome, Ok(Completion::Completed(()))),
+        "{outcome:?}"
+    );
+    assert_eq!(servo.breaks, 0);
+    assert!(
+        servo
+            .q
+            .iter()
+            .zip(OTHER)
+            .all(|(q, goal)| (q - goal).abs() <= 1e-4),
+        "{:?}",
+        servo.q
+    );
+    // 99 cycles on the first plan, 150 on the second, then a few to settle.
+    assert!((250..=265).contains(&servo.sent), "{}", servo.sent);
 }

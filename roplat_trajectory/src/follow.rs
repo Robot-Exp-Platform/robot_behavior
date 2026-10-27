@@ -8,6 +8,9 @@
 //! is by then instead of where it would have been. Between points it
 //! interpolates quintic segments through each point's position, velocity and
 //! acceleration; zero velocity and acceleration mean the motion rests there.
+//! A new plan can take over mid-run through
+//! [`replace`](JointTrajectoryFollower::replace), which continues from the
+//! current sample instead of jumping to the new first point.
 //!
 //! Tolerances check and refuse, as `roplat_safety`'s gates do: a measured
 //! position farther from the trajectory than the path tolerance, or a goal
@@ -76,20 +79,7 @@ impl<C: Clock, const N: usize> JointTrajectoryFollower<C, N> {
     /// Checks that `points` are finite and strictly increasing in time.
     /// Without tolerances the follower only commands the trajectory.
     pub fn new(points: Vec<JointTrajectoryPoint<N>>, clock: C) -> Result<Self, TrackingError> {
-        if points.is_empty() {
-            return Err(TrackingError::Empty);
-        }
-        let mut previous = -1;
-        for (index, point) in points.iter().enumerate() {
-            if point.time_from_start <= previous {
-                return Err(TrackingError::Timing { index });
-            }
-            previous = point.time_from_start;
-            let values = point.q.iter().chain(&point.dq).chain(&point.ddq);
-            if !values.into_iter().all(|v| v.is_finite()) {
-                return Err(TrackingError::NonFinite { index });
-            }
-        }
+        check(&points, -1)?;
         Ok(Self {
             points,
             clock,
@@ -128,6 +118,33 @@ impl<C: Clock, const N: usize> JointTrajectoryFollower<C, N> {
     /// Ends the current run; the next step starts the trajectory again.
     pub fn reset(&mut self) {
         self.start = None;
+    }
+
+    /// Replaces the trajectory with `points`, timed from now.
+    ///
+    /// During a run the motion carries on from where the current trajectory
+    /// is at this instant: that sample, with its velocity and acceleration,
+    /// becomes the first point, so the command stays continuous, and `points`
+    /// must start after it. Tolerances carry over and apply to the new goal.
+    /// Before a run `points` simply take the old ones' place. A refused
+    /// replacement leaves the current trajectory running.
+    pub fn replace(&mut self, points: Vec<JointTrajectoryPoint<N>>) -> Result<(), TrackingError> {
+        let Some(start) = self.start else {
+            check(&points, -1)?;
+            self.points = points;
+            return Ok(());
+        };
+        check(&points, 0)?;
+        let now = self.clock.now();
+        let nanos = now.nanos_since(&start).unwrap_or(i64::MIN);
+        if nanos < 0 {
+            return Err(TrackingError::ClockWentBack { nanos: nanos.saturating_neg() });
+        }
+        let mut current = self.sample(nanos_to_duration(nanos));
+        current.time_from_start = 0;
+        self.points = std::iter::once(current).chain(points).collect();
+        self.start = Some(now);
+        Ok(())
     }
 
     /// The trajectory at `t`: the first point before it starts, the final
@@ -237,6 +254,29 @@ pub fn points_from_samples<const N: usize>(
             }
         })
         .collect()
+}
+
+/// Points are non-empty, finite, and strictly increasing in time from after
+/// `after` nanoseconds.
+fn check<const N: usize>(
+    points: &[JointTrajectoryPoint<N>],
+    after: i64,
+) -> Result<(), TrackingError> {
+    if points.is_empty() {
+        return Err(TrackingError::Empty);
+    }
+    let mut previous = after;
+    for (index, point) in points.iter().enumerate() {
+        if point.time_from_start <= previous {
+            return Err(TrackingError::Timing { index });
+        }
+        previous = point.time_from_start;
+        let values = point.q.iter().chain(&point.dq).chain(&point.ddq);
+        if !values.into_iter().all(|v| v.is_finite()) {
+            return Err(TrackingError::NonFinite { index });
+        }
+    }
+    Ok(())
 }
 
 /// The first joint whose measured position is not within `tolerance` of
