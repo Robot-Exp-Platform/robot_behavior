@@ -14,6 +14,7 @@
 | `roplat_control` | Joint PD/PID, base-velocity PID, joint and Cartesian impedance, gravity compensation, computed torque, real-time thread priority. |
 | `roplat_trajectory` | Joint and Cartesian interpolation (linear, trapezoid, S-curve, fourth-order) and COPP time scaling. |
 | `roplat_description` | One robot model read from URDF: kinematic tree, inertia, visual/collision geometry, joint limits and chain forward kinematics, shared by kinematics, simulation, visualization and limit checks. Depends only on `roplat_msgs`. |
+| `roplat_safety` | Safety gates for control graphs: joint limits, rate limits, sample freshness, a cycle watchdog and a shared stop latch. A refused command fails the cycle, so the device receives `Break` and no command. [Design (zh)](roplat_safety/docs/design_zh.md). |
 
 Sample and geometry types (`Pose`, `JointSample`, `SpatialSample`, `LoadState`, `Twist`, …) come from [`roplat_msgs`](https://github.com/Robot-Exp-Platform/roplat) and are re-exported by `roplat_behavior`. They have one representation each and a fixed native layout, so the same values cross process and language boundaries. None of these crates depends on the roplat runtime unless you enable the `roplat` feature.
 

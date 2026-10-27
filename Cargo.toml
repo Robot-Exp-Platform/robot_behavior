@@ -1,8 +1,8 @@
 [workspace]
-members = ["roplat_behavior", "roplat_kinematics", "roplat_control", "roplat_trajectory", "roplat_description"]
+members = ["roplat_behavior", "roplat_kinematics", "roplat_control", "roplat_trajectory", "roplat_description", "roplat_safety"]
 resolver = "3"
 
-# The five crates share one README and one version.
+# The six crates share one README and one version.
 [workspace.package]
 version = "0.9.0"
 edition = "2024"

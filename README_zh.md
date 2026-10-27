@@ -14,6 +14,7 @@
 | `roplat_control` | 关节 PD/PID、底盘速度 PID、关节与笛卡尔阻抗、重力补偿、计算力矩、实时线程优先级。 |
 | `roplat_trajectory` | 关节与笛卡尔插值（直线、梯形、S 曲线、四次曲线）和 COPP 时间缩放。 |
 | `roplat_description` | 从 URDF 读出的同一份机器人模型：运动学树、惯量、可视/碰撞几何、关节限位与链式正运动学，供运动学、仿真、可视化与限位检查共用；只依赖 `roplat_msgs`。 |
+| `roplat_safety` | 控制图的安全门：关节限位、限速、样本新鲜度、周期看门狗与共享停止锁存。被拒绝的命令使本周期失败，设备收到 `Break`、不发命令。见[设计](roplat_safety/docs/design_zh.md)。 |
 
 采样与几何类型（`Pose`、`JointSample`、`SpatialSample`、`LoadState`、`Twist` 等）来自 roplat 核心的 [`roplat_msgs`](https://github.com/Robot-Exp-Platform/roplat)，由 `roplat_behavior` 重新导出。每个类型只有一种表示和固定的原生布局，同一份数据可以跨进程、跨语言传递。除非打开 `roplat` feature，这些包都不依赖 roplat 运行时。
 
