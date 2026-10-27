@@ -1,0 +1,25 @@
+[package]
+name = "roplat_frames"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+readme = "../README.md"
+description = "Frame tree with compile-time frame ids, static transforms and time-buffered joint and dynamic transforms"
+keywords = ["robot", "robotics", "frames", "transform", "roplat"]
+
+[dependencies]
+roplat_msgs = { version = "0.6.0-rc.1", features = ["nalgebra"] }
+roplat_description = { version = "0.9.0", path = "../roplat_description" }
+roplat = { version = "0.6.0-rc.1", optional = true }
+nalgebra = "0.34.1"
+thiserror = "2.0.17"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[features]
+default = []
+roplat = ["dep:roplat"]
