@@ -12,7 +12,7 @@
 | `roplat_behavior` | Capability contracts (`Robot`, motion spaces, control channels, model maps; gripper, force/torque, IMU and camera contracts), arm / base / legged state, optional roplat adapters and C / C++ / Python bindings. |
 | `roplat_kinematics` | Denavit–Hartenberg forward kinematics, Jacobians and iterative inverse kinematics; `dh_kinematics!` connects an arm to the model maps. |
 | `roplat_control` | Joint PD/PID, base-velocity PID, joint and Cartesian impedance, gravity compensation, computed torque, real-time thread priority. |
-| `roplat_trajectory` | Joint and Cartesian interpolation (linear, trapezoid, S-curve, fourth-order) and COPP time scaling. |
+| `roplat_trajectory` | Joint and Cartesian interpolation (linear, trapezoid, S-curve, fourth-order), COPP time scaling, and a clock-driven follower for timed joint trajectories. |
 | `roplat_description` | One robot model read from URDF: kinematic tree, inertia, visual/collision geometry, joint limits and chain forward kinematics, shared by kinematics, simulation, visualization and limit checks. Depends only on `roplat_msgs`. |
 
 Sample and geometry types (`Pose`, `JointSample`, `SpatialSample`, `LoadState`, `Twist`, …) come from [`roplat_msgs`](https://github.com/Robot-Exp-Platform/roplat) and are re-exported by `roplat_behavior`. They have one representation each and a fixed native layout, so the same values cross process and language boundaries. None of these crates depends on the roplat runtime unless you enable the `roplat` feature.
@@ -106,6 +106,8 @@ There are two different uses of async:
 An arm with a Denavit–Hartenberg table implements `roplat_kinematics::ArmForwardKinematics<N>` (and `ArmInverseKinematics<N>` for the iterative solvers). `dh_kinematics!(MyArm, 6)` then implements the flange-pose and Jacobian maps, and `dh_kinematics!(MyArm, 6, inverse)` also the inverse map, so generic code can use `ForwardKinematics`, `JacobianModel` and `InverseKinematics` from `roplat_behavior`.
 
 `roplat_control` and `roplat_trajectory` return ordinary closures for `control_with`. Choose gains and model data for your backend; they do not make timing guarantees.
+
+`JointTrajectoryFollower` plays timed `JointTrajectoryPoint`s on the joint-position channel. It reads time from a `roplat_msgs::Clock`, not from the cycle `Duration`, so the same follower runs on wall or simulation time. Path and goal tolerances refuse with a `TrackingError` rather than altering the command; with the `roplat` feature of `roplat_trajectory` the follower is a node, and `follower?` in a control domain ends the session with `Break`.
 
 ## Features and Roplat integration
 
