@@ -13,7 +13,7 @@
 | `roplat_kinematics` | Denavit–Hartenberg forward kinematics, Jacobians and iterative inverse kinematics; `dh_kinematics!` connects an arm to the model maps. `ArmKineCache::from_chain` takes a URDF chain from `roplat_description` instead of a DH table. |
 | `roplat_control` | Joint PD/PID, base-velocity PID, joint and Cartesian impedance, gravity compensation, computed torque, real-time thread priority. |
 | `roplat_trajectory` | Joint and Cartesian interpolation (linear, trapezoid, S-curve, fourth-order) and COPP time scaling. |
-| `roplat_description` | One robot model read from URDF: kinematic tree, inertia, visual/collision geometry, joint limits, chain forward kinematics and Jacobian, and the frames of every link in the tree, shared by kinematics, simulation, visualization and limit checks. Depends only on `roplat_msgs`. |
+| `roplat_description` | One robot model read from URDF: kinematic tree, inertia, visual/collision geometry, joint limits, chain forward kinematics and Jacobian, the frames of every link in the tree and whole-tree inverse dynamics (gravity compensation), shared by kinematics, simulation, visualization and limit checks. Depends only on `roplat_msgs`. |
 
 Sample and geometry types (`Pose`, `JointSample`, `SpatialSample`, `LoadState`, `Twist`, …) come from [`roplat_msgs`](https://github.com/Robot-Exp-Platform/roplat) and are re-exported by `roplat_behavior`. They have one representation each and a fixed native layout, so the same values cross process and language boundaries. None of these crates depends on the roplat runtime unless you enable the `roplat` feature.
 

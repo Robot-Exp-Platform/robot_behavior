@@ -7,7 +7,8 @@
 //! bounds, and its geometric [Jacobian](Chain::jacobian). Poses use
 //! [`roplat_msgs::Pose`]; limits convert to [`roplat_msgs::JointLimits`].
 //! [`RobotModel::link_frames`] places every link of the tree at once, for
-//! visualization.
+//! visualization; [`RobotModel::inverse_dynamics`] gives the joint efforts
+//! for a motion, gravity compensation included.
 //!
 //! Mesh file names are kept as written (`package://…`, relative paths);
 //! resolving them is the consumer's job, as for
@@ -241,6 +242,106 @@ impl RobotModel {
             frames[joint.child] = frames[joint.parent] * joint.transform(q);
         }
         frames
+    }
+
+    /// Joint forces and torques that give each movable joint the
+    /// acceleration `qdd` at position `q` and velocity `qd`, with the root
+    /// link fixed: the recursive Newton–Euler algorithm over the whole tree,
+    /// branches included. `state` gives `(q, qd, qdd)` per movable joint;
+    /// `gravity` is the gravitational acceleration in the root frame, e.g.
+    /// `[0.0, 0.0, -9.81]`. With zero `qd` and `qdd` the result is the
+    /// gravity torque.
+    ///
+    /// The result is indexed like [`joints`](Self::joints): torque (N·m) for
+    /// revolute and continuous joints, force (N) for prismatic ones, zero for
+    /// the rest. Links without [`Inertial`] carry nothing; this includes a
+    /// link that declares zero mass with a nonzero inertia tensor (Panda's
+    /// `panda_link8` in Bullet's data), which Bullet keeps as rotational
+    /// inertia. Otherwise the result agrees with Bullet's
+    /// `calculateInverseDynamics` to its single precision.
+    pub fn inverse_dynamics(
+        &self,
+        mut state: impl FnMut(&Joint) -> (f64, f64, f64),
+        gravity: [f64; 3],
+    ) -> Vec<f64> {
+        type V = na::Vector3<f64>;
+        let n = self.links.len();
+        let mut frames = vec![na::Isometry3::identity(); n];
+        let mut omega = vec![V::zeros(); n];
+        let mut alpha = vec![V::zeros(); n];
+        // Acceleration of each link origin; the root accelerating against
+        // gravity stands in for gravity acting on every link.
+        let mut accel = vec![V::zeros(); n];
+        accel[self.root] = -V::from(gravity);
+        let mut axes = vec![V::zeros(); self.joints.len()];
+
+        for &j in &self.order {
+            let joint = &self.joints[j];
+            let (p, c) = (joint.parent, joint.child);
+            let (q, qd, qdd) = if joint.is_movable() {
+                state(joint)
+            } else {
+                (0.0, 0.0, 0.0)
+            };
+            frames[c] = frames[p] * joint.transform(q);
+            let z =
+                frames[c].rotation * V::new(joint.axis.x, joint.axis.y, joint.axis.z).normalize();
+            axes[j] = z;
+            let r = frames[c].translation.vector - frames[p].translation.vector;
+            let carried = accel[p] + alpha[p].cross(&r) + omega[p].cross(&omega[p].cross(&r));
+            match joint.kind {
+                JointKind::Revolute | JointKind::Continuous => {
+                    omega[c] = omega[p] + z * qd;
+                    alpha[c] = alpha[p] + z * qdd + omega[p].cross(&(z * qd));
+                    accel[c] = carried;
+                }
+                JointKind::Prismatic => {
+                    omega[c] = omega[p];
+                    alpha[c] = alpha[p];
+                    accel[c] = carried + omega[p].cross(&(z * qd)) * 2.0 + z * qdd;
+                }
+                _ => {
+                    omega[c] = omega[p];
+                    alpha[c] = alpha[p];
+                    accel[c] = carried;
+                }
+            }
+        }
+
+        // Net force on each link and moment about its origin, in the root frame.
+        let mut force = vec![V::zeros(); n];
+        let mut moment = vec![V::zeros(); n];
+        for (i, link) in self.links.iter().enumerate() {
+            let Some(inertial) = link.inertial else {
+                continue;
+            };
+            let com = frames[i] * inertial.origin.quat();
+            let rc = com.translation.vector - frames[i].translation.vector;
+            let a_com = accel[i] + alpha[i].cross(&rc) + omega[i].cross(&omega[i].cross(&rc));
+            let [ixx, ixy, ixz, iyy, iyz, izz] = inertial.inertia;
+            let local = na::Matrix3::new(ixx, ixy, ixz, ixy, iyy, iyz, ixz, iyz, izz);
+            let rotation = com.rotation.to_rotation_matrix();
+            let world = rotation.matrix() * local * rotation.matrix().transpose();
+            force[i] = a_com * inertial.mass;
+            moment[i] =
+                world * alpha[i] + omega[i].cross(&(world * omega[i])) + rc.cross(&force[i]);
+        }
+
+        let mut efforts = vec![0.0; self.joints.len()];
+        for &j in self.order.iter().rev() {
+            let joint = &self.joints[j];
+            let (p, c) = (joint.parent, joint.child);
+            efforts[j] = match joint.kind {
+                JointKind::Revolute | JointKind::Continuous => axes[j].dot(&moment[c]),
+                JointKind::Prismatic => axes[j].dot(&force[c]),
+                _ => 0.0,
+            };
+            let r = frames[c].translation.vector - frames[p].translation.vector;
+            let (f, m) = (force[c], moment[c]);
+            force[p] += f;
+            moment[p] += m + r.cross(&f);
+        }
+        efforts
     }
 
     /// The joints from `base` down to `tip`, in order.
