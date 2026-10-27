@@ -1439,6 +1439,7 @@ version = "0.9.0"
 dependencies = [
  "nalgebra",
  "roplat_behavior",
+ "roplat_control",
  "roplat_description",
  "thiserror 2.0.18",
 ]
