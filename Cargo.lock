@@ -1434,6 +1434,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "roplat_frames"
+version = "0.9.0"
+dependencies = [
+ "nalgebra",
+ "roplat",
+ "roplat_description",
+ "roplat_msgs",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "roplat_kinematics"
 version = "0.9.0"
 dependencies = [
