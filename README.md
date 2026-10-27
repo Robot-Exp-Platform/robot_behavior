@@ -10,10 +10,10 @@
 | Crate | Contents |
 |---|---|
 | `roplat_behavior` | Capability contracts (`Robot`, motion spaces, control channels, model maps; gripper, force/torque, IMU and camera contracts), arm / base / legged state, optional roplat adapters and C / C++ / Python bindings. |
-| `roplat_kinematics` | Denavit–Hartenberg forward kinematics, Jacobians and iterative inverse kinematics; `dh_kinematics!` connects an arm to the model maps. `ArmKineCache::from_chain` takes a URDF chain from `roplat_description` instead of a DH table, and `chain_ik` solves its inverse kinematics (any joint kinds, within URDF limits). |
+| `roplat_kinematics` | Denavit–Hartenberg forward kinematics, Jacobians and iterative inverse kinematics; `dh_kinematics!` connects an arm to the model maps. `ArmKineCache::from_chain` takes a URDF chain from `roplat_description` instead of a DH table, `chain_ik` solves its inverse kinematics (any joint kinds, within URDF limits), and `UrdfDynamics` makes a URDF tree a `DynamicsModel` for the `roplat_control` torque controllers. |
 | `roplat_control` | Joint PD/PID, base-velocity PID, joint and Cartesian impedance, gravity compensation, computed torque, real-time thread priority. |
 | `roplat_trajectory` | Joint and Cartesian interpolation (linear, trapezoid, S-curve, fourth-order) and COPP time scaling. |
-| `roplat_description` | One robot model read from URDF: kinematic tree, inertia, visual/collision geometry, joint limits, chain forward kinematics and Jacobian, and the frames of every link in the tree, shared by kinematics, simulation, visualization and limit checks. Depends only on `roplat_msgs`. |
+| `roplat_description` | One robot model read from URDF: kinematic tree, inertia, visual/collision geometry, joint limits, chain forward kinematics and Jacobian, the frames of every link in the tree and whole-tree inverse dynamics (gravity compensation), shared by kinematics, simulation, visualization and limit checks. Depends only on `roplat_msgs`. |
 | `roplat_frames` | Frame tree of a robot cell: compile-time frame ids, static transforms from URDF and calibration, time-buffered joint and dynamic transforms looked up at a `Stamp` without allocating; optional `JointStateNode` (feature `roplat`). [Design (zh)](roplat_frames/docs/design_zh.md). |
 | `roplat_safety` | Safety gates for control graphs: joint limits, rate limits, sample freshness, a cycle watchdog and a shared stop latch. A refused command fails the cycle, so the device receives `Break` and no command. [Design (zh)](roplat_safety/docs/design_zh.md). |
 
