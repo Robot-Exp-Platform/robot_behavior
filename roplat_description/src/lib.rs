@@ -4,13 +4,16 @@
 //! [`RobotModel`] is the kinematic tree read from URDF: links with inertia and
 //! geometry, joints with their origin, axis and limits. A [`Chain`] cuts one
 //! base-to-tip path out of the tree for forward kinematics and per-joint
-//! bounds. Poses use [`roplat_msgs::Pose`]; limits convert to
-//! [`roplat_msgs::JointLimits`].
+//! bounds, and its geometric [Jacobian](Chain::jacobian). Poses use
+//! [`roplat_msgs::Pose`]; limits convert to [`roplat_msgs::JointLimits`].
+//! [`RobotModel::link_frames`] places every link of the tree at once, for
+//! visualization.
 //!
 //! Mesh file names are kept as written (`package://…`, relative paths);
 //! resolving them is the consumer's job, as for
 //! `roplat_behavior::SimulationModel` paths. DH parameters remain a separate
-//! source in `roplat_kinematics`.
+//! source in `roplat_kinematics`, whose `ArmKineCache::from_chain` also accepts
+//! a [`Chain`].
 
 use std::path::Path;
 
@@ -146,6 +149,8 @@ pub struct RobotModel {
     root: usize,
     /// `parent_joint[link]` is the joint whose child is `link`.
     parent_joint: Vec<Option<usize>>,
+    /// Joint indices with every parent before its children.
+    order: Vec<usize>,
 }
 
 impl RobotModel {
@@ -182,7 +187,29 @@ impl RobotModel {
         let [root] = roots[..] else {
             return Err(DescriptionError::RootCount(roots.len()));
         };
-        Ok(Self { name: robot.name.clone(), links, joints, root, parent_joint })
+
+        // Breadth-first from the root. With one parent per link and a single
+        // root every joint is reached exactly once.
+        let mut order = Vec::with_capacity(joints.len());
+        let mut frontier = vec![root];
+        while !frontier.is_empty() {
+            let mut next = Vec::new();
+            for (i, joint) in joints.iter().enumerate() {
+                if frontier.contains(&joint.parent) {
+                    order.push(i);
+                    next.push(joint.child);
+                }
+            }
+            frontier = next;
+        }
+        Ok(Self {
+            name: robot.name.clone(),
+            links,
+            joints,
+            root,
+            parent_joint,
+            order,
+        })
     }
 
     pub fn root(&self) -> &Link {
@@ -195,6 +222,25 @@ impl RobotModel {
 
     pub fn joint(&self, name: &str) -> Option<&Joint> {
         self.joints.iter().find(|j| j.name == name)
+    }
+
+    /// Every link frame in the root frame, indexed like [`links`](Self::links).
+    ///
+    /// `position` gives each [movable](Joint::is_movable) joint's position;
+    /// it is not called for other joints. Branches (grippers, multi-arm
+    /// trees) are all placed.
+    pub fn link_frames(&self, mut position: impl FnMut(&Joint) -> f64) -> Vec<na::Isometry3<f64>> {
+        let mut frames = vec![na::Isometry3::identity(); self.links.len()];
+        for &j in &self.order {
+            let joint = &self.joints[j];
+            let q = if joint.is_movable() {
+                position(joint)
+            } else {
+                0.0
+            };
+            frames[joint.child] = frames[joint.parent] * joint.transform(q);
+        }
+        frames
     }
 
     /// The joints from `base` down to `tip`, in order.
@@ -266,6 +312,45 @@ impl Chain {
                 };
                 acc * joint.transform(position)
             }))
+    }
+
+    /// The `6 x dof` geometric Jacobian of the tip in the base frame, linear
+    /// rows first: column `i` maps the velocity of the `i`-th movable joint
+    /// to the tip's `[vx, vy, vz, wx, wy, wz]`.
+    pub fn jacobian(&self, q: &[f64]) -> Result<na::Matrix6xX<f64>, DescriptionError> {
+        let expected = self.dof();
+        if q.len() != expected {
+            return Err(DescriptionError::DofMismatch { expected, got: q.len() });
+        }
+        // Joint axes and origins in the base frame, then the tip.
+        let mut axes = Vec::with_capacity(expected);
+        let mut frame = na::Isometry3::identity();
+        let mut q = q.iter();
+        for joint in &self.joints {
+            let position = if joint.is_movable() {
+                // The joint frame before its motion; the axis is given in it.
+                let joint_frame = frame * joint.origin.quat();
+                let axis = joint_frame.rotation
+                    * na::Vector3::new(joint.axis.x, joint.axis.y, joint.axis.z).normalize();
+                axes.push((joint.kind, axis, joint_frame.translation.vector));
+                *q.next().unwrap()
+            } else {
+                0.0
+            };
+            frame *= joint.transform(position);
+        }
+        let tip = frame.translation.vector;
+
+        let mut jacobian = na::Matrix6xX::zeros(expected);
+        for (i, (kind, axis, origin)) in axes.into_iter().enumerate() {
+            let (linear, angular) = match kind {
+                JointKind::Prismatic => (axis, na::Vector3::zeros()),
+                _ => (axis.cross(&(tip - origin)), axis),
+            };
+            jacobian.fixed_view_mut::<3, 1>(0, i).copy_from(&linear);
+            jacobian.fixed_view_mut::<3, 1>(3, i).copy_from(&angular);
+        }
+        Ok(jacobian)
     }
 
     /// Position, velocity and effort bounds of the movable joints. The

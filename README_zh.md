@@ -10,10 +10,10 @@
 | 包 | 内容 |
 |---|---|
 | `roplat_behavior` | 能力契约（`Robot`、运动空间、控制通道、模型映射；夹爪、力/力矩、IMU 与相机契约）、机械臂/底盘/腿足状态，可选的 roplat 适配与 C / C++ / Python 绑定。 |
-| `roplat_kinematics` | DH 正运动学、雅可比与迭代逆运动学；`dh_kinematics!` 把机械臂接入模型映射。 |
+| `roplat_kinematics` | DH 正运动学、雅可比与迭代逆运动学；`dh_kinematics!` 把机械臂接入模型映射。`ArmKineCache::from_chain` 可用 `roplat_description` 的 URDF 链代替 DH 表。 |
 | `roplat_control` | 关节 PD/PID、底盘速度 PID、关节与笛卡尔阻抗、重力补偿、计算力矩、实时线程优先级。 |
 | `roplat_trajectory` | 关节与笛卡尔插值（直线、梯形、S 曲线、四次曲线）和 COPP 时间缩放。 |
-| `roplat_description` | 从 URDF 读出的同一份机器人模型：运动学树、惯量、可视/碰撞几何、关节限位与链式正运动学，供运动学、仿真、可视化与限位检查共用；只依赖 `roplat_msgs`。 |
+| `roplat_description` | 从 URDF 读出的同一份机器人模型：运动学树、惯量、可视/碰撞几何、关节限位、链式正运动学与雅可比，以及整棵树各连杆的位姿，供运动学、仿真、可视化与限位检查共用；只依赖 `roplat_msgs`。 |
 
 采样与几何类型（`Pose`、`JointSample`、`SpatialSample`、`LoadState`、`Twist` 等）来自 roplat 核心的 [`roplat_msgs`](https://github.com/Robot-Exp-Platform/roplat)，由 `roplat_behavior` 重新导出。每个类型只有一种表示和固定的原生布局，同一份数据可以跨进程、跨语言传递。除非打开 `roplat` feature，这些包都不依赖 roplat 运行时。
 
