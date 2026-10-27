@@ -9,6 +9,8 @@
 
 #![feature(async_trait_bounds)]
 
+#[cfg(feature = "conformance")]
+pub mod conformance;
 mod exception;
 #[cfg(feature = "ffi")]
 pub mod ffi;

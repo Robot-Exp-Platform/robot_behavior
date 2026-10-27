@@ -36,6 +36,8 @@ tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 
 [features]
 default = []
+# Contract conformance checks for driver tests.
+conformance = []
 roplat = ["dep:roplat", "dep:tokio"]
 ffi = []
 to_c = ["ffi"]
