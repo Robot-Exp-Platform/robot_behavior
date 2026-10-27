@@ -107,6 +107,8 @@ An arm with a Denavit–Hartenberg table implements `roplat_kinematics::ArmForwa
 
 `roplat_control` and `roplat_trajectory` return ordinary closures for `control_with`. Choose gains and model data for your backend; they do not make timing guarantees.
 
+`JointTrajectoryFollower` plays timed `JointTrajectoryPoint`s on the joint-position channel. It reads time from a `roplat_msgs::Clock`, not from the cycle `Duration`, so the same follower runs on wall or simulation time. Path and goal tolerances refuse with a `TrackingError` rather than altering the command; with the `roplat` feature of `roplat_trajectory` the follower is a node, and `follower?` in a control domain ends the session with `Break`.
+
 ## Features and Roplat integration
 
 Default features are empty. The Rust motion, control, state, and model interfaces work without Roplat.
