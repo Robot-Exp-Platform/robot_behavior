@@ -1495,6 +1495,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "roplat_safety"
+version = "0.9.0"
+dependencies = [
+ "roplat",
+ "roplat_behavior",
+ "roplat_msgs",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "roplat_system"
 version = "0.6.0-rc.1"
 dependencies = [
