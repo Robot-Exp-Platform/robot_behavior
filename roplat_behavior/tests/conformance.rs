@@ -5,8 +5,8 @@
 use std::{cell::Cell, rc::Rc};
 
 use roplat_behavior::{
-    ForceTorqueSensor, Gripper, ImuSensor, RobotResult,
-    conformance::{check_force_torque_sensor, check_gripper, check_imu},
+    ForceTorqueSensor, Gripper, ImuSensor, Joints, RobotResult,
+    conformance::{check_force_torque_sensor, check_gripper, check_imu, check_joints},
     msgs::{
         ForceTorque, FrameId, GripperCommand, GripperState, Header, Imu, Quaternion, Stamp,
         Stamped, Wrench, clock,
@@ -159,4 +159,37 @@ fn gripper_checks() {
     .unwrap_err();
     assert_eq!(e.check, "gripper: width");
     assert!(e.detail.contains("sent 0.08"), "{e}");
+}
+
+struct GoodArm;
+impl Joints<2> for GoodArm {
+    const JOINT_DEFAULT: [f64; 2] = [0.0, -1.0];
+    const JOINT_PACKED: [f64; 2] = [0.0, -2.0];
+    const JOINT_MIN: [f64; 2] = [-3.0, -3.0];
+    const JOINT_MAX: [f64; 2] = [3.0, -0.1];
+    const JOINT_VEL_BOUND: [f64; 2] = [2.0, 2.0];
+}
+
+/// Leaves the packed posture at the all-zero default, outside joint 1.
+struct ZeroPackedArm;
+impl Joints<2> for ZeroPackedArm {
+    const JOINT_DEFAULT: [f64; 2] = [0.0, -1.0];
+    const JOINT_MIN: [f64; 2] = [-3.0, -3.0];
+    const JOINT_MAX: [f64; 2] = [3.0, -0.1];
+}
+
+struct NegativeVelocityArm;
+impl Joints<1> for NegativeVelocityArm {
+    const JOINT_MIN: [f64; 1] = [-1.0];
+    const JOINT_MAX: [f64; 1] = [1.0];
+    const JOINT_VEL_BOUND: [f64; 1] = [-2.0];
+}
+
+#[test]
+fn joints_checks() {
+    check_joints::<GoodArm, 2>().unwrap();
+    let e = check_joints::<ZeroPackedArm, 2>().unwrap_err();
+    assert!(e.detail.contains("joint 1: packed posture 0"), "{e}");
+    let e = check_joints::<NegativeVelocityArm, 1>().unwrap_err();
+    assert!(e.detail.contains("velocity bound -2"), "{e}");
 }

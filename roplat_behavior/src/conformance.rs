@@ -8,15 +8,15 @@
 //! The checks cover what the contracts promise for every implementation:
 //! readings of one sensor share a clock and a frame, sequence numbers rise
 //! and stamps do not go back, values are finite, an IMU orientation is a unit
-//! quaternion, a tared static sensor reads zero, and a gripper reaches the
-//! widths it is sent. Device-specific behavior (ranges, noise, timing) stays
+//! quaternion, a tared static sensor reads zero, a gripper reaches the
+//! widths it is sent, and an arm's declared joint envelope is coherent. Device-specific behavior (ranges, noise, timing) stays
 //! in the driver's own tests.
 
 use std::fmt;
 
 use roplat_msgs::{GripperCommand, Header, Imu};
 
-use crate::{ForceTorqueSensor, Gripper, ImuSensor, RobotException};
+use crate::{ForceTorqueSensor, Gripper, ImuSensor, Joints, RobotException};
 
 /// A broken contract promise.
 #[derive(Debug)]
@@ -197,6 +197,46 @@ pub fn check_gripper<G: Gripper>(
                 "gripper: width",
                 format!("sent {width} m, reads {reached} m"),
             ));
+        }
+    }
+    Ok(())
+}
+
+/// The joint envelope a [`Joints`] implementation declares: each lower limit
+/// below its upper limit, the default and packed postures within the limits,
+/// and every rate and torque bound positive. Needs no device.
+pub fn check_joints<T: Joints<N>, const N: usize>() -> Result<(), Violation> {
+    const CHECK: &str = "joints";
+    for i in 0..N {
+        let (min, max) = (T::JOINT_MIN[i], T::JOINT_MAX[i]);
+        if min.is_nan() || max.is_nan() || min >= max {
+            return Err(violation(
+                CHECK,
+                format!("joint {i}: min {min} is not below max {max}"),
+            ));
+        }
+        for (what, q) in [
+            ("default", T::JOINT_DEFAULT[i]),
+            ("packed", T::JOINT_PACKED[i]),
+        ] {
+            if !(min..=max).contains(&q) {
+                return Err(violation(
+                    CHECK,
+                    format!("joint {i}: {what} posture {q} is outside [{min}, {max}]"),
+                ));
+            }
+        }
+        let bounds = [
+            ("velocity", T::JOINT_VEL_BOUND[i]),
+            ("acceleration", T::JOINT_ACC_BOUND[i]),
+            ("jerk", T::JOINT_JERK_BOUND[i]),
+            ("torque", T::TORQUE_BOUND[i]),
+            ("torque rate", T::TORQUE_DOT_BOUND[i]),
+        ];
+        for (what, bound) in bounds {
+            if bound.is_nan() || bound <= 0.0 {
+                return Err(violation(CHECK, format!("joint {i}: {what} bound {bound}")));
+            }
         }
     }
     Ok(())
