@@ -83,3 +83,71 @@ fn planar_two_link_matches_the_closed_form() {
     assert!((efforts[0] - tau1).abs() < 1e-9, "{efforts:?} vs {tau1}");
     assert!((efforts[1] - tau2).abs() < 1e-9, "{efforts:?} vs {tau2}");
 }
+
+/// The planar 2R mass matrix in closed form, and forward dynamics inverting
+/// inverse dynamics.
+#[test]
+fn mass_matrix_and_forward_dynamics() {
+    let (m2, l1, c2, i2) = (2.0, 0.5, 0.15, 0.02);
+    let arm = format!(
+        r#"<robot name="planar2r"><link name="base"/>
+      <link name="upper"><inertial><origin xyz="0.2 0 0"/><mass value="3"/>
+        <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.04"/></inertial></link>
+      <link name="fore"><inertial><origin xyz="{c2} 0 0"/><mass value="{m2}"/>
+        <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="{i2}"/></inertial></link>
+      <link name="tool"/>
+      <joint name="shoulder" type="revolute"><parent link="base"/><child link="upper"/><axis xyz="0 0 1"/>
+        <limit lower="-3" upper="3" velocity="1" effort="1"/></joint>
+      <joint name="elbow" type="revolute"><parent link="upper"/><child link="fore"/><origin xyz="{l1} 0 0"/>
+        <axis xyz="0 0 1"/><limit lower="-3" upper="3" velocity="1" effort="1"/></joint>
+      <joint name="mount" type="fixed"><parent link="fore"/><child link="tool"/></joint></robot>"#
+    );
+    let model = RobotModel::from_urdf_str(&arm).unwrap();
+    assert_eq!(model.movable_joints(), [0, 1]);
+    let q = [0.3, 1.1];
+    let m = model.mass_matrix(&q).unwrap();
+    let k2 = q[1].cos();
+    let m11 = 0.04 + i2 + 3.0 * 0.2 * 0.2 + m2 * (l1 * l1 + c2 * c2 + 2.0 * l1 * c2 * k2);
+    let m12 = i2 + m2 * (c2 * c2 + l1 * c2 * k2);
+    let m22 = i2 + m2 * c2 * c2;
+    for (got, want) in [
+        (m[(0, 0)], m11),
+        (m[(0, 1)], m12),
+        (m[(1, 0)], m12),
+        (m[(1, 1)], m22),
+    ] {
+        assert!((got - want).abs() < 1e-12, "{m}");
+    }
+
+    let (qd, qdd) = ([0.8, -1.7], [2.0, -0.5]);
+    let gravity = [0.3, -0.2, -G];
+    let efforts = model.inverse_dynamics(
+        |j| {
+            let i = usize::from(j.name == "elbow");
+            (q[i], qd[i], qdd[i])
+        },
+        gravity,
+    );
+    let back = model
+        .forward_dynamics(&q, &qd, &efforts[..2], gravity)
+        .unwrap();
+    assert!(
+        (back[0] - qdd[0]).abs() < 1e-9 && (back[1] - qdd[1]).abs() < 1e-9,
+        "{back:?}"
+    );
+    assert!(model.mass_matrix(&[0.0]).is_err());
+}
+
+#[test]
+fn a_massless_movable_joint_is_singular() {
+    let model = RobotModel::from_urdf_str(
+        r#"<robot name="r"><link name="a"/><link name="b"/>
+        <joint name="j" type="revolute"><parent link="a"/><child link="b"/><axis xyz="0 0 1"/>
+        <limit lower="-1" upper="1" velocity="1" effort="1"/></joint></robot>"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        model.forward_dynamics(&[0.0], &[0.0], &[1.0], [0.0; 3]),
+        Err(roplat_description::DescriptionError::SingularMassMatrix)
+    ));
+}

@@ -37,6 +37,10 @@ pub enum DescriptionError {
     NotAncestor { base: String, tip: String },
     #[error("chain has {expected} movable joints, got {got} positions")]
     DofMismatch { expected: usize, got: usize },
+    /// Some motion of the tree has no inertia (a movable joint carries no
+    /// mass), so the mass matrix cannot be inverted.
+    #[error("the mass matrix is singular: a movable joint moves no inertia")]
+    SingularMassMatrix,
 }
 
 impl From<urdf_rs::UrdfError> for DescriptionError {
@@ -342,6 +346,91 @@ impl RobotModel {
             moment[p] += m + r.cross(&f);
         }
         efforts
+    }
+
+    /// Indices into [`joints`](Self::joints) of the movable joints, in file
+    /// order: the coordinate order of [`mass_matrix`](Self::mass_matrix) and
+    /// [`forward_dynamics`](Self::forward_dynamics).
+    pub fn movable_joints(&self) -> Vec<usize> {
+        (0..self.joints.len())
+            .filter(|&j| self.joints[j].is_movable())
+            .collect()
+    }
+
+    /// The joint-space mass matrix at positions `q` (one per movable joint,
+    /// in [`movable_joints`](Self::movable_joints) order), fixed root: column
+    /// `i` is the effort for a unit acceleration of joint `i` with no velocity
+    /// and no gravity. Same inertia conventions as
+    /// [`inverse_dynamics`](Self::inverse_dynamics).
+    pub fn mass_matrix(&self, q: &[f64]) -> Result<na::DMatrix<f64>, DescriptionError> {
+        let movable = self.movable_joints();
+        if q.len() != movable.len() {
+            return Err(DescriptionError::DofMismatch { expected: movable.len(), got: q.len() });
+        }
+        let slot = self.coordinate_slots(&movable);
+        let n = movable.len();
+        let mut m = na::DMatrix::zeros(n, n);
+        for i in 0..n {
+            let efforts = self.inverse_dynamics(
+                |joint| {
+                    let k = slot(joint);
+                    (q[k], 0.0, if k == i { 1.0 } else { 0.0 })
+                },
+                [0.0; 3],
+            );
+            for (row, &j) in movable.iter().enumerate() {
+                m[(row, i)] = efforts[j];
+            }
+        }
+        Ok(m)
+    }
+
+    /// Joint accelerations produced by efforts `tau` at positions `q` and
+    /// velocities `qd` (all in [`movable_joints`](Self::movable_joints)
+    /// order) under `gravity`, fixed root: `M(q)⁻¹ (τ − h(q, q̇))`, where `h`
+    /// is the inverse dynamics at zero acceleration.
+    pub fn forward_dynamics(
+        &self,
+        q: &[f64],
+        qd: &[f64],
+        tau: &[f64],
+        gravity: [f64; 3],
+    ) -> Result<Vec<f64>, DescriptionError> {
+        let movable = self.movable_joints();
+        for len in [qd.len(), tau.len()] {
+            if len != movable.len() {
+                return Err(DescriptionError::DofMismatch { expected: movable.len(), got: len });
+            }
+        }
+        let m = self.mass_matrix(q)?;
+        let slot = self.coordinate_slots(&movable);
+        let bias = self.inverse_dynamics(
+            |joint| {
+                let k = slot(joint);
+                (q[k], qd[k], 0.0)
+            },
+            gravity,
+        );
+        let rhs = na::DVector::from_iterator(
+            movable.len(),
+            movable.iter().zip(tau).map(|(&j, t)| t - bias[j]),
+        );
+        let qdd = m
+            .cholesky()
+            .ok_or(DescriptionError::SingularMassMatrix)?
+            .solve(&rhs);
+        Ok(qdd.as_slice().to_vec())
+    }
+
+    /// Maps a movable joint to its coordinate index; joint names are unique
+    /// in a URDF.
+    fn coordinate_slots(&self, movable: &[usize]) -> impl Fn(&Joint) -> usize {
+        let slots: std::collections::HashMap<&str, usize> = movable
+            .iter()
+            .enumerate()
+            .map(|(k, &j)| (self.joints[j].name.as_str(), k))
+            .collect();
+        move |joint: &Joint| slots[joint.name.as_str()]
     }
 
     /// The joints from `base` down to `tip`, in order.
