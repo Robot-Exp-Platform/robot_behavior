@@ -7,6 +7,9 @@
 //! optionally, inverse kinematics), so generic code can use the type through
 //! `ForwardKinematics`, `JacobianModel` and `InverseKinematics`.
 //!
+//! An arm read from URDF needs no DH table: [`ArmKineCache::from_chain`]
+//! builds the same cache from a `roplat_description::Chain`.
+//!
 //! The crate does not use `generic_const_exprs`: the next-generation trait
 //! solver does not support it, and nightly 2026-10-20 crashes on downstream
 //! crates that depend on it.
