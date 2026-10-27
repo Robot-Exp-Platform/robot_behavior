@@ -2,7 +2,7 @@
 
 use nalgebra as na;
 use roplat_description::RobotModel;
-use roplat_kinematics::{ArmKineCache, ChainError, Link};
+use roplat_kinematics::{ArmKineCache, ChainError, CommonStop, Link, chain_ik};
 
 /// Standard DH rows `(theta, d, r, alpha)`, as in `kine_cache.rs`.
 const DH6: [(f64, f64, f64, f64); 6] = [
@@ -114,4 +114,63 @@ fn rejects_wrong_length_and_prismatic_joints() {
         ArmKineCache::<1>::from_chain(&chain, &[0.0], &[0.0]),
         Err(ChainError::Prismatic(name)) if name == "slide"
     ));
+}
+
+fn stop() -> CommonStop {
+    CommonStop { pos_tol: 1e-8, rot_tol: 1e-8, max_iters: 500, step_clip: 0.2 }
+}
+
+#[test]
+fn chain_ik_recovers_poses_from_perturbed_seeds() {
+    let model = RobotModel::from_urdf_str(&urdf()).unwrap();
+    let chain = model.chain("l0", "flange").unwrap();
+    let cases = [
+        [0.4, -0.7, 1.1, 0.2, -0.5, 0.9],
+        [-1.2, 0.3, -0.8, 1.5, 0.7, -2.0],
+        [2.1, 1.0, 0.4, -1.1, 1.3, 0.2],
+    ];
+    for q_true in cases {
+        let target = chain.forward_kinematics(&q_true).unwrap();
+        let q0: Vec<f64> = q_true
+            .iter()
+            .enumerate()
+            .map(|(i, q)| q + 0.3 * (-1f64).powi(i as i32))
+            .collect();
+        let solution = chain_ik(&chain, &q0, &target, 1e-3, stop()).unwrap();
+        assert!(solution.converged, "{q_true:?}: {solution:?}");
+        let reached = chain.forward_kinematics_iso(&solution.q).unwrap();
+        let target = target.quat();
+        assert!((reached.translation.vector - target.translation.vector).norm() < 1e-8);
+        assert!(reached.rotation.angle_to(&target.rotation) < 1e-8);
+        assert!(solution.q.iter().all(|q| (-3.0..=3.0).contains(q)));
+    }
+}
+
+#[test]
+fn chain_ik_handles_prismatic_joints_and_respects_limits() {
+    let arm = r#"<robot name="lift_arm"><link name="w"/><link name="a"/><link name="b"/><link name="c"/>
+        <joint name="lift" type="prismatic"><parent link="w"/><child link="a"/><axis xyz="0 0 1"/>
+          <limit lower="0" upper="0.5" velocity="1" effort="1"/></joint>
+        <joint name="yaw" type="revolute"><parent link="a"/><child link="b"/><axis xyz="0 0 1"/>
+          <limit lower="-1" upper="1" velocity="1" effort="1"/></joint>
+        <joint name="pitch" type="revolute"><parent link="b"/><child link="c"/><origin xyz="0.3 0 0"/><axis xyz="0 1 0"/>
+          <limit lower="-1" upper="1" velocity="1" effort="1"/></joint></robot>"#;
+    let model = RobotModel::from_urdf_str(arm).unwrap();
+    let chain = model.chain("w", "c").unwrap();
+
+    let target = chain.forward_kinematics(&[0.3, 0.5, -0.4]).unwrap();
+    let solution = chain_ik(&chain, &[0.1, 0.0, 0.0], &target, 1e-3, stop()).unwrap();
+    assert!(solution.converged, "{solution:?}");
+    assert!((solution.q[0] - 0.3).abs() < 1e-6);
+
+    // Reaching it needs the lift at 0.8 m, beyond its 0.5 m limit.
+    let beyond = chain.forward_kinematics(&[0.5, 0.5, -0.4]).unwrap();
+    let mut beyond = beyond;
+    beyond.position.z += 0.3;
+    let solution = chain_ik(&chain, &[0.1, 0.0, 0.0], &beyond, 1e-3, stop()).unwrap();
+    assert!(!solution.converged);
+    assert!((solution.position_error - 0.3).abs() < 1e-3, "{solution:?}");
+    assert!(solution.q[0] <= 0.5 && solution.q[0] >= 0.0);
+
+    assert!(chain_ik(&chain, &[0.0], &target, 1e-3, stop()).is_err());
 }
