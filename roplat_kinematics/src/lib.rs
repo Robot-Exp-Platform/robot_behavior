@@ -8,7 +8,9 @@
 //! `ForwardKinematics`, `JacobianModel` and `InverseKinematics`.
 //!
 //! An arm read from URDF needs no DH table: [`ArmKineCache::from_chain`]
-//! builds the same cache from a `roplat_description::Chain`.
+//! builds the same cache from a `roplat_description::Chain`, and
+//! [`UrdfDynamics`] makes a URDF tree a `DynamicsModel` for the
+//! `roplat_control` torque controllers.
 //!
 //! The crate does not use `generic_const_exprs`: the next-generation trait
 //! solver does not support it, and nightly 2026-10-20 crashes on downstream
@@ -16,9 +18,11 @@
 
 mod dh;
 mod kinematics;
+mod urdf_dynamics;
 
 pub use dh::DhParam;
 pub use kinematics::*;
+pub use urdf_dynamics::UrdfDynamics;
 
 #[doc(hidden)]
 pub mod __private {
