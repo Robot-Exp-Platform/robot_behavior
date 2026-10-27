@@ -19,7 +19,7 @@ mod chain_ik;
 mod dh;
 mod kinematics;
 
-pub use chain_ik::{ChainIkSolution, chain_ik};
+pub use chain_ik::{ChainIkSolution, chain_ik, dh_chain_discrepancy};
 pub use dh::DhParam;
 pub use kinematics::*;
 

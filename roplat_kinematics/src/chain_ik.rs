@@ -4,7 +4,7 @@ use nalgebra as na;
 use roplat_behavior::Pose;
 use roplat_description::{Chain, DescriptionError};
 
-use crate::CommonStop;
+use crate::{ArmKineCache, CommonStop, DhParam};
 
 /// The result of [`chain_ik`]: the last joint vector and how close it got.
 #[derive(Clone, Debug, PartialEq)]
@@ -90,4 +90,36 @@ pub fn chain_ik(
         q: q.as_slice().to_vec(),
         iterations,
     })
+}
+
+/// How far a DH table and a URDF chain are from describing the same arm.
+///
+/// Two models of one arm may place the end effector differently, so they
+/// agree when `chain(q) = dh(q) · E` for one constant tool transform `E`.
+/// This evaluates both at each of `samples`, takes `E` from the first, and
+/// returns the largest deviation from it, as metres of translation plus
+/// radians of rotation; near zero means the same kinematics. A different
+/// joint direction or zero posture gives a deviation of order one. Both
+/// models must share the base frame.
+pub fn dh_chain_discrepancy<const N: usize>(
+    dh: &[DhParam; N],
+    chain: &Chain,
+    samples: &[[f64; N]],
+) -> Result<f64, DescriptionError> {
+    let tool = |q: &[f64; N]| -> Result<na::Isometry3<f64>, DescriptionError> {
+        let dh = ArmKineCache::build(dh, q, &[0.0; N]).end_effector_pose();
+        Ok(dh.inv_mul(&chain.forward_kinematics_iso(q)?))
+    };
+    let Some(first) = samples.first() else {
+        return Ok(0.0);
+    };
+    let reference = tool(first)?;
+    let mut worst: f64 = 0.0;
+    for q in &samples[1..] {
+        let e = tool(q)?;
+        let deviation = (e.translation.vector - reference.translation.vector).norm()
+            + e.rotation.angle_to(&reference.rotation);
+        worst = worst.max(deviation);
+    }
+    Ok(worst)
 }

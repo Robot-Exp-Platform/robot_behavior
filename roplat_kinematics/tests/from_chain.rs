@@ -2,7 +2,9 @@
 
 use nalgebra as na;
 use roplat_description::RobotModel;
-use roplat_kinematics::{ArmKineCache, ChainError, CommonStop, Link, chain_ik};
+use roplat_kinematics::{
+    ArmKineCache, ChainError, CommonStop, DhParam, Link, chain_ik, dh_chain_discrepancy,
+};
 
 /// Standard DH rows `(theta, d, r, alpha)`, as in `kine_cache.rs`.
 const DH6: [(f64, f64, f64, f64); 6] = [
@@ -173,4 +175,23 @@ fn chain_ik_handles_prismatic_joints_and_respects_limits() {
     assert!(solution.q[0] <= 0.5 && solution.q[0] >= 0.0);
 
     assert!(chain_ik(&chain, &[0.0], &target, 1e-3, stop()).is_err());
+}
+
+#[test]
+fn dh_chain_discrepancy_tells_same_and_different_arms_apart() {
+    let model = RobotModel::from_urdf_str(&urdf()).unwrap();
+    let chain = model.chain("l0", "l6").unwrap();
+    let dh = DH6.map(|(theta, d, r, alpha)| DhParam::DH { theta, d, r, alpha });
+    let samples: Vec<[f64; 6]> = (0..5)
+        .map(|k| std::array::from_fn(|i| ((i + 1) as f64 * (k as f64 + 0.7)).sin()))
+        .collect();
+    // The chain stops before the flange: same arm, different tool frame.
+    assert!(dh_chain_discrepancy(&dh, &chain, &samples).unwrap() < 1e-9);
+
+    // The third joint turning the other way is a different arm.
+    let mut flipped = dh;
+    if let DhParam::DH { alpha, .. } = &mut flipped[1] {
+        *alpha = std::f64::consts::PI;
+    }
+    assert!(dh_chain_discrepancy(&flipped, &chain, &samples).unwrap() > 0.1);
 }
