@@ -10,10 +10,12 @@
 | Crate | Contents |
 |---|---|
 | `roplat_behavior` | Capability contracts (`Robot`, motion spaces, control channels, model maps; gripper, force/torque, IMU and camera contracts), arm / base / legged state, optional roplat adapters and C / C++ / Python bindings. |
-| `roplat_kinematics` | Denavit–Hartenberg forward kinematics, Jacobians and iterative inverse kinematics; `dh_kinematics!` connects an arm to the model maps. |
-| `roplat_control` | Joint PD/PID, base-velocity PID, joint and Cartesian impedance, gravity compensation, computed torque, real-time thread priority. |
+| `roplat_kinematics` | Denavit–Hartenberg forward kinematics, Jacobians and iterative inverse kinematics; `dh_kinematics!` connects an arm to the model maps. `ArmKineCache::from_chain` takes a URDF chain from `roplat_description` instead of a DH table, `chain_ik` solves its inverse kinematics (any joint kinds, within URDF limits), and `UrdfDynamics` makes a URDF tree a `DynamicsModel` for the `roplat_control` torque controllers. |
+| `roplat_control` | Joint PD/PID, base-velocity PID, joint and Cartesian impedance, gravity compensation, computed torque, operator teleoperation (`cartesian_teleop_control`: deadzone, dead-man button, input timeout, acceleration limit), real-time thread priority. |
 | `roplat_trajectory` | Joint and Cartesian interpolation (linear, trapezoid, S-curve, fourth-order) and COPP time scaling; `plan_joint_path` finds collision-free joint-space waypoints (RRT-Connect, caller-supplied collision check). |
-| `roplat_description` | One robot model read from URDF: kinematic tree, inertia, visual/collision geometry, joint limits and chain forward kinematics, shared by kinematics, simulation, visualization and limit checks. Depends only on `roplat_msgs`. |
+| `roplat_description` | One robot model read from URDF: kinematic tree, inertia, visual/collision geometry, joint limits, chain forward kinematics and Jacobian, the frames of every link in the tree and whole-tree inverse dynamics (gravity compensation), shared by kinematics, simulation, visualization and limit checks. Depends only on `roplat_msgs`. |
+| `roplat_frames` | Frame tree of a robot cell: compile-time frame ids, static transforms from URDF and calibration, time-buffered joint and dynamic transforms looked up at a `Stamp` without allocating; optional `JointStateNode` (feature `roplat`). [Design (zh)](roplat_frames/docs/design_zh.md). |
+| `roplat_safety` | Safety gates for control graphs: joint limits, rate limits, sample freshness, a cycle watchdog and a shared stop latch. A refused command fails the cycle, so the device receives `Break` and no command. [Design (zh)](roplat_safety/docs/design_zh.md). |
 
 Sample and geometry types (`Pose`, `JointSample`, `SpatialSample`, `LoadState`, `Twist`, …) come from [`roplat_msgs`](https://github.com/Robot-Exp-Platform/roplat) and are re-exported by `roplat_behavior`. They have one representation each and a fixed native layout, so the same values cross process and language boundaries. None of these crates depends on the roplat runtime unless you enable the `roplat` feature.
 
@@ -106,6 +108,8 @@ There are two different uses of async:
 An arm with a Denavit–Hartenberg table implements `roplat_kinematics::ArmForwardKinematics<N>` (and `ArmInverseKinematics<N>` for the iterative solvers). `dh_kinematics!(MyArm, 6)` then implements the flange-pose and Jacobian maps, and `dh_kinematics!(MyArm, 6, inverse)` also the inverse map, so generic code can use `ForwardKinematics`, `JacobianModel` and `InverseKinematics` from `roplat_behavior`.
 
 `roplat_control` and `roplat_trajectory` return ordinary closures for `control_with`. Choose gains and model data for your backend; they do not make timing guarantees.
+
+`JointTrajectoryFollower` plays timed `JointTrajectoryPoint`s on the joint-position channel. It reads time from a `roplat_msgs::Clock`, not from the cycle `Duration`, so the same follower runs on wall or simulation time. Path and goal tolerances refuse with a `TrackingError` rather than altering the command; with the `roplat` feature of `roplat_trajectory` the follower is a node, and `follower?` in a control domain ends the session with `Break`.
 
 ## Features and Roplat integration
 
@@ -205,7 +209,7 @@ Driver authors can import `roplat_behavior::driver::*`; applications can import 
 
 ## Working from source
 
-This is a Cargo workspace of the five crates, with one version. Until `roplat_msgs` is published, the root manifest patches `roplat` and `roplat_msgs` to a sibling checkout of the roplat core, so clone both side by side:
+This is a Cargo workspace of the seven crates, with one version. Until `roplat_msgs` is published, the root manifest patches `roplat` and `roplat_msgs` to a sibling checkout of the roplat core, so clone both side by side:
 
 ```text
 Robot-Exp-Platform/

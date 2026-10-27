@@ -150,3 +150,99 @@ fn rejects_bad_trees() {
         Err(DescriptionError::DanglingJoint { .. })
     ));
 }
+
+/// A wrist with two prismatic fingers: the tree branches below `hand`.
+const GRIPPER: &str = r#"
+<robot name="gripper">
+  <link name="base"/>
+  <link name="hand"/>
+  <link name="left"/>
+  <link name="right"/>
+  <joint name="wrist" type="revolute">
+    <parent link="base"/><child link="hand"/><origin xyz="0 0 0.1"/><axis xyz="0 0 1"/>
+    <limit lower="-3" upper="3" velocity="1" effort="1"/>
+  </joint>
+  <joint name="finger_left" type="prismatic">
+    <parent link="hand"/><child link="left"/><origin xyz="0 0 0.05"/><axis xyz="0 1 0"/>
+    <limit lower="0" upper="0.04" velocity="0.1" effort="10"/>
+  </joint>
+  <joint name="finger_right" type="prismatic">
+    <parent link="hand"/><child link="right"/><origin xyz="0 0 0.05"/><axis xyz="0 -1 0"/>
+    <limit lower="0" upper="0.04" velocity="0.1" effort="10"/>
+  </joint>
+</robot>
+"#;
+
+#[test]
+fn link_frames_place_every_branch() {
+    let model = RobotModel::from_urdf_str(GRIPPER).unwrap();
+    let frames = model.link_frames(|joint| match joint.name.as_str() {
+        "wrist" => FRAC_PI_2,
+        _ => 0.03,
+    });
+    let at = |name: &str| {
+        let i = model.links.iter().position(|l| l.name == name).unwrap();
+        frames[i].translation.vector
+    };
+    assert_eq!(at("base"), nalgebra::Vector3::zeros());
+    // The wrist turns the finger axes from ±y to ∓x.
+    let (l, r) = (at("left"), at("right"));
+    assert!(close(l.x, -0.03) && close(l.y, 0.0) && close(l.z, 0.15));
+    assert!(close(r.x, 0.03) && close(r.y, 0.0) && close(r.z, 0.15));
+
+    // A joint listed before its parent's joint is still placed after it.
+    let out_of_order = GRIPPER.replace(
+        r#"<link name="right"/>"#,
+        r#"<link name="right"/><link name="tip"/>
+  <joint name="tip_mount" type="fixed"><parent link="right"/><child link="tip"/></joint>"#,
+    );
+    let model = RobotModel::from_urdf_str(&out_of_order).unwrap();
+    assert_eq!(model.joints[0].name, "tip_mount");
+    let frames = model.link_frames(|_| 0.0);
+    let tip = model.links.iter().position(|l| l.name == "tip").unwrap();
+    assert!(close(frames[tip].translation.vector.z, 0.15));
+}
+
+#[test]
+fn jacobian_matches_finite_differences() {
+    // Tilt the elbow axis and offset the lift so every column is non-trivial.
+    let tilted = ARM
+        .replace(
+            r#"<origin xyz="0.4 0 0"/><axis xyz="0 0 1"/>"#,
+            r#"<origin xyz="0.4 0 0" rpy="0.3 -0.2 0.1"/><axis xyz="0 1 1"/>"#,
+        )
+        .replace(
+            r#"<axis xyz="0 0 1"/>
+    <limit lower="0""#,
+            r#"<axis xyz="1 0 1"/>
+    <limit lower="0""#,
+        );
+    let model = RobotModel::from_urdf_str(&tilted).unwrap();
+    assert_eq!(model.joint("lift").unwrap().axis.x, 1.0);
+    assert_eq!(model.joint("elbow").unwrap().axis.y, 1.0);
+    let chain = model.chain("world", "tool").unwrap();
+    let q = [0.03, 0.7, -0.4];
+    let jacobian = chain.jacobian(&q).unwrap();
+    assert_eq!(jacobian.shape(), (6, 3));
+
+    let h = 1e-6;
+    let base = chain.forward_kinematics_iso(&q).unwrap();
+    for i in 0..3 {
+        let mut dq = q;
+        dq[i] += h;
+        let moved = chain.forward_kinematics_iso(&dq).unwrap();
+        let linear = (moved.translation.vector - base.translation.vector) / h;
+        let angular = (moved.rotation * base.rotation.inverse()).scaled_axis() / h;
+        for k in 0..3 {
+            assert!(
+                (jacobian[(k, i)] - linear[k]).abs() < 1e-5,
+                "v{k} of joint {i}"
+            );
+            assert!(
+                (jacobian[(k + 3, i)] - angular[k]).abs() < 1e-5,
+                "w{k} of joint {i}"
+            );
+        }
+    }
+    assert!(chain.jacobian(&[0.0]).is_err());
+}
