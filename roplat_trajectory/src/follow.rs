@@ -189,6 +189,56 @@ impl<C: Clock, const N: usize> JointTrajectoryFollower<C, N> {
     }
 }
 
+/// Timed points for a trajectory sampled every `period`, such as the COPP
+/// plans in [`time_scaling`](crate::time_scaling), which sample at the
+/// robot's control period. Velocities and accelerations are central
+/// differences, one-sided at the two ends.
+pub fn points_from_samples<const N: usize>(
+    samples: &[[f64; N]],
+    period: Duration,
+) -> Vec<JointTrajectoryPoint<N>> {
+    let dt = period.as_secs_f64();
+    let nanos = i64::try_from(period.as_nanos()).unwrap_or(i64::MAX);
+    let last = samples.len().saturating_sub(1);
+    (0..samples.len())
+        .map(|k| {
+            // The three samples the differences use, kept inside the slice.
+            let (a, b, c) = match k {
+                _ if last < 2 => (0, 0, last),
+                0 => (0, 1, 2),
+                k if k == last => (k - 2, k - 1, k),
+                k => (k - 1, k, k + 1),
+            };
+            let (pa, pb, pc) = (samples[a], samples[b], samples[c]);
+            let span = (c - a) as f64 * dt;
+            JointTrajectoryPoint {
+                time_from_start: k as i64 * nanos,
+                q: samples[k],
+                dq: std::array::from_fn(|i| {
+                    if span == 0. {
+                        return 0.;
+                    }
+                    let central = (pc[i] - pa[i]) / span;
+                    // One-sided at the ends: the slope at the end sample of a parabola.
+                    match k {
+                        0 if last >= 2 => (-3. * pa[i] + 4. * pb[i] - pc[i]) / (2. * dt),
+                        k if k == last && last >= 2 => {
+                            (pa[i] - 4. * pb[i] + 3. * pc[i]) / (2. * dt)
+                        }
+                        _ => central,
+                    }
+                }),
+                ddq: std::array::from_fn(|i| {
+                    if last < 2 {
+                        return 0.;
+                    }
+                    (pa[i] - 2. * pb[i] + pc[i]) / (dt * dt)
+                }),
+            }
+        })
+        .collect()
+}
+
 /// The first joint whose measured position is not within `tolerance` of
 /// `reference`. NaN anywhere counts as beyond.
 fn beyond<const N: usize>(

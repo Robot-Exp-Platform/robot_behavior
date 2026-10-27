@@ -10,10 +10,12 @@ use std::{
 };
 
 use roplat_behavior::{
-    JointSample, JointState, StateView,
+    JointSample, JointState, Joints, Robot, RobotResult, StateView,
     msgs::{Clock, JointTrajectoryPoint, ManualClock, Stamp},
 };
-use roplat_trajectory::{JointTrajectoryFollower, TrackingError};
+use roplat_trajectory::{
+    JointTrajectoryFollower, TrackingError, plan_waypoints_traj_via_copp, points_from_samples,
+};
 
 const MS: i64 = 1_000_000;
 
@@ -222,4 +224,81 @@ fn a_clock_that_goes_back_is_refused() {
         follower.step(&at([0.; 2])),
         Err(TrackingError::ClockWentBack { nanos: 6 * MS })
     );
+}
+
+#[test]
+fn samples_become_timed_points_with_exact_quadratic_derivatives() {
+    // q(t) = [t², 1 − 3t] every 10 ms: the differences are exact for it,
+    // the one-sided ones at the ends included.
+    let period = ms(10);
+    let samples: Vec<[f64; 2]> = (0..6)
+        .map(|k| {
+            let t = k as f64 * 0.01;
+            [t * t, 1. - 3. * t]
+        })
+        .collect();
+    let points = points_from_samples(&samples, period);
+    assert_eq!(points.len(), 6);
+    for (k, point) in points.iter().enumerate() {
+        let t = k as f64 * 0.01;
+        assert_eq!(point.time_from_start, k as i64 * 10 * MS);
+        assert_eq!(point.q, samples[k]);
+        assert!((point.dq[0] - 2. * t).abs() < 1e-9 && (point.dq[1] + 3.).abs() < 1e-9);
+        assert!(
+            (point.ddq[0] - 2.).abs() < 1e-6 && point.ddq[1].abs() < 1e-6,
+            "{point:?}"
+        );
+    }
+    // One sample rests; two give the secant and no acceleration.
+    let one = points_from_samples(&[[1., 2.]], period);
+    assert_eq!((one[0].dq, one[0].ddq), ([0.; 2], [0.; 2]));
+    let two = points_from_samples(&[[0., 0.], [0.1, -0.2]], period);
+    assert!(
+        two.iter()
+            .all(|p| (p.dq[0] - 10.).abs() < 1e-9 && p.ddq == [0.; 2])
+    );
+}
+
+struct TwoJoints;
+
+impl Robot for TwoJoints {
+    type State = ();
+    const CONTROL_PERIOD: f64 = 0.001;
+    fn version() -> String {
+        "two joints".into()
+    }
+    fn read_state(&mut self) -> RobotResult<()> {
+        Ok(())
+    }
+}
+
+impl Joints<2> for TwoJoints {
+    const JOINT_MIN: [f64; 2] = [-3.; 2];
+    const JOINT_MAX: [f64; 2] = [3.; 2];
+    const JOINT_VEL_BOUND: [f64; 2] = [1.; 2];
+    const JOINT_ACC_BOUND: [f64; 2] = [4.; 2];
+    const JOINT_JERK_BOUND: [f64; 2] = [40.; 2];
+}
+
+#[test]
+fn a_copp_plan_plays_back_sample_for_sample() {
+    let plan = plan_waypoints_traj_via_copp::<TwoJoints, 2>(&[[0., 0.], [0.5, -0.3]], 1.).unwrap();
+    let period = ms(1);
+    let clock = Arc::new(ManualClock::simulation());
+    let points = points_from_samples(&plan, period);
+    let mut follower = JointTrajectoryFollower::new(points, clock.clone()).unwrap();
+    // On a clock that steps one control period per cycle, the follower
+    // commands exactly the planned samples and is done on the last one.
+    for (k, planned) in plan.iter().enumerate() {
+        let (command, done) = follower.step(&at(*planned)).unwrap();
+        assert!(
+            command
+                .iter()
+                .zip(planned)
+                .all(|(c, p)| (c - p).abs() < 1e-12),
+            "cycle {k}"
+        );
+        assert_eq!(done, k + 1 == plan.len(), "cycle {k}");
+        clock.advance(period);
+    }
 }

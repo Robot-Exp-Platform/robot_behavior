@@ -8,5 +8,5 @@ pub mod follow;
 pub mod path_generate;
 pub mod time_scaling;
 
-pub use follow::{JointTrajectoryFollower, TrackingError};
+pub use follow::{JointTrajectoryFollower, TrackingError, points_from_samples};
 pub use time_scaling::*;
