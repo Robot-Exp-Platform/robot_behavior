@@ -11,7 +11,7 @@
 |---|---|
 | `roplat_behavior` | 能力契约（`Robot`、运动空间、控制通道、模型映射；夹爪、力/力矩、IMU 与相机契约）、机械臂/底盘/腿足状态，可选的 roplat 适配与 C / C++ / Python 绑定。 |
 | `roplat_kinematics` | DH 正运动学、雅可比与迭代逆运动学；`dh_kinematics!` 把机械臂接入模型映射。 |
-| `roplat_control` | 关节 PD/PID、底盘速度 PID、关节与笛卡尔阻抗、重力补偿、计算力矩、实时线程优先级。 |
+| `roplat_control` | 关节 PD/PID、底盘速度 PID、关节与笛卡尔阻抗、重力补偿、计算力矩、操作员遥操作（`cartesian_teleop_control`：死区、使能按键、输入超时、加速度限制）、实时线程优先级。 |
 | `roplat_trajectory` | 关节与笛卡尔插值（直线、梯形、S 曲线、四次曲线）和 COPP 时间缩放。 |
 | `roplat_description` | 从 URDF 读出的同一份机器人模型：运动学树、惯量、可视/碰撞几何、关节限位与链式正运动学，供运动学、仿真、可视化与限位检查共用；只依赖 `roplat_msgs`。 |
 

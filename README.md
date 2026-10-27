@@ -11,7 +11,7 @@
 |---|---|
 | `roplat_behavior` | Capability contracts (`Robot`, motion spaces, control channels, model maps; gripper, force/torque, IMU and camera contracts), arm / base / legged state, optional roplat adapters and C / C++ / Python bindings. |
 | `roplat_kinematics` | Denavit–Hartenberg forward kinematics, Jacobians and iterative inverse kinematics; `dh_kinematics!` connects an arm to the model maps. |
-| `roplat_control` | Joint PD/PID, base-velocity PID, joint and Cartesian impedance, gravity compensation, computed torque, real-time thread priority. |
+| `roplat_control` | Joint PD/PID, base-velocity PID, joint and Cartesian impedance, gravity compensation, computed torque, operator teleoperation (`cartesian_teleop_control`: deadzone, dead-man button, input timeout, acceleration limit), real-time thread priority. |
 | `roplat_trajectory` | Joint and Cartesian interpolation (linear, trapezoid, S-curve, fourth-order) and COPP time scaling. |
 | `roplat_description` | One robot model read from URDF: kinematic tree, inertia, visual/collision geometry, joint limits and chain forward kinematics, shared by kinematics, simulation, visualization and limit checks. Depends only on `roplat_msgs`. |
 
