@@ -16,6 +16,7 @@
 | `roplat_description` | One robot model read from URDF: kinematic tree, inertia, visual/collision geometry, joint limits, chain forward kinematics and Jacobian, the frames of every link in the tree and whole-tree inverse dynamics (gravity compensation), shared by kinematics, simulation, visualization and limit checks. Depends only on `roplat_msgs`. |
 | `roplat_frames` | Frame tree of a robot cell: compile-time frame ids, static transforms from URDF and calibration, time-buffered joint and dynamic transforms looked up at a `Stamp` without allocating; optional `JointStateNode` (feature `roplat`). [Design (zh)](roplat_frames/docs/design_zh.md). |
 | `roplat_safety` | Safety gates for control graphs: joint limits, rate limits, sample freshness, a cycle watchdog and a shared stop latch. A refused command fails the cycle, so the device receives `Break` and no command. [Design (zh)](roplat_safety/docs/design_zh.md). |
+| `roplat_scene` | Collision checking for motion planning: a robot from its URDF (meshes as convex hulls), objects in the world and objects attached to links, allowed contacts (adjacent links from the start) and a padding. `PlanningScene` answers `plan_joint_path`'s validity check and gives the nearest pair; collision geometry by parry3d-f64, no native dependency. |
 
 Sample and geometry types (`Pose`, `JointSample`, `SpatialSample`, `LoadState`, `Twist`, …) come from [`roplat_msgs`](https://github.com/Robot-Exp-Platform/roplat) and are re-exported by `roplat_behavior`. They have one representation each and a fixed native layout, so the same values cross process and language boundaries. None of these crates depends on the roplat runtime unless you enable the `roplat` feature.
 
@@ -209,7 +210,7 @@ Driver authors can import `roplat_behavior::driver::*`; applications can import 
 
 ## Working from source
 
-This is a Cargo workspace of the seven crates, with one version. Until `roplat_msgs` is published, the root manifest patches `roplat` and `roplat_msgs` to a sibling checkout of the roplat core, so clone both side by side:
+This is a Cargo workspace of the eight crates, with one version. Until `roplat_msgs` is published, the root manifest patches `roplat` and `roplat_msgs` to a sibling checkout of the roplat core, so clone both side by side:
 
 ```text
 Robot-Exp-Platform/
