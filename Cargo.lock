@@ -1528,6 +1528,8 @@ dependencies = [
  "plotters",
  "roplat",
  "roplat_behavior",
+ "roplat_description",
+ "roplat_kinematics",
  "thiserror 2.0.18",
  "tokio",
 ]
