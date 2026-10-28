@@ -7,8 +7,13 @@
 //! ([`CollisionCheck::first_contact`]), which is the check `plan_joint_path`
 //! in `roplat_trajectory` asks of its caller:
 //!
-//! ```ignore
+//! ```no_run
+//! # use roplat_scene::{CollisionCheck, PlanningScene};
+//! # use roplat_trajectory::{PlannerOptions, plan_joint_path};
+//! # fn plan(scene: &PlanningScene<7>, start: [f64; 7], goal: [f64; 7], lower: [f64; 7],
+//! #         upper: [f64; 7], options: PlannerOptions) {
 //! let path = plan_joint_path(start, goal, lower, upper, |q| scene.is_free(q), options);
+//! # }
 //! ```
 //!
 //! URDF boxes, spheres, cylinders and capsules keep their shape. A mesh (OBJ
