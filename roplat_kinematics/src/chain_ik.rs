@@ -92,6 +92,109 @@ pub fn chain_ik(
     })
 }
 
+/// Settings for [`chain_ik_solutions`].
+#[derive(Clone, Copy, Debug)]
+pub struct IkSearch {
+    /// Random starts tried after the reference.
+    pub restarts: usize,
+    /// Stop once this many distinct solutions are found.
+    pub max_solutions: usize,
+    /// Two solutions whose joints all differ by less than this are one.
+    pub distinct: f64,
+    /// Damping of each [`chain_ik`] run; heavier than for a nearby seed,
+    /// which converges from more random starts.
+    pub lambda: f64,
+    pub stop: CommonStop,
+    /// Seed of the start sampler: a seed always gives the same solutions.
+    pub seed: u64,
+}
+
+impl Default for IkSearch {
+    fn default() -> Self {
+        Self {
+            restarts: 64,
+            max_solutions: 16,
+            distinct: 1e-3,
+            lambda: 0.1,
+            stop: CommonStop { pos_tol: 1e-6, rot_tol: 1e-6, max_iters: 200, step_clip: 0.2 },
+            seed: 1,
+        }
+    }
+}
+
+/// Distinct joint vectors reaching `target` that lie within the chain's URDF
+/// limits and pass `is_valid` (e.g. a collision check), nearest to
+/// `reference` first by the largest joint difference.
+///
+/// [`chain_ik`] runs from `reference`, then from up to `search.restarts`
+/// random starts within the limits (`reference ± π` for an unbounded
+/// joint); only converged runs count. An empty result means none was found
+/// within the budget, not that none exists.
+pub fn chain_ik_solutions(
+    chain: &Chain,
+    target: &Pose,
+    reference: &[f64],
+    mut is_valid: impl FnMut(&[f64]) -> bool,
+    search: IkSearch,
+) -> Result<Vec<Vec<f64>>, DescriptionError> {
+    let dof = chain.dof();
+    if reference.len() != dof {
+        return Err(DescriptionError::DofMismatch { expected: dof, got: reference.len() });
+    }
+    let bounds: Vec<(f64, f64)> = chain
+        .movable()
+        .zip(reference)
+        .map(|(j, &r)| {
+            j.limit
+                .filter(|l| l.lower.is_finite() && l.upper.is_finite() && l.lower < l.upper)
+                .map_or((r - std::f64::consts::PI, r + std::f64::consts::PI), |l| {
+                    (l.lower, l.upper)
+                })
+        })
+        .collect();
+    let mut state = search.seed.max(1);
+    let mut unit = move || {
+        state ^= state >> 12;
+        state ^= state << 25;
+        state ^= state >> 27;
+        (state.wrapping_mul(0x2545_f491_4f6c_dd1d) >> 11) as f64 / (1u64 << 53) as f64
+    };
+    let distance = |a: &[f64], b: &[f64]| {
+        a.iter()
+            .zip(b)
+            .map(|(x, y)| (x - y).abs())
+            .fold(0.0, f64::max)
+    };
+
+    let mut found: Vec<Vec<f64>> = Vec::new();
+    for attempt in 0..=search.restarts {
+        if found.len() >= search.max_solutions {
+            break;
+        }
+        let start: Vec<f64> = if attempt == 0 {
+            reference.to_vec()
+        } else {
+            bounds
+                .iter()
+                .map(|&(lo, hi)| lo + unit() * (hi - lo))
+                .collect()
+        };
+        let solution = chain_ik(chain, &start, target, search.lambda, search.stop)?;
+        // chain_ik keeps every iterate within the URDF limits.
+        if !solution.converged
+            || found
+                .iter()
+                .any(|q| distance(q, &solution.q) < search.distinct)
+            || !is_valid(&solution.q)
+        {
+            continue;
+        }
+        found.push(solution.q);
+    }
+    found.sort_by(|a, b| distance(a, reference).total_cmp(&distance(b, reference)));
+    Ok(found)
+}
+
 /// How far a DH table and a URDF chain are from describing the same arm.
 ///
 /// Two models of one arm may place the end effector differently, so they
