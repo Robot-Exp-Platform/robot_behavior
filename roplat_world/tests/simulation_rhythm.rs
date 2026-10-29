@@ -7,8 +7,7 @@ use std::time::Duration;
 
 use roplat::rhythm::Rhythm;
 use roplat::{Completion, ExecutionContext, Lifecycle, Node, RoplatError};
-use roplat_behavior::PhysicsEngine;
-use roplat_behavior::roplat::SimulationRhythm;
+use roplat_world::{PhysicsEngine, SimulationRhythm};
 
 #[derive(Default)]
 struct Counts {

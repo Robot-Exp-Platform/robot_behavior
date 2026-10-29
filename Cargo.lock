@@ -1659,6 +1659,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "roplat_world"
+version = "0.9.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "nalgebra",
+ "roplat",
+ "roplat_behavior",
+ "roplat_description",
+ "tokio",
+]
+
+[[package]]
 name = "rstar"
 version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

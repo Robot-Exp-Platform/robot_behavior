@@ -135,12 +135,13 @@ pub trait Robot {
 /// A robot description, used for dynamic dispatch and configuration.
 pub trait RobotDescription {
     /// A robot with a URDF file.
-    /// This path is relative to the [`roplat_data_dir`](crate::roplat_data_dir) directory.
+    /// This path is relative to the shared asset directory
+    /// (`roplat_world::assets_dir`).
     const URDF: Option<&'static str> = None;
 
     /// Models available for simulation, optionally adapted to particular backends.
     ///
-    /// A [`crate::SimulationBackend`] selects only formats its robot loader
+    /// A simulator backend (`roplat_world::SimulationBackend`) selects only formats its robot loader
     /// accepts. The legacy [`Self::URDF`] remains a final URDF-only fallback.
     /// Declaring a model does not implement any robot control capability or
     /// guarantee that two backends simulate equivalent dynamics.

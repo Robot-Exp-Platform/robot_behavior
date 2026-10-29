@@ -1,7 +1,5 @@
-use roplat_behavior::{
-    ModelFormat, ModelSource, RobotDescription, SimulationBackend, SimulationModel,
-    select_simulation_model,
-};
+use roplat_behavior::{ModelFormat, RobotDescription, SimulationModel};
+use roplat_world::{ModelSource, SimulationBackend, select_simulation_model};
 
 struct BulletLoader;
 impl SimulationBackend for BulletLoader {

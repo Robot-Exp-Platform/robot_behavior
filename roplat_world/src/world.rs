@@ -1,9 +1,7 @@
 use anyhow::Result;
 use nalgebra as na;
 
-use crate::RobotDescription;
-
-pub trait World {}
+use roplat_behavior::RobotDescription;
 
 pub enum Entity<'a> {
     Sphere {
@@ -74,4 +72,25 @@ pub trait AddVisual {
     where
         Self: 'a;
     fn visual<'a>(&'a mut self, visual: Visual<'a>) -> Self::VB<'a>;
+}
+
+/// A URDF shape as an entity. URDF gives a box's full edge lengths and a
+/// cylinder's or capsule's length; an entity takes half extents and a height.
+impl<'a> From<&'a roplat_description::Geometry> for Entity<'a> {
+    fn from(geometry: &'a roplat_description::Geometry) -> Self {
+        use roplat_description::Geometry;
+        match geometry {
+            Geometry::Box { size } => Entity::Box { half_extents: size.map(|s| s / 2.0) },
+            Geometry::Cylinder { radius, length } => {
+                Entity::Cylinder { radius: *radius, height: *length }
+            }
+            Geometry::Capsule { radius, length } => {
+                Entity::Capsule { radius: *radius, height: *length }
+            }
+            Geometry::Sphere { radius } => Entity::Sphere { radius: *radius },
+            Geometry::Mesh { filename, scale } => {
+                Entity::MeshFile { file: filename, scale: *scale }
+            }
+        }
+    }
 }
