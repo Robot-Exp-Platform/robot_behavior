@@ -1,9 +1,11 @@
 //! A URDF chain written from a DH table gives the same cache as the table.
 
 use nalgebra as na;
+use roplat_behavior::{ForwardKinematics, JacobianModel};
 use roplat_description::RobotModel;
 use roplat_kinematics::{
-    ArmKineCache, ChainError, CommonStop, DhParam, Link, chain_ik, dh_chain_discrepancy,
+    ArmKineCache, ChainError, CommonStop, DhParam, Link, UrdfKinematics, chain_ik,
+    dh_chain_discrepancy,
 };
 
 /// Standard DH rows `(theta, d, r, alpha)`, as in `kine_cache.rs`.
@@ -96,6 +98,24 @@ fn urdf_chain_matches_the_dh_table() {
             &chain.forward_kinematics_iso(&q).unwrap()
         ));
     }
+}
+
+#[test]
+fn urdf_kinematics_gives_the_dh_model_maps() {
+    let dh = DH6.map(|(theta, d, r, alpha)| DhParam::DH { theta, d, r, alpha });
+    let model = RobotModel::from_urdf_str(&urdf()).unwrap();
+    let kinematics = UrdfKinematics::<6>::new(model.chain("l0", "flange").unwrap()).unwrap();
+    let q = [0.4, -0.7, 1.1, 0.2, -0.5, 0.9];
+    let expected = ArmKineCache::build(&dh, &q, &[0.0; 6]);
+    let pose = kinematics.forward_kinematics(q).unwrap().quat();
+    assert!(close(&pose, &expected.end_effector_pose()));
+    assert!((kinematics.jacobian(q).unwrap() - expected.jacobian()).norm() < 1e-9);
+    let limits = kinematics.joint_limits();
+    assert_eq!(
+        (limits.q_min[0], limits.q_max[0], limits.dq_max[0]),
+        (-3.0, 3.0, 1.0)
+    );
+    assert!(UrdfKinematics::<5>::new(model.chain("l0", "flange").unwrap()).is_err());
 }
 
 #[test]
