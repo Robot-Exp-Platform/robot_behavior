@@ -1,5 +1,5 @@
 use super::limits::unbounded_above;
-use crate::{CartesianLimits, Pose};
+use crate::{CartesianLimits, Pose, RobotResult};
 
 /// An arm's end effector: where its flange is, and its Cartesian limits.
 ///
@@ -40,8 +40,16 @@ pub trait EndPoint {
     /// Maximum angular jerk (rad/s^3). Defaults to unbounded.
     const ROTATION_JERK_BOUND: f64 = f64::INFINITY;
 
-    /// Current flange pose in the base frame.
+    /// Current flange pose in the base frame, as last known to the driver.
     fn get_endpoint(&self) -> Pose;
+
+    /// Read the flange pose from the robot, for a
+    /// [`Relative<FlangeSpace>`](crate::Relative) motion. Defaults to
+    /// [`get_endpoint`](Self::get_endpoint); a driver whose `get_endpoint`
+    /// cannot reach the robot overrides it.
+    fn read_endpoint(&mut self) -> RobotResult<Pose> {
+        Ok(self.get_endpoint())
+    }
 
     /// The declared bounds as data. A bound at or beyond `f64::MAX` reads as
     /// unbounded (`f64::INFINITY`).

@@ -3,14 +3,16 @@
 use std::time::Duration;
 
 use roplat_behavior::{
-    Arm, ArmState, EndPoint, FlangeSpace, JointSpace, Joints, LoadState, Motion, MotionLimits,
-    Pose, Relative, Robot, RobotResult,
+    Arm, ArmState, EndPoint, FlangeSpace, JointSample, JointSpace, Joints, LoadState, Motion,
+    MotionLimits, Pose, Relative, Robot, RobotResult, StateView,
 };
 
 struct Recorder {
     joint: [f64; 2],
     flange: Pose,
     limits: MotionLimits<2>,
+    /// Whether `state` reports the measured joint positions.
+    measures_joints: bool,
 }
 
 impl Robot for Recorder {
@@ -51,7 +53,11 @@ impl roplat_behavior::MoveTo<FlangeSpace> for Recorder {
 
 impl Arm<2> for Recorder {
     fn state(&mut self) -> RobotResult<ArmState<2>> {
-        Ok(ArmState::default())
+        let mut sample = JointSample::EMPTY;
+        if self.measures_joints {
+            sample.set_q(Some(self.joint));
+        }
+        Ok(ArmState { joint: StateView::from_meas(sample), ..ArmState::default() })
     }
     fn set_load(&mut self, _load: LoadState) -> RobotResult<()> {
         Ok(())
@@ -73,6 +79,7 @@ fn recorder() -> Recorder {
         joint: [0.5, -0.5],
         flange: Pose::from_euler([0.3, 0.0, 0.4], [0.0, 0.0, std::f64::consts::FRAC_PI_2]),
         limits: MotionLimits::envelope::<Recorder>(),
+        measures_joints: true,
     }
 }
 
@@ -85,6 +92,17 @@ fn a_relative_joint_target_adds_to_the_current_positions() {
     assert!((robot.joint[0] - 0.6).abs() < 1e-12 && (robot.joint[1] + 0.3).abs() < 1e-12);
     robot.move_to::<JointSpace<2>>([1.0, 1.0]).unwrap();
     assert_eq!(robot.joint, [1.0, 1.0], "an absolute target stays absolute");
+}
+
+#[test]
+fn a_relative_joint_target_needs_the_measured_positions() {
+    let mut robot = Recorder { measures_joints: false, ..recorder() };
+    assert!(
+        robot
+            .move_to::<Relative<JointSpace<2>>>([0.1, 0.2])
+            .is_err()
+    );
+    assert_eq!(robot.joint, [0.5, -0.5], "nothing was commanded");
 }
 
 #[test]

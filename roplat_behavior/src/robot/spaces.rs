@@ -1,8 +1,7 @@
-use std::{future::Future, marker::PhantomData};
+use std::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
 
-use crate::RobotResult;
 use crate::robot::{
     arm::Arm,
     endpoint::EndPoint,
@@ -11,6 +10,7 @@ use crate::robot::{
     motion::{MotionSpace, MoveTo},
     types::Pose,
 };
+use crate::{RobotException, RobotResult};
 
 /// Joint-level command space: a command carries the robot's full joint vector
 /// `[f64; N]` in radians.
@@ -175,16 +175,20 @@ impl<R, S: MotionSpace<R>> MotionSpace<R> for Relative<S> {
 /// A [`MotionSpace`] whose targets compose: where the robot is now, and a
 /// target moved by an offset.
 pub trait RelativeSpace<R: ?Sized>: MotionSpace<R> {
-    /// The robot's current target in this space.
-    fn current(robot: &R) -> Self::Target;
+    /// The robot's current target in this space, read from the robot.
+    fn current(robot: &mut R) -> RobotResult<Self::Target>;
     /// `current` moved by `delta`.
     fn offset(current: &Self::Target, delta: &Self::Target) -> Self::Target;
 }
 
-/// Joint positions plus the offset.
+/// The measured joint positions ([`Arm::state`]) plus the offset.
 impl<R: Arm<N>, const N: usize> RelativeSpace<R> for JointSpace<N> {
-    fn current(robot: &R) -> [f64; N] {
-        robot.get_joint()
+    fn current(robot: &mut R) -> RobotResult<[f64; N]> {
+        robot.state()?.joint.meas.q().ok_or_else(|| {
+            RobotException::UnprocessableInstructionError(
+                "a relative joint motion needs the measured joint positions".into(),
+            )
+        })
     }
     fn offset(current: &[f64; N], delta: &[f64; N]) -> [f64; N] {
         std::array::from_fn(|i| current[i] + delta[i])
@@ -195,8 +199,8 @@ impl<R: Arm<N>, const N: usize> RelativeSpace<R> for JointSpace<N> {
 /// frame: a translation along the flange's own axes, then a rotation about
 /// them.
 impl<R: EndPoint> RelativeSpace<R> for FlangeSpace {
-    fn current(robot: &R) -> Pose {
-        robot.get_endpoint()
+    fn current(robot: &mut R) -> RobotResult<Pose> {
+        robot.read_endpoint()
     }
     fn offset(current: &Pose, delta: &Pose) -> Pose {
         *current * *delta
@@ -209,12 +213,12 @@ where
     S: RelativeSpace<R>,
 {
     fn move_to(&mut self, delta: S::Target) -> RobotResult<()> {
-        let target = S::offset(&S::current(self), &delta);
+        let target = S::offset(&S::current(self)?, &delta);
         <R as MoveTo<S>>::move_to(self, target)
     }
 
-    fn move_to_async(&mut self, delta: S::Target) -> impl Future<Output = RobotResult<()>> {
-        let target = S::offset(&S::current(self), &delta);
-        <R as MoveTo<S>>::move_to_async(self, target)
+    async fn move_to_async(&mut self, delta: S::Target) -> RobotResult<()> {
+        let target = S::offset(&S::current(self)?, &delta);
+        <R as MoveTo<S>>::move_to_async(self, target).await
     }
 }

@@ -35,7 +35,7 @@ fn set_motion_limits(&mut self, limits: MotionLimits<N>) -> RobotResult<()> {
 ## Relative motion, periods and the flange
 
 - `Coord` and `Inertial<S>` are removed. A relative move is `move_to::<Relative<JointSpace<N>>>(dq)` or `move_to::<Relative<FlangeSpace>>(delta)` (`delta` in the flange frame); the contract implements both for every robot.
-- `get_endpoint` moves from `Arm<N>` to `EndPoint`.
+- `get_endpoint` moves from `Arm<N>` to `EndPoint`. A relative motion reads the robot: joint offsets start from the measured positions in `Arm::state()`, flange offsets from `EndPoint::read_endpoint()`, which defaults to `get_endpoint()`. A driver whose `get_endpoint` cannot reach the robot overrides `read_endpoint`.
 - `Robot::CONTROL_PERIOD` is a `Duration`: `const CONTROL_PERIOD: Duration = Duration::from_millis(1);`. A control callback's `Duration` is that period, or `(k + 1)` periods after `k` missed cycles.
 
 ## Trajectories
