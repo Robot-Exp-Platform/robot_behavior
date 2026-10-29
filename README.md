@@ -210,7 +210,7 @@ Driver authors can import `roplat_behavior::driver::*`; applications can import 
 
 ## Working from source
 
-This is a Cargo workspace of the eight crates, with one version. Until `roplat_msgs` is published, the root manifest patches `roplat` and `roplat_msgs` to a sibling checkout of the roplat core, so clone both side by side:
+This is a Cargo workspace of the crates above; each crate declares its own version. Until `roplat_msgs` is published, the root manifest patches `roplat` and `roplat_msgs` to a sibling checkout of the roplat core, so clone both side by side:
 
 ```text
 Robot-Exp-Platform/

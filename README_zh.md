@@ -198,7 +198,7 @@ impl RobotDescription for ArmModels {
 
 ## 从源码开发
 
-本仓库是八个包组成的 Cargo 工作区，共用一个版本。`roplat_msgs` 发布之前，根清单把 `roplat` 与 `roplat_msgs` 指向同级的 roplat 核心检出，因此需要并排克隆：
+本仓库是上述各包组成的 Cargo 工作区，每个包各自声明版本。`roplat_msgs` 发布之前，根清单把 `roplat` 与 `roplat_msgs` 指向同级的 roplat 核心检出，因此需要并排克隆：
 
 ```text
 Robot-Exp-Platform/

@@ -2,9 +2,10 @@
 members = ["roplat_behavior", "roplat_kinematics", "roplat_control", "roplat_trajectory", "roplat_description", "roplat_frames", "roplat_safety", "roplat_scene"]
 resolver = "3"
 
-# The eight crates share one README and one version.
+# The crates share one README. Each declares its own version, so an
+# algorithm crate can change without moving the contract crate and the
+# drivers with it.
 [workspace.package]
-version = "0.9.0"
 edition = "2024"
 authors = ["Yixing <yanjizhou312@163.com>"]
 license = "Apache-2.0"
