@@ -107,12 +107,3 @@ pub fn deserialize_error<T, E>(data: &str) -> impl FnOnce(E) -> RobotException {
 pub fn invalid_ffi<T: std::fmt::Debug>(data: T) -> RobotException {
     RobotException::InvalidFFIData(format!("exception {}, find {:?}", type_name::<T>(), data))
 }
-
-#[cfg(feature = "to_py")]
-use pyo3::exceptions::PyException;
-#[cfg(feature = "to_py")]
-impl From<RobotException> for pyo3::PyErr {
-    fn from(e: RobotException) -> Self {
-        PyException::new_err(e.to_string())
-    }
-}

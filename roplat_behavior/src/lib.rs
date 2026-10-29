@@ -13,8 +13,6 @@
 #[cfg(feature = "conformance")]
 pub mod conformance;
 mod exception;
-#[cfg(feature = "ffi")]
-pub mod ffi;
 
 mod robot;
 #[cfg(feature = "roplat")]
@@ -29,13 +27,6 @@ pub use roplat_msgs as msgs;
 pub use roplat_msgs::{Accel, FrameId, Header, Quaternion, Stamp, Stamped, Twist, Vector3, Wrench};
 pub use simulation::*;
 pub use utils::*;
-
-#[cfg(feature = "to_py")]
-pub use ffi::to_py::{
-    PyArmState, PyJointSample, PyJointState, PyLoadState, PySpatialSample, PySpatialState,
-};
-#[cfg(feature = "to_py")]
-pub use robot::types::{PyDesc, PyMotionType, PyPose};
 
 pub const ROPLAT_ASCII: &str = r#"
    #####     #####     ##### 
@@ -71,14 +62,4 @@ pub mod behavior {
 pub mod driver {
     pub use crate::behavior::*;
     pub use crate::robot::{AsyncControlWith, ControlWith, MoveTo, MoveTraj};
-}
-
-#[cfg(feature = "to_py")]
-#[pyo3::pymodule]
-mod roplat_behavior {
-    #[pymodule_export]
-    use super::{
-        PyArmState, PyDesc, PyJointSample, PyJointState, PyLoadState, PyMotionType, PyPose,
-        PySpatialSample, PySpatialState,
-    };
 }

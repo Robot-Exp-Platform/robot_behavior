@@ -1,0 +1,25 @@
+[package]
+name = "roplat_behavior_ffi"
+version = "0.9.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+readme = "../README.md"
+description = "Python and C++ bindings of the roplat_behavior capability contracts, for driver packages used without the roplat runtime"
+keywords = ["robot", "robotics", "python", "cxx", "roplat"]
+
+[dependencies]
+roplat_behavior = { version = "0.9.0", path = "../roplat_behavior" }
+# A driver's own pyo3 dependency turns on "extension-module" for its
+# Python package; this crate needs only the macros' features.
+pyo3 = { version = "0.28.3", optional = true, features = ["multiple-pymethods"] }
+cxx = { version = "1.0.188", optional = true }
+
+[features]
+default = []
+# Python classes and the py_* macros that wrap a driver for Python.
+py = ["dep:pyo3"]
+# The cxx bridge types and the cxx_* macros for C++.
+cxx = ["dep:cxx"]

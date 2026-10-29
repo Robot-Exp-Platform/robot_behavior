@@ -2,10 +2,11 @@ use std::time::Duration;
 
 use pyo3::prelude::*;
 
-use crate::{
+use roplat_behavior::{
     ArmState, JointSample, JointState, LoadState, RobotException, SpatialSample, StateView,
-    robot::types::PyPose,
 };
+
+use crate::PyPose;
 
 /// Payload for Python: mass `m` (kg), center of mass `x` (m) and inertia `i`
 /// (kg·m², column-major 3x3), the same fields as before 0.9.
@@ -222,14 +223,16 @@ impl<const N: usize> From<ArmState<N>> for PyArmState {
 }
 
 pub fn vec_to_array<const N: usize>(values: Vec<f64>) -> PyResult<[f64; N]> {
-    values.try_into().map_err(|values: Vec<f64>| {
-        RobotException::InvalidFFIData(format!(
-            "expected vector length {}, got {}",
-            N,
-            values.len()
-        ))
-        .into()
-    })
+    values
+        .try_into()
+        .map_err(|values: Vec<f64>| {
+            RobotException::InvalidFFIData(format!(
+                "expected vector length {}, got {}",
+                N,
+                values.len()
+            ))
+        })
+        .map_err(crate::py_err)
 }
 
 pub fn py_control_array<const N: usize>(
@@ -299,7 +302,7 @@ pub fn py_arm_control_pose(
     callable: &Py<PyAny>,
     state: PyArmState,
     duration: Duration,
-) -> (crate::Pose, bool) {
+) -> (roplat_behavior::Pose, bool) {
     Python::attach(|py| {
         let result = callable
             .call1(py, (state, duration.as_secs_f64()))
@@ -310,7 +313,7 @@ pub fn py_arm_control_pose(
             Ok(result) => result,
             Err(err) => {
                 err.print(py);
-                (crate::Pose::default(), true)
+                (roplat_behavior::Pose::default(), true)
             }
         }
     })
@@ -331,55 +334,71 @@ macro_rules! py_robot {
         impl $py {
             #[staticmethod]
             fn version() -> String {
-                <$inner as $crate::Robot>::version()
+                <$inner as $crate::__private::roplat_behavior::Robot>::version()
             }
 
             fn init(&mut self) -> pyo3::PyResult<()> {
-                <$inner as $crate::Robot>::init(&mut self.0).map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Robot>::init(&mut self.0)
+                    .map_err($crate::py_err)
             }
 
             fn enable(&mut self) -> pyo3::PyResult<()> {
-                <$inner as $crate::Robot>::enable(&mut self.0).map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Robot>::enable(&mut self.0)
+                    .map_err($crate::py_err)
             }
 
             fn disable(&mut self) -> pyo3::PyResult<()> {
-                <$inner as $crate::Robot>::disable(&mut self.0).map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Robot>::disable(&mut self.0)
+                    .map_err($crate::py_err)
             }
 
             fn shutdown(&mut self) -> pyo3::PyResult<()> {
-                <$inner as $crate::Robot>::shutdown(&mut self.0).map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Robot>::shutdown(&mut self.0)
+                    .map_err($crate::py_err)
             }
 
             fn reset(&mut self) -> pyo3::PyResult<()> {
-                <$inner as $crate::Robot>::reset(&mut self.0).map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Robot>::reset(&mut self.0)
+                    .map_err($crate::py_err)
             }
 
             fn stop(&mut self) -> pyo3::PyResult<()> {
-                <$inner as $crate::Robot>::stop(&mut self.0).map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Robot>::stop(&mut self.0)
+                    .map_err($crate::py_err)
             }
 
             fn pause(&mut self) -> pyo3::PyResult<()> {
-                <$inner as $crate::Robot>::pause(&mut self.0).map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Robot>::pause(&mut self.0)
+                    .map_err($crate::py_err)
             }
 
             fn resume(&mut self) -> pyo3::PyResult<()> {
-                <$inner as $crate::Robot>::resume(&mut self.0).map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Robot>::resume(&mut self.0)
+                    .map_err($crate::py_err)
             }
 
             fn emergency_stop(&mut self) -> pyo3::PyResult<()> {
-                <$inner as $crate::Robot>::emergency_stop(&mut self.0).map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Robot>::emergency_stop(&mut self.0)
+                    .map_err($crate::py_err)
             }
 
             fn waiting_for_finish(&mut self) -> pyo3::PyResult<()> {
-                <$inner as $crate::Robot>::waiting_for_finish(&mut self.0).map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Robot>::waiting_for_finish(
+                    &mut self.0,
+                )
+                .map_err($crate::py_err)
             }
 
             fn clear_emergency_stop(&mut self) -> pyo3::PyResult<()> {
-                <$inner as $crate::Robot>::clear_emergency_stop(&mut self.0).map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Robot>::clear_emergency_stop(
+                    &mut self.0,
+                )
+                .map_err($crate::py_err)
             }
 
             fn is_moving(&mut self) -> pyo3::PyResult<bool> {
-                <$inner as $crate::Robot>::is_moving(&mut self.0).map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Robot>::is_moving(&mut self.0)
+                    .map_err($crate::py_err)
             }
         }
     };
@@ -391,62 +410,66 @@ macro_rules! py_arm {
         #[pyo3::pymethods]
         impl $py {
             fn state(&mut self) -> pyo3::PyResult<$crate::PyArmState> {
-                <$inner as $crate::Arm<$dof>>::state(&mut self.0)
+                <$inner as $crate::__private::roplat_behavior::Arm<$dof>>::state(&mut self.0)
                     .map($crate::PyArmState::from)
-                    .map_err(Into::into)
+                    .map_err($crate::py_err)
             }
 
             fn set_load(&mut self, load: $crate::PyLoadState) -> pyo3::PyResult<()> {
-                <$inner as $crate::Arm<$dof>>::set_load(&mut self.0, load.into())
-                    .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::Arm<$dof>>::set_load(
+                    &mut self.0,
+                    load.into(),
+                )
+                .map_err($crate::py_err)
             }
 
             fn get_joint(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::get_joint(&self.0)
+                <$inner as $crate::__private::roplat_behavior::Arm<$dof>>::get_joint(&self.0)
             }
 
             fn get_endpoint(&self) -> $crate::PyPose {
-                <$inner as $crate::Arm<$dof>>::get_endpoint(&self.0).into()
+                <$inner as $crate::__private::roplat_behavior::Arm<$dof>>::get_endpoint(&self.0)
+                    .into()
             }
 
             fn get_joint_min(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                <$inner as $crate::__private::roplat_behavior::Arm<$dof>>::motion_limits(&self.0)
                     .joint
                     .q_min
             }
 
             fn get_joint_max(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                <$inner as $crate::__private::roplat_behavior::Arm<$dof>>::motion_limits(&self.0)
                     .joint
                     .q_max
             }
 
             fn get_joint_vel_bound(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                <$inner as $crate::__private::roplat_behavior::Arm<$dof>>::motion_limits(&self.0)
                     .joint
                     .dq_max
             }
 
             fn get_joint_acc_bound(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                <$inner as $crate::__private::roplat_behavior::Arm<$dof>>::motion_limits(&self.0)
                     .joint
                     .ddq_max
             }
 
             fn get_joint_jerk_bound(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                <$inner as $crate::__private::roplat_behavior::Arm<$dof>>::motion_limits(&self.0)
                     .joint
                     .dddq_max
             }
 
             fn get_torque_bound(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                <$inner as $crate::__private::roplat_behavior::Arm<$dof>>::motion_limits(&self.0)
                     .joint
                     .tau_max
             }
 
             fn get_torque_dot_bound(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                <$inner as $crate::__private::roplat_behavior::Arm<$dof>>::motion_limits(&self.0)
                     .joint
                     .dtau_max
             }
@@ -460,18 +483,24 @@ macro_rules! py_joint_motion {
         #[pyo3::pymethods]
         impl $py {
             fn move_joint(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
-                <$inner as $crate::MoveTo<$crate::JointSpace<$dof>>>::move_to(&mut self.0, target)
-                    .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::MoveTo<
+                    $crate::__private::roplat_behavior::JointSpace<$dof>,
+                >>::move_to(&mut self.0, target)
+                .map_err($crate::py_err)
             }
 
             fn move_joint_sync(&mut self, target: [f64; $dof]) -> pyo3::PyResult<()> {
-                <$inner as $crate::MoveTo<$crate::JointSpace<$dof>>>::move_to(&mut self.0, target)
-                    .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::MoveTo<
+                    $crate::__private::roplat_behavior::JointSpace<$dof>,
+                >>::move_to(&mut self.0, target)
+                .map_err($crate::py_err)
             }
 
             fn move_joint_traj(&mut self, traj: Vec<[f64; $dof]>) -> pyo3::PyResult<()> {
-                <$inner as $crate::MoveTraj<$crate::JointSpace<$dof>>>::move_traj(&mut self.0, traj)
-                    .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::MoveTraj<
+                    $crate::__private::roplat_behavior::JointSpace<$dof>,
+                >>::move_traj(&mut self.0, traj)
+                .map_err($crate::py_err)
             }
         }
     };
@@ -483,13 +512,17 @@ macro_rules! py_flange_move {
         #[pyo3::pymethods]
         impl $py {
             fn move_flange(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
-                <$inner as $crate::MoveTo<$crate::FlangeSpace>>::move_to(&mut self.0, target.into())
-                    .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::MoveTo<
+                    $crate::__private::roplat_behavior::FlangeSpace,
+                >>::move_to(&mut self.0, target.into())
+                .map_err($crate::py_err)
             }
 
             fn move_flange_sync(&mut self, target: $crate::PyPose) -> pyo3::PyResult<()> {
-                <$inner as $crate::MoveTo<$crate::FlangeSpace>>::move_to(&mut self.0, target.into())
-                    .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::MoveTo<
+                    $crate::__private::roplat_behavior::FlangeSpace,
+                >>::move_to(&mut self.0, target.into())
+                .map_err($crate::py_err)
             }
         }
     };
@@ -502,8 +535,10 @@ macro_rules! py_flange_traj {
         impl $py {
             fn move_flange_traj(&mut self, traj: Vec<$crate::PyPose>) -> pyo3::PyResult<()> {
                 let traj = traj.into_iter().map(Into::into).collect();
-                <$inner as $crate::MoveTraj<$crate::FlangeSpace>>::move_traj(&mut self.0, traj)
-                    .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::MoveTraj<
+                    $crate::__private::roplat_behavior::FlangeSpace,
+                >>::move_traj(&mut self.0, traj)
+                .map_err($crate::py_err)
             }
         }
     };
@@ -526,17 +561,12 @@ macro_rules! py_joint_torque_control {
                 &mut self,
                 closure: pyo3::Py<pyo3::PyAny>,
             ) -> pyo3::PyResult<()> {
-                <$inner as $crate::ControlWith<$crate::TorqueControl<$dof>>>::control_with(
-                    &mut self.0,
-                    move |state, duration| {
-                        $crate::ffi::to_py::py_control_array::<$dof>(
-                            &closure,
-                            state.into(),
-                            duration,
-                        )
-                    },
-                )
-                .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::ControlWith<
+                    $crate::__private::roplat_behavior::TorqueControl<$dof>,
+                >>::control_with(&mut self.0, move |state, duration| {
+                    $crate::py::py_control_array::<$dof>(&closure, state.into(), duration)
+                })
+                .map_err($crate::py_err)
             }
         }
     };
@@ -548,17 +578,12 @@ macro_rules! py_arm_torque_control {
         #[pyo3::pymethods]
         impl $py {
             fn control_arm_torque(&mut self, closure: pyo3::Py<pyo3::PyAny>) -> pyo3::PyResult<()> {
-                <$inner as $crate::ControlWith<$crate::ArmTorqueControl<$dof>>>::control_with(
-                    &mut self.0,
-                    move |state, duration| {
-                        $crate::ffi::to_py::py_arm_control_array::<$dof>(
-                            &closure,
-                            state.into(),
-                            duration,
-                        )
-                    },
-                )
-                .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::ControlWith<
+                    $crate::__private::roplat_behavior::ArmTorqueControl<$dof>,
+                >>::control_with(&mut self.0, move |state, duration| {
+                    $crate::py::py_arm_control_array::<$dof>(&closure, state.into(), duration)
+                })
+                .map_err($crate::py_err)
             }
         }
     };
@@ -573,17 +598,12 @@ macro_rules! py_joint_position_control {
                 &mut self,
                 closure: pyo3::Py<pyo3::PyAny>,
             ) -> pyo3::PyResult<()> {
-                <$inner as $crate::ControlWith<$crate::JointPositionControl<$dof>>>::control_with(
-                    &mut self.0,
-                    move |state, duration| {
-                        $crate::ffi::to_py::py_control_array::<$dof>(
-                            &closure,
-                            state.into(),
-                            duration,
-                        )
-                    },
-                )
-                .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::ControlWith<
+                    $crate::__private::roplat_behavior::JointPositionControl<$dof>,
+                >>::control_with(&mut self.0, move |state, duration| {
+                    $crate::py::py_control_array::<$dof>(&closure, state.into(), duration)
+                })
+                .map_err($crate::py_err)
             }
         }
     };
@@ -598,17 +618,12 @@ macro_rules! py_joint_velocity_control {
                 &mut self,
                 closure: pyo3::Py<pyo3::PyAny>,
             ) -> pyo3::PyResult<()> {
-                <$inner as $crate::ControlWith<$crate::JointVelocityControl<$dof>>>::control_with(
-                    &mut self.0,
-                    move |state, duration| {
-                        $crate::ffi::to_py::py_control_array::<$dof>(
-                            &closure,
-                            state.into(),
-                            duration,
-                        )
-                    },
-                )
-                .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::ControlWith<
+                    $crate::__private::roplat_behavior::JointVelocityControl<$dof>,
+                >>::control_with(&mut self.0, move |state, duration| {
+                    $crate::py::py_control_array::<$dof>(&closure, state.into(), duration)
+                })
+                .map_err($crate::py_err)
             }
         }
     };
@@ -623,13 +638,12 @@ macro_rules! py_cartesian_velocity_control {
                 &mut self,
                 closure: pyo3::Py<pyo3::PyAny>,
             ) -> pyo3::PyResult<()> {
-                <$inner as $crate::ControlWith<$crate::CartesianVelocityControl<$dof>>>::control_with(
-                    &mut self.0,
-                    move |state, duration| {
-                        $crate::ffi::to_py::py_arm_control_vec6(&closure, state.into(), duration)
-                    },
-                )
-                .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::ControlWith<
+                    $crate::__private::roplat_behavior::CartesianVelocityControl<$dof>,
+                >>::control_with(&mut self.0, move |state, duration| {
+                    $crate::py::py_arm_control_vec6(&closure, state.into(), duration)
+                })
+                .map_err($crate::py_err)
             }
         }
     };
@@ -644,13 +658,12 @@ macro_rules! py_cartesian_pose_control {
                 &mut self,
                 closure: pyo3::Py<pyo3::PyAny>,
             ) -> pyo3::PyResult<()> {
-                <$inner as $crate::ControlWith<$crate::CartesianPoseControl<$dof>>>::control_with(
-                    &mut self.0,
-                    move |state, duration| {
-                        $crate::ffi::to_py::py_arm_control_pose(&closure, state.into(), duration)
-                    },
-                )
-                .map_err(Into::into)
+                <$inner as $crate::__private::roplat_behavior::ControlWith<
+                    $crate::__private::roplat_behavior::CartesianPoseControl<$dof>,
+                >>::control_with(&mut self.0, move |state, duration| {
+                    $crate::py::py_arm_control_pose(&closure, state.into(), duration)
+                })
+                .map_err($crate::py_err)
             }
         }
     };

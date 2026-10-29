@@ -1,8 +1,8 @@
-//! Minimal current C++ lifecycle bridge. Compile with `--features to_cxx`.
+//! Minimal current C++ lifecycle bridge. Compile with `--features cxx`.
 //! Producing a standalone C++ application additionally requires generated glue.
 fn main() {}
 
-#[cfg(feature = "to_cxx")]
+#[cfg(feature = "cxx")]
 mod to_cxx {
     use roplat_behavior::{Robot, RobotResult};
     pub struct ExampleRobot;
@@ -17,7 +17,7 @@ mod to_cxx {
         }
     }
     impl ExampleRobot {
-        roplat_behavior::cxx_robot_api!(ExampleRobot);
+        roplat_behavior_ffi::cxx_robot_api!(ExampleRobot);
     }
     #[cxx::bridge]
     mod ffi {
