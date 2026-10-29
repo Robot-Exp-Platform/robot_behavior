@@ -32,7 +32,7 @@
 | `Watchdog` | `CycleWatchdog` | 相邻两个周期的间隔超时（按门的时钟，或按设备报告的 `dt`） |
 | `SafetyLatch` | `LatchGate`、`Trip` | 锁存已跳闸 |
 
-所有比较都写成 NaN 拒绝：命令或限值是 NaN 都不放行。限值为 `+∞` 表示不检查；`Joints` 默认的 `f64::MAX` 实际上也等于不限。`joint_limits::<R, N>()` 从驱动的 `Joints` 常量取限值；URDF 来源用 `roplat_description` 的 `Chain::joint_limits`。
+所有比较都写成 NaN 拒绝：命令或限值是 NaN 都不放行。限值为 `+∞` 表示不检查（`q_min` 为 `-∞`）。驱动声明的限值用 `R::joint_limits()`（`Joints` 提供）取得，它把声明中的 `±f64::MAX` 规整为 `±∞`；URDF 来源用 `roplat_description` 的 `Chain::joint_limits`。
 
 ## 4. 限速：参考是上一条命令与 `dt`
 

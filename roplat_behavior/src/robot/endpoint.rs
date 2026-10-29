@@ -1,3 +1,6 @@
+use super::limits::unbounded_above;
+use crate::CartesianLimits;
+
 /// Cartesian-space limits of an arm's end effector.
 ///
 /// Where [`Joints`](crate::Joints) describes per-joint limits, `EndPoint`
@@ -33,4 +36,17 @@ pub trait EndPoint {
     const ROTATION_ACC_BOUND: f64 = f64::MAX;
     /// Maximum angular jerk (rad/s^3). Defaults to unbounded.
     const ROTATION_JERK_BOUND: f64 = f64::MAX;
+
+    /// The declared bounds as data. A bound at or beyond `f64::MAX` reads as
+    /// unbounded (`f64::INFINITY`).
+    fn cartesian_limits() -> CartesianLimits {
+        CartesianLimits {
+            linear_velocity: unbounded_above(Self::CARTESIAN_VEL_BOUND),
+            linear_acceleration: unbounded_above(Self::CARTESIAN_ACC_BOUND),
+            linear_jerk: unbounded_above(Self::CARTESIAN_JERK_BOUND),
+            angular_velocity: unbounded_above(Self::ROTATION_VEL_BOUND),
+            angular_acceleration: unbounded_above(Self::ROTATION_ACC_BOUND),
+            angular_jerk: unbounded_above(Self::ROTATION_JERK_BOUND),
+        }
+    }
 }

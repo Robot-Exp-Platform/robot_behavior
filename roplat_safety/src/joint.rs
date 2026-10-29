@@ -2,25 +2,13 @@
 
 use std::time::Duration;
 
-use roplat_behavior::{JointState, Joints};
+use roplat_behavior::JointState;
 use roplat_msgs::JointLimits;
 
 use crate::{
     Axis, CommandCheck, Quantity, SafetyViolation,
     bound::{self, within},
 };
-
-/// The limits a driver declares through [`Joints`]. Bounds left at their
-/// `f64::MAX` default stay effectively unbounded.
-pub fn joint_limits<R: Joints<N>, const N: usize>() -> JointLimits<N> {
-    JointLimits {
-        q_min: R::JOINT_MIN,
-        q_max: R::JOINT_MAX,
-        dq_max: R::JOINT_VEL_BOUND,
-        ddq_max: R::JOINT_ACC_BOUND,
-        tau_max: R::TORQUE_BOUND,
-    }
-}
 
 /// Joint position commands: inside the position range, and moving no faster
 /// than `dq_max`, nor changing that speed faster than `ddq_max`, from one
@@ -186,8 +174,8 @@ impl<const N: usize> CommandCheck for JointVelocityCheck<N> {
     }
 }
 
-/// Joint torque commands: within `tau_max`, and changing no faster than the
-/// effort-rate limit, which is unbounded unless set.
+/// Joint torque commands: within `tau_max`, and changing no faster than
+/// `dtau_max`.
 ///
 /// What a torque command contains is driver-specific (Franka's excludes
 /// gravity), so the first command of a session is measured against an
@@ -204,13 +192,13 @@ impl<const N: usize> JointTorqueCheck<N> {
     pub fn new(limits: JointLimits<N>) -> Self {
         Self {
             tau_max: limits.tau_max,
-            dtau_max: [f64::INFINITY; N],
+            dtau_max: limits.dtau_max,
             start: [0.; N],
             previous: None,
         }
     }
 
-    /// Bounds the change between commands, e.g. `Joints::TORQUE_DOT_BOUND`.
+    /// Bounds the change between commands, in place of the limits' `dtau_max`.
     pub fn with_effort_rate(mut self, dtau_max: [f64; N]) -> Self {
         self.dtau_max = dtau_max;
         self

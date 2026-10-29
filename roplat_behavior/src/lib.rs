@@ -59,17 +59,17 @@ pub const ROPLAT_ASCII: &str = r#"
 pub mod behavior {
     pub use crate::robot::{
         Arm, ArmState, ArmTorqueControl, AsyncControl, AsyncControlCallback, BalanceControl,
-        BasePoseSpace, BaseState, BaseVelocityControl, BaseVelocitySpace, Camera,
+        BasePoseSpace, BaseState, BaseVelocityControl, BaseVelocitySpace, Camera, CartesianLimits,
         CartesianPoseControl, CartesianVelocityControl, CenterOfMassSpace, ContactState, Control,
         ControlObservation, ControlObserver, ControlSpace, ControlStep, Coord, CoriolisInput,
         CoriolisInputSpace, DynamicsModel, EndEffectorState, EndPoint, EndSpace, FlangeSpace,
         FootSpace, ForceTorqueSensor, ForwardKinematics, GaitCommand, GaitSpace, GravityInput,
         GravityInputSpace, Gripper, HandSpace, Humanoid, HumanoidState, ImuSensor, Inertial,
-        InverseKinematics, JacobianModel, JacobianSpace, JointPositionControl, JointSample,
-        JointSpace, JointState, JointTorqueSpace, JointVelocityControl, Joints, LoadState,
-        MassMatrixSpace, MobileBase, MobileBaseState, Motion, MotionFile, MotionSpace, Pose,
-        Quadruped, QuadrupedState, Relative, Robot, RobotDescription, SpaceMap, SpatialSample,
-        StateView, TcpSpace, TorqueControl, TypedSpaceMap, WholeBodyJointSpace,
+        InverseKinematics, JacobianModel, JacobianSpace, JointLimits, JointPositionControl,
+        JointSample, JointSpace, JointState, JointTorqueSpace, JointVelocityControl, Joints,
+        LoadState, MassMatrixSpace, MobileBase, MobileBaseState, Motion, MotionFile, MotionLimits,
+        MotionSpace, Pose, Quadruped, QuadrupedState, Relative, Robot, RobotDescription, SpaceMap,
+        SpatialSample, StateView, TcpSpace, TorqueControl, TypedSpaceMap, WholeBodyJointSpace,
         WholeBodyTorqueSpace, WholeBodyVelocitySpace,
     };
 

@@ -25,9 +25,9 @@ mod watchdog;
 
 use std::time::Duration;
 
-pub use cartesian::{CartesianLimits, CartesianVelocityCheck};
+pub use cartesian::CartesianVelocityCheck;
 pub use fresh::{AgeLimit, Sampled};
-pub use joint::{JointPositionCheck, JointTorqueCheck, JointVelocityCheck, joint_limits};
+pub use joint::{JointPositionCheck, JointTorqueCheck, JointVelocityCheck};
 pub use latch::SafetyLatch;
 #[cfg(feature = "roplat")]
 pub use node::{CommandGuard, CycleWatchdog, FreshnessGate, LatchGate, Trip};

@@ -3,36 +3,14 @@
 use std::time::Duration;
 
 use roplat_behavior::ArmState;
+use roplat_msgs::CartesianLimits;
 
 use crate::{Axis, CommandCheck, Quantity, SafetyViolation, bound};
 
-/// Norm bounds on a twist; every bound is infinite unless set.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CartesianLimits {
-    /// m/s.
-    pub linear_velocity: f64,
-    /// rad/s.
-    pub angular_velocity: f64,
-    /// m/s².
-    pub linear_acceleration: f64,
-    /// rad/s².
-    pub angular_acceleration: f64,
-}
-
-impl Default for CartesianLimits {
-    fn default() -> Self {
-        Self {
-            linear_velocity: f64::INFINITY,
-            angular_velocity: f64::INFINITY,
-            linear_acceleration: f64::INFINITY,
-            angular_acceleration: f64::INFINITY,
-        }
-    }
-}
-
 /// Cartesian velocity commands `[vx, vy, vz, wx, wy, wz]`: linear and angular
 /// speed within their limits, and their change from one command to the next
-/// within the acceleration limits.
+/// within the acceleration limits. The jerk bounds of [`CartesianLimits`] are
+/// not checked.
 ///
 /// The first command of a session is measured against the observed flange
 /// twist, or against an explicit start for drivers that do not report one.

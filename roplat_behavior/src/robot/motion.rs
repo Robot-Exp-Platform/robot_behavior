@@ -2,7 +2,7 @@ use std::future::Future;
 
 use serde::de::DeserializeOwned;
 
-use crate::{Robot, RobotException, RobotResult};
+use crate::{Arm, MotionLimits, Robot, RobotException, RobotResult};
 
 /// Type-level mapping from a motion *space* to the *target* it carries for a
 /// particular robot `R`.
@@ -178,6 +178,30 @@ pub trait Motion: Sized {
         Self: MoveTraj<S>,
     {
         <Self as MoveTraj<S>>::move_waypoints_sync(self, waypoints)
+    }
+
+    /// Run `f` with `limits` in force, then restore the previous limits, also
+    /// when `f` fails. `limits` must tighten the declared envelope.
+    ///
+    /// ```ignore
+    /// let mut slow = robot.motion_limits();
+    /// slow.joint.dq_max = [0.5; 7];
+    /// robot.with_limits(slow, |r| r.move_to::<JointSpace<7>>(q))?;
+    /// ```
+    fn with_limits<const N: usize, T>(
+        &mut self,
+        limits: MotionLimits<N>,
+        f: impl FnOnce(&mut Self) -> RobotResult<T>,
+    ) -> RobotResult<T>
+    where
+        Self: Arm<N>,
+    {
+        let previous = self.motion_limits();
+        self.set_motion_limits(limits)?;
+        let result = f(self);
+        let restored = self.set_motion_limits(previous);
+        let value = result?;
+        restored.map(|()| value)
     }
 }
 impl<R> Motion for R {}

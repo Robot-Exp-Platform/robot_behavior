@@ -5,6 +5,7 @@ pub mod control;
 pub mod device;
 pub mod endpoint;
 pub mod joint;
+pub mod limits;
 pub mod math;
 pub mod model;
 pub mod motion;
@@ -24,6 +25,7 @@ pub use control::{
 pub use device::{Camera, ForceTorqueSensor, Gripper, ImuSensor};
 pub use endpoint::EndPoint;
 pub use joint::Joints;
+pub use limits::MotionLimits;
 pub use math::{Iso3, JMat, JVec, Jaco};
 pub use model::{
     CoriolisInput, DynamicsModel, ForwardKinematics, GravityInput, InverseKinematics,
@@ -31,7 +33,7 @@ pub use model::{
 };
 pub use motion::{Motion, MotionFile, MotionSpace, MoveTo, MoveTraj};
 pub use observe::{ControlObservation, ControlObserver};
-pub use roplat_msgs::LoadState;
+pub use roplat_msgs::{CartesianLimits, JointLimits, LoadState};
 pub use spaces::{
     BasePoseSpace, BaseVelocitySpace, CenterOfMassSpace, CoriolisInputSpace, EndSpace, FlangeSpace,
     FootSpace, GaitCommand, GaitSpace, GravityInputSpace, HandSpace, Inertial, JacobianSpace,

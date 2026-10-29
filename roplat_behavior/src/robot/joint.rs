@@ -1,3 +1,6 @@
+use super::limits::{unbounded_above, unbounded_below};
+use crate::JointLimits;
+
 /// A robot with a fixed number `N` of actuated joints, together with the
 /// compile-time kinematic and dynamic limits of those joints.
 ///
@@ -43,4 +46,18 @@ pub trait Joints<const N: usize> {
     const TORQUE_BOUND: [f64; N] = [f64::MAX; N];
     /// Maximum joint torque rate (N*m/s). Defaults to unbounded.
     const TORQUE_DOT_BOUND: [f64; N] = [f64::MAX; N];
+
+    /// The declared envelope as data, the form algorithms and safety checks
+    /// take. A bound at or beyond `±f64::MAX` reads as unbounded (`±f64::INFINITY`).
+    fn joint_limits() -> JointLimits<N> {
+        JointLimits {
+            q_min: Self::JOINT_MIN.map(unbounded_below),
+            q_max: Self::JOINT_MAX.map(unbounded_above),
+            dq_max: Self::JOINT_VEL_BOUND.map(unbounded_above),
+            ddq_max: Self::JOINT_ACC_BOUND.map(unbounded_above),
+            dddq_max: Self::JOINT_JERK_BOUND.map(unbounded_above),
+            tau_max: Self::TORQUE_BOUND.map(unbounded_above),
+            dtau_max: Self::TORQUE_DOT_BOUND.map(unbounded_above),
+        }
+    }
 }

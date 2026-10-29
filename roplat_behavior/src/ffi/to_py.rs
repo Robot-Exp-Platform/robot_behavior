@@ -410,31 +410,45 @@ macro_rules! py_arm {
             }
 
             fn get_joint_min(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::get_joint_min(&self.0)
+                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                    .joint
+                    .q_min
             }
 
             fn get_joint_max(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::get_joint_max(&self.0)
+                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                    .joint
+                    .q_max
             }
 
             fn get_joint_vel_bound(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::get_joint_vel_bound(&self.0)
+                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                    .joint
+                    .dq_max
             }
 
             fn get_joint_acc_bound(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::get_joint_acc_bound(&self.0)
+                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                    .joint
+                    .ddq_max
             }
 
             fn get_joint_jerk_bound(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::get_joint_jerk_bound(&self.0)
+                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                    .joint
+                    .dddq_max
             }
 
             fn get_torque_bound(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::get_torque_bound(&self.0)
+                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                    .joint
+                    .tau_max
             }
 
             fn get_torque_dot_bound(&self) -> [f64; $dof] {
-                <$inner as $crate::Arm<$dof>>::get_torque_dot_bound(&self.0)
+                <$inner as $crate::Arm<$dof>>::motion_limits(&self.0)
+                    .joint
+                    .dtau_max
             }
         }
     };
