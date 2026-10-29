@@ -263,7 +263,7 @@ struct TwoJoints;
 
 impl Robot for TwoJoints {
     type State = ();
-    const CONTROL_PERIOD: f64 = 0.001;
+    const CONTROL_PERIOD: std::time::Duration = std::time::Duration::from_millis(1);
     fn version() -> String {
         "two joints".into()
     }
@@ -282,8 +282,10 @@ impl Joints<2> for TwoJoints {
 
 #[test]
 fn a_copp_plan_plays_back_sample_for_sample() {
-    let plan = plan_waypoints_traj_via_copp::<TwoJoints, 2>(&[[0., 0.], [0.5, -0.3]], 1.).unwrap();
     let period = ms(1);
+    let plan =
+        plan_waypoints_traj_via_copp(&[[0., 0.], [0.5, -0.3]], &TwoJoints::joint_limits(), period)
+            .unwrap();
     let clock = Arc::new(ManualClock::simulation());
     let points = points_from_samples(&plan, period);
     let mut follower = JointTrajectoryFollower::new(points, clock.clone()).unwrap();
@@ -301,6 +303,28 @@ fn a_copp_plan_plays_back_sample_for_sample() {
         assert_eq!(done, k + 1 == plan.len(), "cycle {k}");
         clock.advance(period);
     }
+}
+
+#[test]
+fn a_cycle_timed_follower_keeps_time_when_cycles_are_late() {
+    let period = ms(1);
+    let plan =
+        plan_waypoints_traj_via_copp(&[[0., 0.], [0.5, -0.3]], &TwoJoints::joint_limits(), period)
+            .unwrap();
+    let mut follower =
+        JointTrajectoryFollower::cycle_timed(points_from_samples(&plan, period)).unwrap();
+    // The first cycle starts the run whatever its duration.
+    assert_eq!(follower.step_by(period, &at(plan[0])).unwrap().0, plan[0]);
+    // A cycle reported three periods late commands the third sample on, not
+    // the next one.
+    let (command, done) = follower.step_by(ms(3), &at(plan[0])).unwrap();
+    assert!(
+        command
+            .iter()
+            .zip(&plan[3])
+            .all(|(c, p)| (c - p).abs() < 1e-12)
+    );
+    assert!(!done);
 }
 
 #[test]

@@ -2,12 +2,11 @@ use std::time::Duration;
 
 use roplat_behavior::{
     ArmState, JointSample, JointState, Joints, SpatialSample, StateView, Twist,
-    msgs::{JointLimits, Stamp, clock},
+    msgs::{CartesianLimits, JointLimits, Stamp, clock},
 };
 use roplat_safety::{
-    AgeLimit, Axis, CartesianLimits, CartesianVelocityCheck, CommandCheck, JointPositionCheck,
-    JointTorqueCheck, JointVelocityCheck, Quantity, SafetyLatch, SafetyViolation, Watchdog,
-    joint_limits,
+    AgeLimit, Axis, CartesianVelocityCheck, CommandCheck, JointPositionCheck, JointTorqueCheck,
+    JointVelocityCheck, Quantity, SafetyLatch, SafetyViolation, Watchdog,
 };
 
 const MS: Duration = Duration::from_millis(1);
@@ -19,17 +18,12 @@ fn limits() -> JointLimits<2> {
         dq_max: [2.0; 2],
         ddq_max: [100.0; 2],
         tau_max: [10.0; 2],
+        ..JointLimits::UNBOUNDED
     }
 }
 
 fn unbounded() -> JointLimits<2> {
-    JointLimits {
-        q_min: [f64::NEG_INFINITY; 2],
-        q_max: [f64::INFINITY; 2],
-        dq_max: [f64::INFINITY; 2],
-        ddq_max: [f64::INFINITY; 2],
-        tau_max: [f64::INFINITY; 2],
-    }
+    JointLimits::UNBOUNDED
 }
 
 fn state(q: [f64; 2], dq: [f64; 2]) -> JointState<2> {
@@ -199,7 +193,7 @@ fn cartesian_checks_both_parts_and_their_change() {
         linear_velocity: 0.25,
         angular_velocity: 1.0,
         linear_acceleration: 10.0,
-        angular_acceleration: f64::INFINITY,
+        ..CartesianLimits::UNBOUNDED
     };
     let mut check = CartesianVelocityCheck::<2>::new(limits);
     assert_eq!(
@@ -303,12 +297,13 @@ impl Joints<2> for TwoJoints {
 
 #[test]
 fn joint_limits_read_the_driver_constants() {
-    let limits = joint_limits::<TwoJoints, 2>();
+    let limits = TwoJoints::joint_limits();
     assert_eq!(
         (limits.q_min, limits.q_max, limits.dq_max),
         ([-2.; 2], [2.; 2], [3.; 2])
     );
-    assert_eq!(limits.tau_max, [f64::MAX; 2]);
+    // Bounds left at their default are unbounded.
+    assert_eq!(limits.tau_max, [f64::INFINITY; 2]);
 }
 
 #[cfg(feature = "roplat")]

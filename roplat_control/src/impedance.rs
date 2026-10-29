@@ -8,10 +8,10 @@ use std::{
 
 use nalgebra as na;
 
-use roplat_behavior::{ArmState, ForwardKinematics, JVec, JacobianModel, JointState, Pose};
-use roplat_trajectory::path_generate::{
+use crate::target::{
     constant_joint_target_fn, constant_pose_target_fn, joint_traj_target_fn, pose_traj_target_fn,
 };
+use roplat_behavior::{ArmState, ForwardKinematics, JVec, JacobianModel, JointState, Pose};
 
 #[derive(Debug, Clone)]
 pub struct JointImpedanceSessionHandle<const N: usize> {

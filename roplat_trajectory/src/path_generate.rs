@@ -1,103 +1,7 @@
 use nalgebra as na;
 use std::{sync::Arc, time::Duration};
 
-use roplat_behavior::{ArmState, JointState, Pose};
-
 type FN<T> = Arc<dyn Fn(Duration) -> T + Send + Sync>;
-
-/// Build a controller-compatible joint target source around a fixed target.
-pub fn constant_joint_target_fn<const N: usize>(
-    target: [f64; N],
-) -> impl FnMut(JointState<N>, Duration) -> ([f64; N], bool) + Send + 'static {
-    move |_state, _duration| (target, false)
-}
-
-/// Build a controller-compatible joint target source around a sampled trajectory.
-pub fn joint_traj_target_fn<const N: usize>(
-    traj: Vec<[f64; N]>,
-) -> impl FnMut(JointState<N>, Duration) -> ([f64; N], bool) + Send + 'static {
-    let mut step = 0usize;
-
-    move |state, duration| {
-        if traj.is_empty() {
-            return (state.meas.q().unwrap_or([0.0; N]), true);
-        }
-        if duration == Duration::ZERO && step == 0 {
-            return (traj[0], false);
-        }
-
-        let index = step.min(traj.len() - 1);
-        let target = traj[index];
-        if duration > Duration::ZERO {
-            step += 1;
-        }
-        (target, step >= traj.len())
-    }
-}
-
-/// Wrap a duration-indexed joint path as a controller-compatible target source.
-pub fn joint_path_target_fn<F, const N: usize>(
-    path: F,
-    total: Duration,
-) -> impl FnMut(JointState<N>, Duration) -> ([f64; N], bool) + Send + 'static
-where
-    F: Fn(Duration) -> [f64; N] + Send + 'static,
-{
-    let mut elapsed = Duration::ZERO;
-
-    move |_state, duration| {
-        elapsed += duration;
-        let t = elapsed.min(total);
-        (path(t), elapsed >= total)
-    }
-}
-
-/// Build a controller-compatible Cartesian target source around a fixed pose.
-pub fn constant_pose_target_fn<const N: usize>(
-    target: Pose,
-) -> impl FnMut(ArmState<N>, Duration) -> (Pose, bool) + Send + 'static {
-    move |_state, _duration| (target, false)
-}
-
-/// Build a controller-compatible Cartesian target source around a sampled pose trajectory.
-pub fn pose_traj_target_fn<const N: usize>(
-    traj: Vec<Pose>,
-) -> impl FnMut(ArmState<N>, Duration) -> (Pose, bool) + Send + 'static {
-    let mut step = 0usize;
-
-    move |state, duration| {
-        if traj.is_empty() {
-            return (state.flange.meas.pose().unwrap_or_default(), true);
-        }
-        if duration == Duration::ZERO && step == 0 {
-            return (traj[0], false);
-        }
-
-        let index = step.min(traj.len() - 1);
-        let target = traj[index];
-        if duration > Duration::ZERO {
-            step += 1;
-        }
-        (target, step >= traj.len())
-    }
-}
-
-/// Wrap a duration-indexed Cartesian path as a controller-compatible target source.
-pub fn pose_path_target_fn<F, const N: usize>(
-    path: F,
-    total: Duration,
-) -> impl FnMut(ArmState<N>, Duration) -> (Pose, bool) + Send + 'static
-where
-    F: Fn(Duration) -> Pose + Send + 'static,
-{
-    let mut elapsed = Duration::ZERO;
-
-    move |_state, duration| {
-        elapsed += duration;
-        let t = elapsed.min(total);
-        (path(t), elapsed >= total)
-    }
-}
 
 /// Generate a linear path for joint space
 pub fn joint_linear<const N: usize>(
@@ -219,8 +123,19 @@ pub fn t_curve(
         return (0., Arc::new(|_| 0.));
     }
     let delta = delta.abs();
-    // Adjust v_max for degenerate case (triangular profile if delta is small)
-    let v_max = v_max.min((2. * delta * a_max).sqrt());
+    if !a_max.is_finite() {
+        // Unbounded acceleration: constant speed, or no time at all when the
+        // speed is unbounded too.
+        let t_total = if v_max.is_finite() { delta / v_max } else { 0. };
+        let f = move |t: Duration| {
+            let t = t.as_secs_f64();
+            if t < t_total { v_max * t } else { delta }
+        };
+        return (t_total, Arc::new(f));
+    }
+    // A short move never reaches v_max: accelerating to sqrt(delta * a_max)
+    // and braking again covers exactly delta.
+    let v_max = v_max.min((delta * a_max).sqrt());
     let t_acc = v_max / a_max;
     let s_acc = 0.5 * a_max * t_acc * t_acc;
     let s_cruise = delta - 2. * s_acc;
@@ -242,6 +157,16 @@ pub fn t_curve(
 #[derive(Clone, Copy, Debug)]
 enum ScalarSCurveProfile {
     Hold,
+    /// Velocity and acceleration unbounded: the move takes no time.
+    Instant {
+        delta: f64,
+    },
+    /// Acceleration and jerk unbounded: constant speed from start to end.
+    Constant {
+        delta: f64,
+        v_max: f64,
+        t_total: f64,
+    },
     Trapezoid {
         delta: f64,
         v_max: f64,
@@ -284,8 +209,19 @@ impl ScalarSCurveProfile {
         }
 
         let delta = delta.abs();
-        if j_max == f64::MAX {
-            let v_max = v_max.min((2. * delta * a_max).sqrt());
+        if !a_max.is_finite() && !j_max.is_finite() {
+            return if v_max.is_finite() {
+                Self::Constant { delta, v_max, t_total: delta / v_max }
+            } else {
+                Self::Instant { delta }
+            };
+        }
+        // An unbounded jerk plans a trapezoid. Compare with infinity, not
+        // f64::MAX: a huge jerk bound divided by a short distance overflows.
+        if !j_max.is_finite() {
+            // A short move peaks at sqrt(delta * a_max): half the distance
+            // accelerating, half braking.
+            let v_max = v_max.min((delta * a_max).sqrt());
             let t_acc = v_max / a_max;
             let s_acc = 0.5 * a_max * t_acc * t_acc;
             let s_cruise = delta - 2. * s_acc;
@@ -328,7 +264,8 @@ impl ScalarSCurveProfile {
 
     fn total_time(self) -> f64 {
         match self {
-            Self::Hold => 0.,
+            Self::Hold | Self::Instant { .. } => 0.,
+            Self::Constant { t_total, .. } => t_total,
             Self::Trapezoid { t_total, .. } => t_total,
             Self::Short { t_min, .. } => t_min,
             Self::Cruise { t_min, .. } => t_min,
@@ -339,6 +276,14 @@ impl ScalarSCurveProfile {
     fn sample(self, t: f64) -> f64 {
         match self {
             Self::Hold => 0.,
+            Self::Instant { delta } => delta,
+            Self::Constant { delta, v_max, t_total } => {
+                if t < t_total {
+                    v_max * t
+                } else {
+                    delta
+                }
+            }
             Self::Trapezoid { delta, v_max, a_max, t_acc, s_acc, t_cruise, t_total } => {
                 let t = t.min(t_total);
                 if t < t_acc {
@@ -432,6 +377,12 @@ impl ScalarSCurveProfile {
     }
 }
 
+/// A synchronized jerk-limited move of `N` joints from a start to a target.
+///
+/// A bound may be `f64::INFINITY`. An unbounded jerk gives a trapezoid, an
+/// unbounded acceleration and jerk a constant speed, and an unbounded
+/// velocity and acceleration a move that takes no time. A caller that drives
+/// hardware passes finite velocity and acceleration bounds.
 #[derive(Clone, Debug)]
 pub struct JointSCurve<const N: usize> {
     v_max: [f64; N],
@@ -530,7 +481,7 @@ fn s_curve(
     a_max: f64,
     j_max: f64,
 ) -> (f64, Arc<dyn Fn(Duration) -> f64 + Send + Sync>) {
-    if j_max == f64::MAX {
+    if !j_max.is_finite() {
         return t_curve(delta, v_max, a_max);
     }
     let d2 = 2. * a_max.powi(3) / j_max.powi(2);
@@ -633,7 +584,16 @@ pub fn joint_simple_4th_curve<const N: usize>(
     let mut t_path = Vec::with_capacity(N);
     let mut f_path = Vec::with_capacity(N);
     for i in 0..N {
-        let (t, f) = simple_4th_curve(delta[i].abs(), v_max[i], a_max[i]);
+        let (t, f) = if v_max[i].is_finite() || a_max[i].is_finite() {
+            simple_4th_curve(delta[i].abs(), v_max[i], a_max[i])
+        } else {
+            // Velocity and acceleration unbounded: this joint takes no time.
+            let d = delta[i].abs();
+            (
+                0.,
+                Arc::new(move |_: Duration| d) as Arc<dyn Fn(Duration) -> f64 + Send + Sync>,
+            )
+        };
         t_path.push(t);
         f_path.push(f);
     }
@@ -710,6 +670,56 @@ mod test {
     use std::f64::consts::PI;
 
     use super::*;
+
+    /// Review finding F2: with an unbounded jerk and a move shorter than 1 rad
+    /// the curve used to step to the target.
+    #[test]
+    fn unbounded_jerk_moves_smoothly_over_a_short_distance() {
+        for jerk in [f64::INFINITY, f64::MAX] {
+            let mut curve = JointSCurve::new([2.0], [10.0], [jerk]);
+            let total = curve.plan([0.0], [0.5]);
+            assert!(total > Duration::ZERO);
+            let mut previous = 0.0;
+            for k in 0..=(total.as_micros() / 1000) as u64 {
+                let (q, _) = curve.apply(Duration::from_millis(k));
+                assert!(q[0].is_finite());
+                assert!((q[0] - previous).abs() <= 2.0 * 0.001 + 1e-9, "t = {k} ms");
+                previous = q[0];
+            }
+            assert_eq!(curve.apply(total).0, [0.5]);
+        }
+    }
+
+    #[test]
+    fn unbounded_acceleration_moves_at_constant_speed_or_at_once() {
+        let mut curve = JointSCurve::new([2.0], [f64::INFINITY], [f64::INFINITY]);
+        assert_eq!(curve.plan([0.0], [0.5]), Duration::from_millis(250));
+        assert!((curve.apply(Duration::from_millis(100)).0[0] - 0.2).abs() < 1e-12);
+        let mut instant = JointSCurve::new([f64::INFINITY], [f64::INFINITY], [f64::INFINITY]);
+        assert_eq!(instant.plan([0.0], [0.5]), Duration::ZERO);
+        assert_eq!(instant.apply(Duration::ZERO), ([0.5], true));
+        let (total, f) = t_curve(0.5, 2.0, f64::INFINITY);
+        assert_eq!((total, f(Duration::from_secs(1))), (0.25, 0.5));
+    }
+
+    /// A move too short to reach v_max peaks at sqrt(delta * a_max) and stays
+    /// continuous where acceleration turns into braking.
+    #[test]
+    fn a_short_trapezoid_is_continuous() {
+        let (total, f) = t_curve(1.0, 3.5, 7.0);
+        assert!((total - 2.0 * (1.0f64 / 7.0).sqrt()).abs() < 1e-12);
+        let mid = Duration::from_secs_f64(total / 2.0);
+        // Within the nanosecond resolution of `Duration`.
+        assert!((f(mid) - 0.5).abs() < 1e-6);
+        let mut curve = JointSCurve::new([3.5], [7.0], [f64::INFINITY]);
+        let total = curve.plan([0.0], [1.0]);
+        let mut previous = 0.0;
+        for k in 0..=total.as_millis() as u64 {
+            let q = curve.apply(Duration::from_millis(k)).0[0];
+            assert!((q - previous).abs() < 0.01, "t = {k} ms");
+            previous = q;
+        }
+    }
 
     #[test]
     fn test_joint_linear() {
@@ -797,6 +807,12 @@ mod test {
 
     use plotters::prelude::*;
 
+    /// The plotting tests draw into the system temporary directory, not the
+    /// source tree.
+    fn plot_path() -> std::path::PathBuf {
+        std::env::temp_dir().join("roplat_trajectory_plot.svg")
+    }
+
     #[test]
     fn test_joint_s_curve() {
         let start = [-0.2, -0.77, -0.36, -2.42, 0.00, 2.57, 0.77];
@@ -836,7 +852,8 @@ mod test {
                 .collect::<Vec<f64>>()
         };
 
-        let root = plotters::prelude::SVGBackend::new("plot.svg", (640, 480)).into_drawing_area();
+        let path = plot_path();
+        let root = plotters::prelude::SVGBackend::new(&path, (640, 480)).into_drawing_area();
         root.fill(&plotters::prelude::WHITE).unwrap();
 
         let mut chart = plotters::prelude::ChartBuilder::on(&root)
@@ -920,7 +937,8 @@ mod test {
         let (t, f) = s_curve(delta, v_max, a_max, j_max);
         println!("t: {}", t);
 
-        let root = SVGBackend::new("plot.svg", (640, 480)).into_drawing_area();
+        let path = plot_path();
+        let root = SVGBackend::new(&path, (640, 480)).into_drawing_area();
         root.fill(&WHITE).unwrap();
 
         let mut chart = ChartBuilder::on(&root)
@@ -976,7 +994,8 @@ mod test {
             println!("time: {} | {:?}", i as f64 / 100., result);
         }
 
-        let root = plotters::prelude::SVGBackend::new("plot.svg", (640, 480)).into_drawing_area();
+        let path = plot_path();
+        let root = plotters::prelude::SVGBackend::new(&path, (640, 480)).into_drawing_area();
         root.fill(&plotters::prelude::WHITE).unwrap();
 
         let mut chart = plotters::prelude::ChartBuilder::on(&root)

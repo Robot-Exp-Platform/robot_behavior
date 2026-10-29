@@ -104,8 +104,15 @@ pub type ControlStep<Command> = ControlFlow<(), (Command, bool)>;
 /// [`Robot::State`](crate::Robot::State) on purpose: a driver's lifecycle
 /// `State` may be a rich native struct, while the realtime loop observes a
 /// task-shaped view. The closure is invoked once per control cycle with the
-/// freshly observed state and the elapsed cycle time, and returns the next
+/// freshly observed state and the cycle's `Duration`, and returns the next
 /// command together with a `done` flag.
+///
+/// The `Duration` is the robot's nominal [`CONTROL_PERIOD`] when no cycle was
+/// missed, and `(k + 1)` times it when `k` cycles were missed before this one,
+/// so summing it gives the time since the session began. The first cycle
+/// reports the nominal period.
+///
+/// [`CONTROL_PERIOD`]: crate::Robot::CONTROL_PERIOD
 ///
 /// `control_with` runs a control relation until the closure reports `done = true`
 /// or the driver returns an error. The closure is scoped to the call, so drivers

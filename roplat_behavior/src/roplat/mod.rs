@@ -9,12 +9,10 @@
 pub mod async_rhythm;
 pub mod node;
 pub mod rhythm;
-pub mod simulation_rhythm;
 
 pub use async_rhythm::*;
 pub use node::*;
 pub use rhythm::*;
-pub use simulation_rhythm::*;
 
 /// Lets a graph raise a device result with `?`, e.g. `motion.1?;` after the
 /// robot has been returned. The exception is carried as an I/O error source;

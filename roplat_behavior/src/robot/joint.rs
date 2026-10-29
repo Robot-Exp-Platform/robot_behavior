@@ -1,3 +1,6 @@
+use super::limits::{unbounded_above, unbounded_below};
+use crate::JointLimits;
+
 /// A robot with a fixed number `N` of actuated joints, together with the
 /// compile-time kinematic and dynamic limits of those joints.
 ///
@@ -6,8 +9,8 @@
 /// velocities in rad/s, accelerations in rad/s^2, jerk in rad/s^3 and torques
 /// in N*m. Only [`JOINT_MIN`](Joints::JOINT_MIN) and
 /// [`JOINT_MAX`](Joints::JOINT_MAX) are required; the remaining limits default
-/// to an effectively unbounded `f64::MAX`, so a driver only declares what its
-/// firmware actually enforces.
+/// to unbounded, `f64::INFINITY`, so a driver only declares what its firmware
+/// actually enforces. A declared `f64::MAX` also reads as unbounded.
 ///
 /// Implementing `Joints<N>` makes [`JointSpace<N>`](crate::JointSpace) a valid
 /// [`MotionSpace`](crate::MotionSpace) for the robot, and it is a super-trait of
@@ -34,13 +37,27 @@ pub trait Joints<const N: usize> {
     /// Upper joint position limits (rad). Required.
     const JOINT_MAX: [f64; N];
     /// Maximum joint velocities (rad/s). Defaults to unbounded.
-    const JOINT_VEL_BOUND: [f64; N] = [f64::MAX; N];
+    const JOINT_VEL_BOUND: [f64; N] = [f64::INFINITY; N];
     /// Maximum joint accelerations (rad/s^2). Defaults to unbounded.
-    const JOINT_ACC_BOUND: [f64; N] = [f64::MAX; N];
+    const JOINT_ACC_BOUND: [f64; N] = [f64::INFINITY; N];
     /// Maximum joint jerk (rad/s^3). Defaults to unbounded.
-    const JOINT_JERK_BOUND: [f64; N] = [f64::MAX; N];
+    const JOINT_JERK_BOUND: [f64; N] = [f64::INFINITY; N];
     /// Maximum joint torques (N*m). Defaults to unbounded.
-    const TORQUE_BOUND: [f64; N] = [f64::MAX; N];
+    const TORQUE_BOUND: [f64; N] = [f64::INFINITY; N];
     /// Maximum joint torque rate (N*m/s). Defaults to unbounded.
-    const TORQUE_DOT_BOUND: [f64; N] = [f64::MAX; N];
+    const TORQUE_DOT_BOUND: [f64; N] = [f64::INFINITY; N];
+
+    /// The declared envelope as data, the form algorithms and safety checks
+    /// take. A bound at or beyond `±f64::MAX` reads as unbounded (`±f64::INFINITY`).
+    fn joint_limits() -> JointLimits<N> {
+        JointLimits {
+            q_min: Self::JOINT_MIN.map(unbounded_below),
+            q_max: Self::JOINT_MAX.map(unbounded_above),
+            dq_max: Self::JOINT_VEL_BOUND.map(unbounded_above),
+            ddq_max: Self::JOINT_ACC_BOUND.map(unbounded_above),
+            dddq_max: Self::JOINT_JERK_BOUND.map(unbounded_above),
+            tau_max: Self::TORQUE_BOUND.map(unbounded_above),
+            dtau_max: Self::TORQUE_DOT_BOUND.map(unbounded_above),
+        }
+    }
 }

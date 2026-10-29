@@ -33,8 +33,9 @@ impl<C: CommandCheck> CommandGuard<C> {
     }
 
     /// Measures rates over the device's command period instead of the
-    /// Yield's `dt`, which drivers do not yet report alike: Franka reports
-    /// zero before the first cycle, roplat_exrobot the session time.
+    /// cycle's `Duration`. The contract makes that `Duration` the nominal
+    /// period, or `(k + 1)` periods after `k` missed cycles; this is for
+    /// drivers that do not report it so yet.
     pub fn with_period(mut self, period: Duration) -> Self {
         self.period = Some(period);
         self

@@ -543,20 +543,14 @@ impl Chain {
         Ok(jacobian)
     }
 
-    /// Position, velocity and effort bounds of the movable joints. The
-    /// description has no acceleration bounds; `ddq_max` is infinite.
+    /// Position, velocity and effort bounds of the movable joints. URDF has no
+    /// acceleration, jerk or effort-rate bounds; those are infinite.
     pub fn joint_limits<const N: usize>(&self) -> Result<JointLimits<N>, DescriptionError> {
         let expected = self.dof();
         if expected != N {
             return Err(DescriptionError::DofMismatch { expected, got: N });
         }
-        let mut limits = JointLimits {
-            q_min: [f64::NEG_INFINITY; N],
-            q_max: [f64::INFINITY; N],
-            dq_max: [f64::INFINITY; N],
-            ddq_max: [f64::INFINITY; N],
-            tau_max: [f64::INFINITY; N],
-        };
+        let mut limits = JointLimits::UNBOUNDED;
         for (i, joint) in self.movable().enumerate() {
             if let Some(l) = joint.limit {
                 limits.q_min[i] = l.lower;

@@ -62,9 +62,11 @@ pub fn combine_array<T: Copy, const N: usize, const M: usize, const L: usize>(
 ///
 /// `dh_kinematics!(Arm, N)` implements `SpaceMap<JointSpace<N>, FlangeSpace>`
 /// (forward kinematics) and `SpaceMap<JointSpace<N>, JacobianSpace<N>>` for a
-/// type implementing [`ArmForwardKinematics<N>`]. Adding `inverse` also
-/// implements `SpaceMap<FlangeSpace, JointSpace<N>>` through
-/// [`ArmInverseKinematics::ik_solve`], seeded with `Joints::JOINT_DEFAULT`.
+/// type implementing [`ArmForwardKinematics<N>`], both at the flange
+/// ([`ArmForwardKinematics::FLANGE`]). Adding `inverse` also implements
+/// `SpaceMap<FlangeSpace, JointSpace<N>>` through
+/// [`ArmInverseKinematics::ik_solve_converged`], seeded with
+/// `Joints::JOINT_DEFAULT`; a target it does not reach is an error.
 ///
 /// Before 0.9 these maps were blanket impls in `robot_behavior`; a macro keeps
 /// the contract crate independent of this one.
@@ -120,10 +122,9 @@ macro_rules! dh_kinematics {
                 &self,
                 input: Self::Input,
             ) -> $crate::__private::roplat_behavior::RobotResult<Self::Output> {
-                Ok(
-                    <$ty as $crate::ArmForwardKinematics<$n>>::kine_cache(&input, &[0.; $n])
-                        .jacobian(),
-                )
+                Ok(<$ty as $crate::ArmForwardKinematics<$n>>::flange_jacobian(
+                    &input,
+                ))
             }
         }
     };
@@ -146,11 +147,11 @@ macro_rules! dh_kinematics {
                 let q0 = $crate::__private::roplat_behavior::JVec::<$n>::from_row_slice(
                     &<$ty as $crate::__private::roplat_behavior::Joints<$n>>::JOINT_DEFAULT,
                 );
-                let q = <$ty as $crate::ArmInverseKinematics<$n>>::ik_solve(
+                let q = <$ty as $crate::ArmInverseKinematics<$n>>::ik_solve_converged(
                     &q0,
                     &input,
                     Default::default(),
-                );
+                )?;
                 Ok(q.as_slice().try_into().unwrap())
             }
         }

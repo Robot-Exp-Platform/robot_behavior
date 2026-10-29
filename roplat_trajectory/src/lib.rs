@@ -1,9 +1,17 @@
-//! Trajectory generation for `roplat_behavior` robots: joint and Cartesian
-//! interpolation (linear, trapezoid, S-curve, fourth-order) in
-//! [`path_generate`], time-optimal path parameterization through COPP in
-//! [`time_scaling`], collision-free joint-space paths in [`path_planning`],
-//! straight tip paths checked in joint space in [`cartesian_path`], and
-//! following a timed joint trajectory on a position channel in [`follow`].
+//! Trajectory generation: joint and Cartesian interpolation (linear,
+//! trapezoid, S-curve, fourth-order) in [`path_generate`], time-optimal path
+//! parameterization through COPP in [`time_scaling`], collision-free
+//! joint-space paths in [`path_planning`], straight tip paths checked in
+//! joint space in [`cartesian_path`], and following a timed joint trajectory
+//! on a position channel in [`follow`].
+//!
+//! The crate takes limits as `roplat_msgs` data ([`JointLimits`],
+//! [`CartesianLimits`]) and the control period as a `Duration`, never a robot
+//! type, so it depends only on `roplat_msgs` and `copp`. An unbounded entry is
+//! `f64::INFINITY`.
+//!
+//! [`JointLimits`]: roplat_msgs::JointLimits
+//! [`CartesianLimits`]: roplat_msgs::CartesianLimits
 
 pub mod cartesian_path;
 pub mod follow;

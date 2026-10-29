@@ -1,5 +1,5 @@
 use nalgebra::{self as na, SVector};
-use roplat_behavior::{JVec, Jaco, Joints, Pose};
+use roplat_behavior::{JVec, Jaco, Joints, Pose, RobotException, RobotResult};
 use roplat_description::{Chain, DescriptionError, JointKind};
 
 use crate::dh::DhParam;
@@ -238,6 +238,13 @@ pub trait ArmForwardKinematics<const N: usize> {
     /// The arm's Denavit–Hartenberg parameters, one [`DhParam`] per joint.
     const DH: [DhParam; N];
 
+    /// The flange frame in the last DH frame. Identity unless the flange lies
+    /// beyond the last joint's frame, as Franka's does 107 mm along joint 7's
+    /// axis: `const FLANGE: Pose = Pose::from_position([0., 0., 0.107]);`.
+    /// [`fk_end_pose`](Self::fk_end_pose), [`flange_jacobian`](Self::flange_jacobian)
+    /// and the inverse kinematics all refer to the flange.
+    const FLANGE: Pose = Pose::IDENTITY;
+
     #[inline(always)]
     /// Build a full [`ArmKineCache`] for the given joint positions/velocities.
     fn kine_cache(q: &[f64; N], q_dot: &[f64; N]) -> ArmKineCache<N> {
@@ -245,11 +252,30 @@ pub trait ArmForwardKinematics<const N: usize> {
     }
 
     #[inline(always)]
-    /// Compute the end-effector [`Pose`] for joint positions `q`.
+    /// Compute the flange [`Pose`] for joint positions `q`.
     fn fk_end_pose(q: &[f64; N]) -> Pose {
         let k = Self::kine_cache(q, &[0.0; N]);
-        Pose::from_isometry(k.end_effector_pose())
+        Pose::from_isometry(k.end_effector_pose() * Self::FLANGE.quat())
     }
+
+    /// The flange's geometric Jacobian in the base frame, linear rows first.
+    fn flange_jacobian(q: &[f64; N]) -> Jaco<N> {
+        flange_jacobian(&Self::kine_cache(q, &[0.0; N]), &Self::FLANGE)
+    }
+}
+
+/// The last DH frame's Jacobian with its linear rows moved to the flange:
+/// a point `r` away moves at `v + ω × r`.
+fn flange_jacobian<const N: usize>(cache: &ArmKineCache<N>, flange: &Pose) -> Jaco<N> {
+    let r = cache.end_effector_pose().rotation * flange.quat().translation.vector;
+    let mut j = cache.jacobian();
+    for col in 0..N {
+        let shift = j.fixed_view::<3, 1>(3, col).into_owned().cross(&r);
+        for row in 0..3 {
+            j[(row, col)] += shift[row];
+        }
+    }
+    j
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -312,6 +338,19 @@ impl Default for IKMethod {
     }
 }
 
+impl IKMethod {
+    /// The stopping rule of this method, or of its fallback.
+    pub fn stop(&self) -> CommonStop {
+        match self {
+            IKMethod::DLS { stop, .. }
+            | IKMethod::JT { stop, .. }
+            | IKMethod::Newton { stop }
+            | IKMethod::LM { stop, .. } => *stop,
+            IKMethod::Analytic { fallback } => fallback.stop(),
+        }
+    }
+}
+
 /// Inverse kinematics for an `N`-DoF arm.
 ///
 /// Builds on [`ArmForwardKinematics`] and the joint limits of [`Joints<N>`].
@@ -352,7 +391,7 @@ pub trait ArmInverseKinematics<const N: usize>: ArmForwardKinematics<N> + Joints
     /// error in the base frame plus the geometric Jacobian.
     fn task_error_and_jacobian(q: &JVec<N>, target: &Pose) -> (SpatialVec, Jaco<N>) {
         let k = Self::kine_cache(q.as_slice().try_into().unwrap(), &[0.0; N]);
-        let cur = k.end_effector_pose();
+        let cur = k.end_effector_pose() * Self::FLANGE.quat();
         let tgt = target.quat();
         let dp = tgt.translation.vector - cur.translation.vector;
         // rrel must be expressed in the BASE frame to match the geometric
@@ -362,7 +401,7 @@ pub trait ArmInverseKinematics<const N: usize>: ArmForwardKinematics<N> + Joints
         let drot = rrel.scaled_axis();
 
         let e = SpatialVec::from_row_slice(&[dp.x, dp.y, dp.z, drot.x, drot.y, drot.z]);
-        (e, k.jacobian())
+        (e, flange_jacobian(&k, &Self::FLANGE))
     }
 
     // ========== 单步迭代器（按方法）==========
@@ -435,19 +474,7 @@ pub trait ArmInverseKinematics<const N: usize>: ArmForwardKinematics<N> + Joints
             return sol;
         }
         // 迭代
-        let stop = match &method {
-            IKMethod::DLS { stop, .. }
-            | IKMethod::JT { stop, .. }
-            | IKMethod::Newton { stop }
-            | IKMethod::LM { stop, .. } => *stop,
-            IKMethod::Analytic { fallback } => match &**fallback {
-                IKMethod::DLS { stop, .. }
-                | IKMethod::JT { stop, .. }
-                | IKMethod::Newton { stop }
-                | IKMethod::LM { stop, .. } => *stop,
-                _ => CommonStop::default(),
-            },
-        };
+        let stop = method.stop();
 
         let mut q = *q0;
         for _ in 0..stop.max_iters {
@@ -465,6 +492,26 @@ pub trait ArmInverseKinematics<const N: usize>: ArmForwardKinematics<N> + Joints
             }
         }
         q
+    }
+
+    /// [`ik_solve`](Self::ik_solve), refusing a result whose flange is not
+    /// within the method's `pos_tol` and `rot_tol` of `target`: an unreachable
+    /// target is an error rather than the last iterate.
+    fn ik_solve_converged(q0: &JVec<N>, target: &Pose, method: IKMethod) -> RobotResult<JVec<N>>
+    where
+        na::Const<N>: na::DimMin<na::Const<N>, Output = na::Const<N>> + na::ToTypenum,
+    {
+        let stop = method.stop();
+        let q = Self::ik_solve(q0, target, method);
+        let (e, _) = Self::task_error_and_jacobian(&q, target);
+        let (position, rotation) = (e.fixed_rows::<3>(0).norm(), e.fixed_rows::<3>(3).norm());
+        if position <= stop.pos_tol && rotation <= stop.rot_tol {
+            Ok(q)
+        } else {
+            Err(RobotException::UnprocessableInstructionError(format!(
+                "inverse kinematics did not converge: flange {position} m and {rotation} rad from the target"
+            )))
+        }
     }
 }
 

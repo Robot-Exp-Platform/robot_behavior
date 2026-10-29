@@ -75,47 +75,10 @@ where
     }
 }
 
-/// Generic command-frame transform node.
-///
-/// This is intentionally minimal: specialized limit nodes can be layered later
-/// once concrete downstream safety policies repeat.
-pub struct SafetyNode<F, Command> {
-    filter: F,
-    _command: PhantomData<fn(Command) -> Command>,
-}
-
-impl<F, Command> SafetyNode<F, Command> {
-    pub fn new(filter: F) -> Self {
-        Self { filter, _command: PhantomData }
-    }
-
-    pub fn into_inner(self) -> F {
-        self.filter
-    }
-}
-
-impl<F, Command> ::roplat::Node for SafetyNode<F, Command>
-where
-    F: FnMut((Command, bool)) -> (Command, bool) + Send + Sync,
-    Command: Send,
-{
-    type Input = (Command, bool);
-    type Output = (Command, bool);
-    type Resources = ();
-
-    async fn process(&mut self, input: Self::Input, _resources: ()) -> Self::Output {
-        (self.filter)(input)
-    }
-}
-
 impl<R, S> ::roplat::Lifecycle for MotionNode<R, S> {
     type Error = ::roplat::RoplatError;
 }
 
 impl<M, From, To> ::roplat::Lifecycle for SpaceMapNode<M, From, To> {
-    type Error = ::roplat::RoplatError;
-}
-
-impl<F, Command> ::roplat::Lifecycle for SafetyNode<F, Command> {
     type Error = ::roplat::RoplatError;
 }

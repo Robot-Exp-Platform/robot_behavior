@@ -9,10 +9,12 @@
 
 | Crate | Contents |
 |---|---|
-| `roplat_behavior` | Capability contracts (`Robot`, motion spaces, control channels, model maps; gripper, force/torque, IMU and camera contracts), arm / base / legged state, optional roplat adapters and C / C++ / Python bindings. |
-| `roplat_kinematics` | Denavit–Hartenberg forward kinematics, Jacobians and iterative inverse kinematics; `dh_kinematics!` connects an arm to the model maps. `ArmKineCache::from_chain` takes a URDF chain from `roplat_description` instead of a DH table, `chain_ik` solves its inverse kinematics (any joint kinds, within URDF limits), `chain_ik_solutions` collects the distinct solutions passing a validity check (e.g. collision), nearest first, `UrdfKinematics` makes the chain a `ForwardKinematics` and `JacobianModel`, and `UrdfDynamics` makes a URDF tree a `DynamicsModel` for the `roplat_control` torque controllers. |
-| `roplat_control` | Joint PD/PID, base-velocity PID, joint and Cartesian impedance, gravity compensation, computed torque, operator teleoperation (`cartesian_teleop_control`: deadzone, dead-man button, input timeout, acceleration limit), Cartesian servoing (`CartesianServo`: a tip twist to joint velocity or position commands, slowing only when approaching a singularity, stopping at joint limits, within joint velocity limits, with an optional proximity factor), real-time thread priority. |
-| `roplat_trajectory` | Joint and Cartesian interpolation (linear, trapezoid, S-curve, fourth-order) and COPP time scaling; `plan_joint_path` finds collision-free joint-space waypoints (RRT-Connect, caller-supplied collision check); `plan_cartesian_path` moves the tip in straight lines through given poses, solving each step with the caller's seeded inverse kinematics and stopping before an unreachable pose, a joint jump or an invalid segment. |
+| `roplat_behavior` | Capability contracts (`Robot`, motion spaces, control channels, model maps; gripper, force/torque, IMU and camera contracts), arm / base / legged state, motion limits as data (`MotionLimits`, `with_limits`), relative motion (`Relative<S>`), optional roplat adapters. |
+| `roplat_behavior_ffi` | Python (`py`) and C++ (`cxx`) bindings of the contracts for driver packages used without the roplat runtime: the `py_*` / `cxx_*` macros and the data classes. |
+| `roplat_world` | Contracts for the worlds robots run in: simulator backends and model selection, physics engines, renderers, world entities, the shared asset directory; `SimulationRhythm` with feature `roplat`. |
+| `roplat_kinematics` | Denavit–Hartenberg forward kinematics, Jacobians and iterative inverse kinematics at the flange (`FLANGE`, `ik_solve_converged`); `dh_kinematics!` connects an arm to the model maps. `ArmKineCache::from_chain` takes a URDF chain from `roplat_description` instead of a DH table, `chain_ik` solves its inverse kinematics (any joint kinds, within URDF limits), `chain_ik_solutions` collects the distinct solutions passing a validity check (e.g. collision), nearest first, `UrdfKinematics` makes the chain a `ForwardKinematics` and `JacobianModel`, and `UrdfDynamics` makes a URDF tree a `DynamicsModel` for the `roplat_control` torque controllers. |
+| `roplat_control` | Joint PD/PID, base-velocity PID, joint and Cartesian impedance, gravity compensation, computed torque, the target sources tracking controllers take (`target`), operator teleoperation (`cartesian_teleop_control`: deadzone, dead-man button, input timeout, acceleration limit), Cartesian servoing (`CartesianServo`: a tip twist to joint velocity or position commands, slowing only when approaching a singularity, stopping at joint limits, within joint velocity limits, with an optional proximity factor), real-time thread priority. |
+| `roplat_trajectory` | Joint and Cartesian interpolation (linear, trapezoid, S-curve, fourth-order) and COPP time scaling on limits as data (`JointLimits`, `CartesianLimits`, `PathBounds`), depending only on `roplat_msgs` and copp; `plan_joint_path` finds collision-free joint-space waypoints (RRT-Connect, caller-supplied collision check); `plan_cartesian_path` moves the tip in straight lines through given poses, solving each step with the caller's seeded inverse kinematics and stopping before an unreachable pose, a joint jump or an invalid segment. |
 | `roplat_description` | One robot model read from URDF: kinematic tree, inertia, visual/collision geometry, joint limits, chain forward kinematics and Jacobian, the frames of every link in the tree and whole-tree inverse dynamics (gravity compensation), shared by kinematics, simulation, visualization and limit checks. Depends only on `roplat_msgs`. |
 | `roplat_frames` | Frame tree of a robot cell: compile-time frame ids, static transforms from URDF and calibration, time-buffered joint and dynamic transforms looked up at a `Stamp` without allocating; optional `JointStateNode` (feature `roplat`). [Design (zh)](roplat_frames/docs/design_zh.md). |
 | `roplat_safety` | Safety gates for control graphs: joint limits, rate limits, sample freshness, a cycle watchdog and a shared stop latch. A refused command fails the cycle, so the device receives `Break` and no command. [Design (zh)](roplat_safety/docs/design_zh.md). |
@@ -108,9 +110,11 @@ There are two different uses of async:
 
 An arm with a Denavit–Hartenberg table implements `roplat_kinematics::ArmForwardKinematics<N>` (and `ArmInverseKinematics<N>` for the iterative solvers). `dh_kinematics!(MyArm, 6)` then implements the flange-pose and Jacobian maps, and `dh_kinematics!(MyArm, 6, inverse)` also the inverse map, so generic code can use `ForwardKinematics`, `JacobianModel` and `InverseKinematics` from `roplat_behavior`.
 
-`roplat_control` and `roplat_trajectory` return ordinary closures for `control_with`. Choose gains and model data for your backend; they do not make timing guarantees.
+`roplat_kinematics` answers "which joint positions reach this pose" and connects DH and URDF models to the contract's model maps; `roplat_description` answers "what is the model at these joint positions" (frames, Jacobians, dynamics, limits) without the contract.
 
-`JointTrajectoryFollower` plays timed `JointTrajectoryPoint`s on the joint-position channel. It reads time from a `roplat_msgs::Clock`, not from the cycle `Duration`, so the same follower runs on wall or simulation time. Path and goal tolerances refuse with a `TrackingError` rather than altering the command; with the `roplat` feature of `roplat_trajectory` the follower is a node, and `follower?` in a control domain ends the session with `Break`.
+`roplat_control` returns ordinary closures for `control_with`. `roplat_trajectory` plans on `JointLimits` and the control period; an unbounded limit is `f64::INFINITY`, and the planners need finite velocity and acceleration bounds. Choose gains and model data for your backend; they do not make timing guarantees.
+
+`JointTrajectoryFollower` plays timed `JointTrajectoryPoint`s on the joint-position channel. It reads time from a `roplat_msgs::Clock`, not from the cycle `Duration`, so the same follower runs on wall or simulation time; `JointTrajectoryFollower::cycle_timed` with `step_by(dt, …)` times it by the cycle durations a driver's callback reports. Path and goal tolerances refuse with a `TrackingError` rather than altering the command; with the `roplat` feature of `roplat_trajectory` the follower is a node, and `follower?` in a control domain ends the session with `Break`.
 
 ## Features and Roplat integration
 
@@ -118,10 +122,10 @@ Default features are empty. The Rust motion, control, state, and model interface
 
 | Feature of `roplat_behavior` | Purpose |
 |---|---|
-| `roplat` | `ControlRhythm`, `AsyncControlRhythm`, `SimulationRhythm`, and motion/model/safety node adapters. |
-| `ffi` / `to_c` | Enable the foreign-interface modules / C-facing feature gate. |
-| `to_cxx` | Enable the C++ bridge support. |
-| `to_py` | Enable PyO3 support; the Python module is `roplat_behavior`. |
+| `roplat` | `ControlRhythm`, `AsyncControlRhythm`, and motion/model node adapters. |
+| `conformance` | Contract checks for driver tests. |
+
+Python and C++ bindings are `roplat_behavior_ffi` (features `py`, `cxx`); `SimulationRhythm` is `roplat_world` (feature `roplat`).
 
 For a Roplat application, add `features = ["roplat"]` and depend on the matching `roplat = "0.5"`. Build the application graph with `#[roplat::system]`; choose `ControlRhythm` for a blocking backend or `AsyncControlRhythm` for a native async backend. The adapters connect the same observations and commands to a graph; they do not add capabilities missing from the device driver.
 
@@ -179,10 +183,10 @@ sensor, and scene capabilities. Platform/build availability belongs to each
 backend's installation contract; accepting MJCF does not imply that MuJoCo is
 installed or supported on the current machine. `PhysicsEngine` continues to own
 stepping separately from the robot's existing motion and control traits. The
-[selection tests](roplat_behavior/tests/simulation_models.rs) demonstrate compatible and
+[selection tests](roplat_world/tests/simulation_models.rs) demonstrate compatible and
 incompatible device/backend combinations without starting a simulator.
 
-The optional `roplat::SimulationRhythm<E>` owns any compatible `PhysicsEngine`
+The optional `roplat_world::SimulationRhythm<E>` owns any compatible `PhysicsEngine`
 and drives finite unit ticks in a real `#[roplat::system]` graph. Use
 `SimulationRhythm::logical(engine).with_max_steps(n)` for accelerated execution,
 or `SimulationRhythm::new(engine, period)` for wall-clock pacing. Physics dt
@@ -210,7 +214,7 @@ Driver authors can import `roplat_behavior::driver::*`; applications can import 
 
 ## Working from source
 
-This is a Cargo workspace of the eight crates, with one version. Until `roplat_msgs` is published, the root manifest patches `roplat` and `roplat_msgs` to a sibling checkout of the roplat core, so clone both side by side:
+This is a Cargo workspace of the crates above; each crate declares its own version. Until `roplat_msgs` is published, the root manifest patches `roplat` and `roplat_msgs` to a sibling checkout of the roplat core, so clone both side by side:
 
 ```text
 Robot-Exp-Platform/

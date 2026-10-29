@@ -1,3 +1,73 @@
+# 从 roplat_behavior 0.9 迁移到 0.10
+
+[English](MIGRATION.md)
+
+0.10 不改变契约的语义，改的是限值、相对运动、控制周期和外语绑定的表达方式，以及各项所在的包。每个包各自定版本。需要带新 `JointLimits` 字段的 `roplat_msgs`；发布之前用 roplat 分支 `claude/msgs-limits`。
+
+## 包
+
+| 需要 | 0.9 | 0.10 |
+|---|---|---|
+| Python／C++ 绑定 | `roplat_behavior` 的特性 `to_py`／`to_cxx` | `roplat_behavior_ffi` 的特性 `py`／`cxx` |
+| 仿真后端、物理引擎、渲染器、`SimulationRhythm` | `roplat_behavior` | `roplat_world`（`SimulationRhythm` 在其 `roplat` 特性下） |
+| 目标源（`joint_traj_target_fn` 等） | `roplat_trajectory::path_generate` | `roplat_control::target` |
+
+`roplat_trajectory` 不再依赖 `roplat_behavior`，`roplat_control` 不再依赖 `roplat_trajectory`。C 绑定（`to_c`）已删除。
+
+## 限值
+
+- 无界写 `f64::INFINITY`（位置下限为 `f64::NEG_INFINITY`）。`Joints`、`EndPoint` 的常量默认值改为它；声明为 `f64::MAX` 的仍视为无界。
+- `Joints::joint_limits()`、`EndPoint::cartesian_limits()` 把声明的包络转为 `roplat_msgs::JointLimits`／`CartesianLimits`。`JointLimits` 新增 `dddq_max`（jerk）与 `dtau_max`（力矩变化率），不设的字段用 `..JointLimits::UNBOUNDED` 补齐。
+- `Arm<N>` 去掉 `get_joint_min` 至 `get_rotation_jerk_bound` 的各个 getter 和全部 `with_*`。驱动保存一份 `MotionLimits<N>`，实现：
+
+```rust
+fn motion_limits(&self) -> MotionLimits<N> { self.limits }
+fn set_motion_limits(&mut self, limits: MotionLimits<N>) -> RobotResult<()> {
+    limits.within(&MotionLimits::envelope::<Self>())?;
+    self.limits = limits;
+    Ok(())
+}
+```
+
+  规划时用 `self.limits.scaled_joint()`／`scaled_cartesian()`。调用方持久修改写 `robot.set_motion_limits(robot.motion_limits().scaled(0.2))`；只对一次运动生效写 `robot.with_limits(limits, |r| r.move_to::<…>(target))`，运动失败也会恢复原限值。`OverrideOnce`、`ArmBound`、`RobotBound` 已删除。
+- `roplat_safety::joint_limits::<R, N>()` 改为 `R::joint_limits()`；`roplat_safety::CartesianLimits` 改用 `roplat_msgs::CartesianLimits`；`JointTorqueCheck` 从限值中读取 `dtau_max`。
+
+## 相对运动、周期与法兰
+
+- 删除 `Coord` 与 `Inertial<S>`。相对运动写 `move_to::<Relative<JointSpace<N>>>(dq)` 或 `move_to::<Relative<FlangeSpace>>(delta)`（`delta` 在法兰坐标系中表达），由契约为所有机器人统一实现。
+- `get_endpoint` 从 `Arm<N>` 移到新的 `EndPointPose`，每个 `Arm<N>` 都要实现它。`EndPoint` 只保留声明的笛卡尔限值，因此只描述模型的类型只实现 `EndPoint`，正如它只实现 `Joints` 而不实现 `Arm`。相对运动从机器人读取当前值：关节增量以 `Arm::state()` 中的实测位置为起点，法兰增量以 `EndPointPose::read_endpoint()` 为起点，后者默认返回 `get_endpoint()`。`get_endpoint` 读不到机器人的驱动应覆写 `read_endpoint`。
+- `Robot::CONTROL_PERIOD` 改为 `Duration`：`const CONTROL_PERIOD: Duration = Duration::from_millis(1);`。控制回调的 `Duration` 是这个周期，丢 `k` 个周期后为 `(k + 1)` 个周期。
+
+## 轨迹
+
+- 规划函数接收 `&JointLimits<N>` 与控制周期，不再接收机器人类型和 scale，返回 `TimeScalingError`；驱动用 `.map_err(RobotException::from_algorithm)?` 转成自己的错误。
+- 笛卡尔规划为 `plan_cartesian_path_traj_via_time_scaling(path, q_start, ik, &limits, period, options)` 与 `plan_cartesian_line_traj_via_time_scaling(start, target, q_start, ik, &limits, &cartesian, period, options)`；路径约束在 `CartesianTimeScalingOptions::path_bounds`。`_with_options`、`_with_limits` 变体与 `CartesianTimeScalingLimits` 已删除。
+- COPP 与笛卡尔规划要求速度、加速度有界；jerk 为无穷时不约束 jerk。
+- 删除 `joint_traj_position_control` 与 `copp_*_joint_position_control`。播放轨迹用 `JointTrajectoryFollower`；没有时钟的驱动用 `JointTrajectoryFollower::cycle_timed(points_from_samples(&plan, period))`，每个周期调用 `step_by(dt, &state)`。
+
+## 运动学
+
+- `ArmForwardKinematics::FLANGE` 是法兰在最后一个 DH 坐标系中的位姿（Franka 为 `Pose::from_position([0., 0., 0.107])`）。正运动学、`flange_jacobian` 与逆运动学都以法兰为准。
+- `dh_kinematics!(…, inverse)` 改用 `ik_solve_converged`：不可达目标现在返回错误。
+
+## 外语绑定
+
+```toml
+[dependencies]
+roplat_behavior_ffi = { version = "0.9.0", optional = true }
+pyo3 = { version = "0.28.3", optional = true, features = ["extension-module", "multiple-pymethods"] }
+
+[features]
+to_py = ["dep:pyo3", "dep:roplat_behavior_ffi", "roplat_behavior_ffi/py"]
+```
+
+宏和数据类改从 `roplat_behavior_ffi` 引入。自己写的、用 `?` 把 `RobotResult` 转成 `PyResult` 的代码，改为 `.map_err(roplat_behavior_ffi::py_err)?`。
+
+## 世界
+
+`PhysicsEngine`、`AddSearchPath`、`Renderer`、`AttachFrom`、`Entity`、各实体构建 trait、`SimulationBackend`、`select_simulation_model` 与 `SimulationRhythm` 改从 `roplat_world` 引入；`roplat_data_dir()` 改为 `roplat_world::assets_dir()`。`RobotDescription`、`ModelFormat`、`SimulationModel` 仍在 `roplat_behavior`。URDF 的 `Geometry` 可以转换为 `Entity`。
+
+
 # 从 robot_behavior 0.8 迁移到 roplat_behavior 0.9
 
 [English](MIGRATION.md)

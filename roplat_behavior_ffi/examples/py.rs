@@ -1,16 +1,17 @@
-//! Minimal current Python wrapper. Compile with `--features to_py`.
+//! Minimal current Python wrapper. Compile with `--features py`.
 //! This is a mock type, not a device connection or Python extension package.
 fn main() {}
 
-#[cfg(feature = "to_py")]
+#[cfg(feature = "py")]
 mod to_py {
     use pyo3::types::PyModuleMethods;
-    use roplat_behavior::{Robot, RobotResult, py_robot, py_robot_wrapper};
+    use roplat_behavior::{Robot, RobotResult};
+    use roplat_behavior_ffi::{py_robot, py_robot_wrapper};
 
     pub struct ExampleRobot;
     impl Robot for ExampleRobot {
         type State = ();
-        const CONTROL_PERIOD: f64 = 0.001;
+        const CONTROL_PERIOD: std::time::Duration = std::time::Duration::from_millis(1);
         fn version() -> String {
             "mock".into()
         }

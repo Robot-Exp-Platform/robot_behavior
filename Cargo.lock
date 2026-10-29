@@ -1510,17 +1510,23 @@ name = "roplat_behavior"
 version = "0.9.0"
 dependencies = [
  "anyhow",
- "cxx",
  "futures",
  "nalgebra",
- "paste",
- "pyo3",
  "roplat",
  "roplat_msgs",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "roplat_behavior_ffi"
+version = "0.9.0"
+dependencies = [
+ "cxx",
+ "pyo3",
+ "roplat_behavior",
 ]
 
 [[package]]
@@ -1532,7 +1538,6 @@ dependencies = [
  "roplat_behavior",
  "roplat_description",
  "roplat_kinematics",
- "roplat_trajectory",
  "winapi",
 ]
 
@@ -1654,7 +1659,21 @@ dependencies = [
  "roplat_behavior",
  "roplat_description",
  "roplat_kinematics",
+ "roplat_msgs",
  "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "roplat_world"
+version = "0.9.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "nalgebra",
+ "roplat",
+ "roplat_behavior",
+ "roplat_description",
  "tokio",
 ]
 

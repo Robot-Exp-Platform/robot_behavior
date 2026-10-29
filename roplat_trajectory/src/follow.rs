@@ -20,10 +20,7 @@
 
 use std::time::Duration;
 
-use roplat_behavior::{
-    JointState,
-    msgs::{Clock, JointTrajectoryPoint, Stamp},
-};
+use roplat_msgs::{Clock, JointState, JointTrajectoryPoint, ManualClock, Stamp};
 
 /// Why a trajectory was rejected or its following stopped.
 #[derive(Clone, Debug, PartialEq, thiserror::Error)]
@@ -206,6 +203,27 @@ impl<C: Clock, const N: usize> JointTrajectoryFollower<C, N> {
     }
 }
 
+impl<const N: usize> JointTrajectoryFollower<ManualClock, N> {
+    /// A follower timed by the cycle durations a control callback reports, for
+    /// a driver without a clock of its own: each cycle calls
+    /// [`step_by`](Self::step_by) with the callback's `Duration`.
+    pub fn cycle_timed(points: Vec<JointTrajectoryPoint<N>>) -> Result<Self, TrackingError> {
+        Self::new(points, ManualClock::simulation())
+    }
+
+    /// One control cycle, `dt` after the previous one. The first cycle of a
+    /// run is at the trajectory's start whatever its `dt`, so a late cycle
+    /// commands where the trajectory is by then.
+    pub fn step_by(
+        &mut self,
+        dt: Duration,
+        state: &JointState<N>,
+    ) -> Result<([f64; N], bool), TrackingError> {
+        self.clock.advance(dt);
+        self.step(state)
+    }
+}
+
 /// Timed points for a trajectory sampled every `period`, such as the COPP
 /// plans in [`time_scaling`](crate::time_scaling), which sample at the
 /// robot's control period. Velocities and accelerations are central
@@ -338,8 +356,7 @@ mod node {
     use std::time::Duration;
 
     use roplat::{Lifecycle, Node, RoplatError};
-    use roplat_behavior::JointState;
-    use roplat_behavior::msgs::Clock;
+    use roplat_msgs::{Clock, JointState};
 
     use super::{JointTrajectoryFollower, TrackingError};
 

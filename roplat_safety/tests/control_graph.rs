@@ -14,13 +14,14 @@ use roplat::{
 use roplat_behavior::{
     ArmState, CartesianVelocityControl, JointPositionControl, JointSample, JointState,
     JointVelocityControl, StateView, TorqueControl,
-    msgs::{Header, JointLimits, ManualClock, MonotonicClock, Stamp, Stamped, clock},
+    msgs::{
+        CartesianLimits, Header, JointLimits, ManualClock, MonotonicClock, Stamp, Stamped, clock,
+    },
     roplat::ControlRhythm,
 };
 use roplat_safety::{
-    Axis, CartesianLimits, CartesianVelocityCheck, CommandGuard, CycleWatchdog, FreshnessGate,
-    JointPositionCheck, JointTorqueCheck, JointVelocityCheck, LatchGate, Quantity, SafetyLatch,
-    SafetyViolation, Trip,
+    Axis, CartesianVelocityCheck, CommandGuard, CycleWatchdog, FreshnessGate, JointPositionCheck,
+    JointTorqueCheck, JointVelocityCheck, LatchGate, Quantity, SafetyLatch, SafetyViolation, Trip,
 };
 use support::{DOF, MockArm};
 
@@ -35,6 +36,7 @@ fn limits() -> JointLimits<DOF> {
         dq_max: [2.0; DOF],
         ddq_max: [f64::INFINITY; DOF],
         tau_max: [10.0; DOF],
+        ..JointLimits::UNBOUNDED
     }
 }
 
@@ -390,7 +392,7 @@ async fn cartesian_speed_above_its_bound_breaks() {
     let limits = CartesianLimits {
         linear_velocity: 0.0505,
         linear_acceleration: 20.0,
-        ..CartesianLimits::default()
+        ..CartesianLimits::UNBOUNDED
     };
     let guard = CommandGuard::new(CartesianVelocityCheck::new(limits));
     let accelerate = Accelerate { step: 0.01, vx: 0. };

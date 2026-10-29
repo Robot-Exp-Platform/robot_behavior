@@ -9,10 +9,12 @@
 
 | 包 | 内容 |
 |---|---|
-| `roplat_behavior` | 能力契约（`Robot`、运动空间、控制通道、模型映射；夹爪、力/力矩、IMU 与相机契约）、机械臂/底盘/腿足状态，可选的 roplat 适配与 C / C++ / Python 绑定。 |
-| `roplat_kinematics` | DH 正运动学、雅可比与迭代逆运动学；`dh_kinematics!` 把机械臂接入模型映射。`ArmKineCache::from_chain` 可用 `roplat_description` 的 URDF 链代替 DH 表，`chain_ik` 在 URDF 限位内求其逆运动学（支持各类关节），`chain_ik_solutions` 收集通过有效性检查（如碰撞）的不同解，按与参考位形的距离排序，`UrdfKinematics` 把该链作为 `ForwardKinematics` 与 `JacobianModel`；`UrdfDynamics` 把 URDF 树作为 `DynamicsModel`，供 `roplat_control` 的力矩控制器使用。 |
-| `roplat_control` | 关节 PD/PID、底盘速度 PID、关节与笛卡尔阻抗、重力补偿、计算力矩、操作员遥操作（`cartesian_teleop_control`：死区、使能按键、输入超时、加速度限制）、笛卡尔伺服（`CartesianServo`：末端速度旋量转为关节速度或位置命令，只在趋近奇异时减速，到关节限位即停，不超关节速度上限，可加接近障碍的减速系数）、实时线程优先级。 |
-| `roplat_trajectory` | 关节与笛卡尔插值（直线、梯形、S 曲线、四次曲线）和 COPP 时间缩放；`plan_joint_path` 在关节空间求无碰撞路径点（RRT-Connect，碰撞检查由调用方提供）；`plan_cartesian_path` 让末端沿直线依次经过给定位姿，每步用调用方带种子的逆解求关节位形，在不可达、关节跳变或关节段无效之前停下。 |
+| `roplat_behavior` | 能力契约（`Robot`、运动空间、控制通道、模型映射；夹爪、力/力矩、IMU 与相机契约）、机械臂/底盘/腿足状态、以数据表达的运动限值（`MotionLimits`、`with_limits`）、相对运动（`Relative<S>`），可选的 roplat 适配。 |
+| `roplat_behavior_ffi` | 契约的 Python（`py`）与 C++（`cxx`）绑定，供不依赖 roplat 运行时的驱动包使用：`py_*`／`cxx_*` 宏与数据类。 |
+| `roplat_world` | 机器人所处世界的契约：仿真后端与模型选择、物理引擎、渲染器、世界实体、共享资产目录；`roplat` 特性下有 `SimulationRhythm`。 |
+| `roplat_kinematics` | 以法兰为准的 DH 正运动学、雅可比与迭代逆运动学（`FLANGE`、`ik_solve_converged`）；`dh_kinematics!` 把机械臂接入模型映射。`ArmKineCache::from_chain` 可用 `roplat_description` 的 URDF 链代替 DH 表，`chain_ik` 在 URDF 限位内求其逆运动学（支持各类关节），`chain_ik_solutions` 收集通过有效性检查（如碰撞）的不同解，按与参考位形的距离排序，`UrdfKinematics` 把该链作为 `ForwardKinematics` 与 `JacobianModel`；`UrdfDynamics` 把 URDF 树作为 `DynamicsModel`，供 `roplat_control` 的力矩控制器使用。 |
+| `roplat_control` | 关节 PD/PID、底盘速度 PID、关节与笛卡尔阻抗、重力补偿、计算力矩、跟踪控制器所用的目标源（`target`）、操作员遥操作（`cartesian_teleop_control`：死区、使能按键、输入超时、加速度限制）、笛卡尔伺服（`CartesianServo`：末端速度旋量转为关节速度或位置命令，只在趋近奇异时减速，到关节限位即停，不超关节速度上限，可加接近障碍的减速系数）、实时线程优先级。 |
+| `roplat_trajectory` | 以数据表达限值（`JointLimits`、`CartesianLimits`、`PathBounds`）的关节与笛卡尔插值（直线、梯形、S 曲线、四次曲线）和 COPP 时间缩放，只依赖 `roplat_msgs` 与 copp；`plan_joint_path` 在关节空间求无碰撞路径点（RRT-Connect，碰撞检查由调用方提供）；`plan_cartesian_path` 让末端沿直线依次经过给定位姿，每步用调用方带种子的逆解求关节位形，在不可达、关节跳变或关节段无效之前停下。 |
 | `roplat_description` | 从 URDF 读出的同一份机器人模型：运动学树、惯量、可视/碰撞几何、关节限位、链式正运动学与雅可比、整棵树各连杆的位姿与逆动力学（含重力补偿），供运动学、仿真、可视化与限位检查共用；只依赖 `roplat_msgs`。 |
 | `roplat_frames` | 机器人工作单元的坐标树：编译期确定的帧 id，来自 URDF 与标定的静态变换，按 `Stamp` 缓冲并查询的关节与动态变换，查询不分配内存；可选的 `JointStateNode`（feature `roplat`）。见[设计](roplat_frames/docs/design_zh.md)。 |
 | `roplat_safety` | 控制图的安全门：关节限位、限速、样本新鲜度、周期看门狗与共享停止锁存。被拒绝的命令使本周期失败，设备收到 `Break`、不发命令。见[设计](roplat_safety/docs/design_zh.md)。 |
@@ -108,7 +110,9 @@ async 有两种不同用法：
 
 带 DH 参数表的机械臂实现 `roplat_kinematics::ArmForwardKinematics<N>`（迭代求解器还需要 `ArmInverseKinematics<N>`）。`dh_kinematics!(MyArm, 6)` 随后实现法兰位姿与雅可比映射，`dh_kinematics!(MyArm, 6, inverse)` 还实现逆映射，泛型代码就能通过 `roplat_behavior` 的 `ForwardKinematics`、`JacobianModel`、`InverseKinematics` 使用它。
 
-`roplat_control` 与 `roplat_trajectory` 返回可直接交给 `control_with` 的普通闭包。增益与模型数据需按后端选择；它们不提供时序保证。
+`roplat_kinematics` 回答“要到达这个位姿，关节该取什么值”，并把 DH 与 URDF 两种模型接到契约的模型映射上；`roplat_description` 回答“在这组关节值下模型是什么样”（各坐标系、雅可比、动力学、限值），不依赖契约。
+
+`roplat_control` 返回可直接交给 `control_with` 的普通闭包。`roplat_trajectory` 按 `JointLimits` 与控制周期规划；无界写 `f64::INFINITY`，规划要求速度、加速度有界。增益与模型数据需按后端选择；它们不提供时序保证。
 
 ## Feature 与 Roplat 集成
 
@@ -116,10 +120,10 @@ async 有两种不同用法：
 
 | `roplat_behavior` 的 feature | 用途 |
 |---|---|
-| `roplat` | `ControlRhythm`、`AsyncControlRhythm`，以及运动/模型/安全节点适配器。 |
-| `ffi` / `to_c` | 启用外部接口模块 / 面向 C 的 feature 开关。 |
-| `to_cxx` | 启用 C++ bridge 支持。 |
-| `to_py` | 启用 PyO3 支持；Python 模块名为 `roplat_behavior`。 |
+| `roplat` | `ControlRhythm`、`AsyncControlRhythm`，以及运动/模型节点适配器。 |
+| `conformance` | 供驱动测试使用的契约检查。 |
+
+Python 与 C++ 绑定在 `roplat_behavior_ffi`（特性 `py`、`cxx`）；`SimulationRhythm` 在 `roplat_world`（特性 `roplat`）。
 
 编写 Roplat 应用时，为依赖添加 `features = ["roplat"]`，并依赖匹配的 `roplat = "0.5"`。用 `#[roplat::system]` 组织应用图；阻塞式后端使用 `ControlRhythm`，原生异步后端使用 `AsyncControlRhythm`。适配器把相同的观测和指令接入图中，不会为驱动补出缺失的能力。
 
@@ -172,10 +176,10 @@ impl RobotDescription for ArmModels {
 实际支持的关节、控制、传感器和场景能力。操作系统与构建条件由后端安装契约
 说明；接受 MJCF 不表示当前电脑已安装或支持 MuJoCo。仿真步进继续使用独立
 的 `PhysicsEngine`，不改变真机的运动与控制语义。
-[选择测试](roplat_behavior/tests/simulation_models.rs) 覆盖设备与后端匹配及不匹配的组合，
+[选择测试](roplat_world/tests/simulation_models.rs) 覆盖设备与后端匹配及不匹配的组合，
 不启动仿真器。
 
-可选的 `roplat_behavior::roplat::SimulationRhythm<E>` 为任意兼容的
+可选的 `roplat_world::SimulationRhythm<E>` 为任意兼容的
 `PhysicsEngine` 提供有限步数与墙钟节律，并在真实 `#[roplat::system]` 图中运行。
 `logical(engine).with_max_steps(n)` 按引擎速度推进；`new(engine, period)`
 只限制墙钟节奏，不改变物理步长。每次驱动重新计算步数预算，但不会重置世界。
@@ -198,7 +202,7 @@ impl RobotDescription for ArmModels {
 
 ## 从源码开发
 
-本仓库是八个包组成的 Cargo 工作区，共用一个版本。`roplat_msgs` 发布之前，根清单把 `roplat` 与 `roplat_msgs` 指向同级的 roplat 核心检出，因此需要并排克隆：
+本仓库是上述各包组成的 Cargo 工作区，每个包各自声明版本。`roplat_msgs` 发布之前，根清单把 `roplat` 与 `roplat_msgs` 指向同级的 roplat 核心检出，因此需要并排克隆：
 
 ```text
 Robot-Exp-Platform/

@@ -5,6 +5,7 @@ pub mod control;
 pub mod device;
 pub mod endpoint;
 pub mod joint;
+pub mod limits;
 pub mod math;
 pub mod model;
 pub mod motion;
@@ -22,8 +23,9 @@ pub use control::{
     JointPositionControl, JointVelocityControl, TorqueControl,
 };
 pub use device::{Camera, ForceTorqueSensor, Gripper, ImuSensor};
-pub use endpoint::EndPoint;
+pub use endpoint::{EndPoint, EndPointPose};
 pub use joint::Joints;
+pub use limits::MotionLimits;
 pub use math::{Iso3, JMat, JVec, Jaco};
 pub use model::{
     CoriolisInput, DynamicsModel, ForwardKinematics, GravityInput, InverseKinematics,
@@ -31,18 +33,20 @@ pub use model::{
 };
 pub use motion::{Motion, MotionFile, MotionSpace, MoveTo, MoveTraj};
 pub use observe::{ControlObservation, ControlObserver};
-pub use roplat_msgs::LoadState;
+pub use roplat_msgs::{CartesianLimits, JointLimits, LoadState};
 pub use spaces::{
     BasePoseSpace, BaseVelocitySpace, CenterOfMassSpace, CoriolisInputSpace, EndSpace, FlangeSpace,
-    FootSpace, GaitCommand, GaitSpace, GravityInputSpace, HandSpace, Inertial, JacobianSpace,
-    JointSpace, JointTorqueSpace, MassMatrixSpace, Relative, TcpSpace, WholeBodyJointSpace,
+    FootSpace, GaitCommand, GaitSpace, GravityInputSpace, HandSpace, JacobianSpace, JointSpace,
+    JointTorqueSpace, MassMatrixSpace, Relative, RelativeSpace, TcpSpace, WholeBodyJointSpace,
     WholeBodyTorqueSpace, WholeBodyVelocitySpace,
 };
 pub use state::{
     BaseState, ContactSample, ContactState, EndEffectorState, HumanoidState, JointSample,
     JointState, MobileBaseState, QuadrupedState, SpatialSample, SpatialState, StateView,
 };
-pub use types::{Coord, Pose};
+pub use types::Pose;
+
+use std::time::Duration;
 
 use crate::RobotResult;
 
@@ -61,7 +65,10 @@ pub trait Robot {
     /// One frame of measured robot state.
     type State;
 
-    const CONTROL_PERIOD: f64;
+    /// The nominal period of the robot's control cycle. A control callback
+    /// receives this period as its `Duration`, or `(k + 1)` times it when `k`
+    /// cycles were missed before it.
+    const CONTROL_PERIOD: Duration;
 
     /// Driver / firmware version string.
     fn version() -> String;
@@ -133,12 +140,13 @@ pub trait Robot {
 /// A robot description, used for dynamic dispatch and configuration.
 pub trait RobotDescription {
     /// A robot with a URDF file.
-    /// This path is relative to the [`roplat_data_dir`](crate::roplat_data_dir) directory.
+    /// This path is relative to the shared asset directory
+    /// (`roplat_world::assets_dir`).
     const URDF: Option<&'static str> = None;
 
     /// Models available for simulation, optionally adapted to particular backends.
     ///
-    /// A [`crate::SimulationBackend`] selects only formats its robot loader
+    /// A simulator backend (`roplat_world::SimulationBackend`) selects only formats its robot loader
     /// accepts. The legacy [`Self::URDF`] remains a final URDF-only fallback.
     /// Declaring a model does not implement any robot control capability or
     /// guarantee that two backends simulate equivalent dynamics.
