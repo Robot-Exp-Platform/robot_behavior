@@ -9,14 +9,18 @@
 //! readings of one sensor share a clock and a frame, sequence numbers rise
 //! and stamps do not go back, values are finite, an IMU orientation is a unit
 //! quaternion, a tared static sensor reads zero, a gripper reaches the
-//! widths it is sent, and an arm's declared joint envelope is coherent. Device-specific behavior (ranges, noise, timing) stays
-//! in the driver's own tests.
+//! widths it is sent, an arm's declared joint envelope is coherent, and a
+//! real-time control session stops calling back once it is told to.
+//! Device-specific behavior (ranges, noise, timing) stays in the driver's
+//! own tests.
 
-use std::fmt;
+use std::{fmt, ops::ControlFlow, time::Duration};
 
 use roplat_msgs::{GripperCommand, Header, Imu};
 
-use crate::{ForceTorqueSensor, Gripper, ImuSensor, Joints, RobotException};
+use crate::{
+    ControlSpace, ControlWith, ForceTorqueSensor, Gripper, ImuSensor, Joints, RobotException,
+};
 
 /// A broken contract promise.
 #[derive(Debug)]
@@ -240,4 +244,149 @@ pub fn check_joints<T: Joints<N>, const N: usize>() -> Result<(), Violation> {
         }
     }
     Ok(())
+}
+
+/// What the `Duration` handed to a control callback measured, as
+/// [`check_control_session`] saw it. The contract says "elapsed cycle
+/// time"; drivers do not yet agree on what that is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DurationPattern {
+    /// The same nonzero duration every cycle: the cycle period.
+    CyclePeriod,
+    /// Zero on the first cycle, then the time since the previous one.
+    SincePrevious,
+    /// Growing by about one period per cycle: time since the session began.
+    SessionTime,
+    /// None of these.
+    Other,
+}
+
+/// What [`check_control_session`] observed beyond its checks.
+#[derive(Clone, Debug)]
+pub struct SessionReport {
+    /// The callback `Duration` of each cycle of the first session.
+    pub durations: Vec<Duration>,
+    pub pattern: DurationPattern,
+    /// The error a session ended by `Break` returned, if any; the contract
+    /// leaves the result of `Break` to the driver.
+    pub break_error: Option<String>,
+}
+
+/// Values within 25 % of each other, all positive.
+fn steady(values: &[f64]) -> bool {
+    let low = values.iter().copied().fold(f64::INFINITY, f64::min);
+    let high = values.iter().copied().fold(0.0, f64::max);
+    low > 0.0 && high <= 1.25 * low
+}
+
+fn classify(durations: &[Duration]) -> DurationPattern {
+    let seconds: Vec<f64> = durations.iter().map(Duration::as_secs_f64).collect();
+    let steps: Vec<f64> = seconds.windows(2).map(|w| w[1] - w[0]).collect();
+    if steady(&seconds) {
+        DurationPattern::CyclePeriod
+    } else if seconds[0] == 0.0 && steady(&seconds[1..]) {
+        DurationPattern::SincePrevious
+    } else if steady(&steps) {
+        DurationPattern::SessionTime
+    } else {
+        DurationPattern::Other
+    }
+}
+
+/// Runs three blocking control sessions on channel `S`, each answering
+/// every cycle with the device's own [`hold_command`](ControlWith::hold_command),
+/// so the device only holds where it is:
+///
+/// 1. `done` on cycle `cycles`: the callback must run exactly `cycles`
+///    times and the session return `Ok`;
+/// 2. `Break` on cycle `cycles`: the callback must run exactly `cycles`
+///    times and the session return (its result is reported, not checked);
+/// 3. `done` on the first cycle: a `Break` is not an emergency stop, so the
+///    device must accept the next session.
+///
+/// A callback invoked after `done` or `Break` answers `Break`, so a driver
+/// that keeps calling still ends. The report classifies the first session's
+/// callback durations. `cycles` must be at least 3. Holding is the gentlest
+/// command a channel has, but this is still a live session: on hardware,
+/// run it where holding is safe.
+pub fn check_control_session<R, S>(robot: &mut R, cycles: usize) -> Result<SessionReport, Violation>
+where
+    R: ControlWith<S>,
+    S: ControlSpace<R>,
+{
+    assert!(cycles >= 3, "check_control_session needs at least 3 cycles");
+    let mut calls = 0;
+    let mut durations = Vec::with_capacity(cycles);
+    let result = robot.control_with_flow(|obs, dt| {
+        calls += 1;
+        if calls > cycles {
+            return ControlFlow::Break(());
+        }
+        durations.push(dt);
+        ControlFlow::Continue((R::hold_command(&obs), calls == cycles))
+    });
+    if calls > cycles {
+        return Err(violation(
+            "control_session: done",
+            format!("done on cycle {cycles}, but the callback ran again"),
+        ));
+    }
+    result.map_err(|e| device("control_session: done", e))?;
+    if calls < cycles {
+        return Err(violation(
+            "control_session: done",
+            format!("the session ended after {calls} of {cycles} cycles without done"),
+        ));
+    }
+
+    let mut calls = 0;
+    let result = robot.control_with_flow(|obs, _| {
+        calls += 1;
+        if calls >= cycles {
+            ControlFlow::Break(())
+        } else {
+            ControlFlow::Continue((R::hold_command(&obs), false))
+        }
+    });
+    if calls > cycles {
+        return Err(violation(
+            "control_session: break",
+            format!("Break on cycle {cycles}, but the callback ran again"),
+        ));
+    }
+    if calls < cycles {
+        return Err(match result {
+            Err(e) => device("control_session: break", e),
+            Ok(()) => violation(
+                "control_session: break",
+                format!("the session ended after {calls} of {cycles} cycles"),
+            ),
+        });
+    }
+    let break_error = result.err().map(|e| e.to_string());
+
+    let mut calls = 0;
+    let result = robot.control_with_flow(|obs, _| {
+        calls += 1;
+        if calls > 1 {
+            return ControlFlow::Break(());
+        }
+        ControlFlow::Continue((R::hold_command(&obs), true))
+    });
+    if calls > 1 {
+        return Err(violation(
+            "control_session: after break",
+            "done on the first cycle, but the callback ran again",
+        ));
+    }
+    result.map_err(|e| device("control_session: after break", e))?;
+    if calls == 0 {
+        return Err(violation(
+            "control_session: after break",
+            "the next session returned without a cycle",
+        ));
+    }
+
+    let pattern = classify(&durations);
+    Ok(SessionReport { durations, pattern, break_error })
 }

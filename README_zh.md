@@ -10,12 +10,13 @@
 | 包 | 内容 |
 |---|---|
 | `roplat_behavior` | 能力契约（`Robot`、运动空间、控制通道、模型映射；夹爪、力/力矩、IMU 与相机契约）、机械臂/底盘/腿足状态，可选的 roplat 适配与 C / C++ / Python 绑定。 |
-| `roplat_kinematics` | DH 正运动学、雅可比与迭代逆运动学；`dh_kinematics!` 把机械臂接入模型映射。`ArmKineCache::from_chain` 可用 `roplat_description` 的 URDF 链代替 DH 表，`chain_ik` 在 URDF 限位内求其逆运动学（支持各类关节）；`UrdfDynamics` 把 URDF 树作为 `DynamicsModel`，供 `roplat_control` 的力矩控制器使用。 |
-| `roplat_control` | 关节 PD/PID、底盘速度 PID、关节与笛卡尔阻抗、重力补偿、计算力矩、操作员遥操作（`cartesian_teleop_control`：死区、使能按键、输入超时、加速度限制）、实时线程优先级。 |
+| `roplat_kinematics` | DH 正运动学、雅可比与迭代逆运动学；`dh_kinematics!` 把机械臂接入模型映射。`ArmKineCache::from_chain` 可用 `roplat_description` 的 URDF 链代替 DH 表，`chain_ik` 在 URDF 限位内求其逆运动学（支持各类关节），`UrdfKinematics` 把该链作为 `ForwardKinematics` 与 `JacobianModel`；`UrdfDynamics` 把 URDF 树作为 `DynamicsModel`，供 `roplat_control` 的力矩控制器使用。 |
+| `roplat_control` | 关节 PD/PID、底盘速度 PID、关节与笛卡尔阻抗、重力补偿、计算力矩、操作员遥操作（`cartesian_teleop_control`：死区、使能按键、输入超时、加速度限制）、笛卡尔伺服（`CartesianServo`：末端速度旋量转为关节速度或位置命令，只在趋近奇异时减速，到关节限位即停，不超关节速度上限，可加接近障碍的减速系数）、实时线程优先级。 |
 | `roplat_trajectory` | 关节与笛卡尔插值（直线、梯形、S 曲线、四次曲线）和 COPP 时间缩放；`plan_joint_path` 在关节空间求无碰撞路径点（RRT-Connect，碰撞检查由调用方提供）；`plan_cartesian_path` 让末端沿直线依次经过给定位姿，每步用调用方带种子的逆解求关节位形，在不可达、关节跳变或关节段无效之前停下。 |
 | `roplat_description` | 从 URDF 读出的同一份机器人模型：运动学树、惯量、可视/碰撞几何、关节限位、链式正运动学与雅可比、整棵树各连杆的位姿与逆动力学（含重力补偿），供运动学、仿真、可视化与限位检查共用；只依赖 `roplat_msgs`。 |
 | `roplat_frames` | 机器人工作单元的坐标树：编译期确定的帧 id，来自 URDF 与标定的静态变换，按 `Stamp` 缓冲并查询的关节与动态变换，查询不分配内存；可选的 `JointStateNode`（feature `roplat`）。见[设计](roplat_frames/docs/design_zh.md)。 |
 | `roplat_safety` | 控制图的安全门：关节限位、限速、样本新鲜度、周期看门狗与共享停止锁存。被拒绝的命令使本周期失败，设备收到 `Break`、不发命令。见[设计](roplat_safety/docs/design_zh.md)。 |
+| `roplat_scene` | 运动规划的碰撞检查：由 URDF 构造的机器人（网格取凸包）、世界中的物体与附着在连杆上的物体、允许接触对（相邻连杆默认允许）与安全距离。`PlanningScene` 回答 `plan_joint_path` 的有效性检查，并给出最近的一对；碰撞几何由 parry3d-f64 计算，无原生依赖。 |
 
 采样与几何类型（`Pose`、`JointSample`、`SpatialSample`、`LoadState`、`Twist` 等）来自 roplat 核心的 [`roplat_msgs`](https://github.com/Robot-Exp-Platform/roplat)，由 `roplat_behavior` 重新导出。每个类型只有一种表示和固定的原生布局，同一份数据可以跨进程、跨语言传递。除非打开 `roplat` feature，这些包都不依赖 roplat 运行时。
 
@@ -197,7 +198,7 @@ impl RobotDescription for ArmModels {
 
 ## 从源码开发
 
-本仓库是七个包组成的 Cargo 工作区，共用一个版本。`roplat_msgs` 发布之前，根清单把 `roplat` 与 `roplat_msgs` 指向同级的 roplat 核心检出，因此需要并排克隆：
+本仓库是八个包组成的 Cargo 工作区，共用一个版本。`roplat_msgs` 发布之前，根清单把 `roplat` 与 `roplat_msgs` 指向同级的 roplat 核心检出，因此需要并排克隆：
 
 ```text
 Robot-Exp-Platform/
