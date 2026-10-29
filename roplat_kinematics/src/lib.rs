@@ -9,9 +9,11 @@
 //!
 //! An arm read from URDF needs no DH table: [`ArmKineCache::from_chain`]
 //! builds the same cache from a `roplat_description::Chain`, [`chain_ik`]
-//! solves its inverse kinematics within the URDF limits,
-//! [`UrdfKinematics`] makes the chain a `ForwardKinematics` and
-//! `JacobianModel` (as `dh_kinematics!` does for a DH arm), and
+//! solves its inverse kinematics within the URDF limits
+//! ([`chain_ik_solutions`] collects the distinct solutions that pass a
+//! validity check), [`UrdfKinematics`] makes the chain a
+//! `ForwardKinematics` and `JacobianModel` (as `dh_kinematics!` does for a
+//! DH arm), and
 //! [`UrdfDynamics`] makes a URDF tree a `DynamicsModel` for the
 //! `roplat_control` torque controllers.
 //!
@@ -25,7 +27,7 @@ mod kinematics;
 mod urdf_dynamics;
 mod urdf_kinematics;
 
-pub use chain_ik::{ChainIkSolution, chain_ik, dh_chain_discrepancy};
+pub use chain_ik::{ChainIkSolution, IkSearch, chain_ik, chain_ik_solutions, dh_chain_discrepancy};
 pub use dh::DhParam;
 pub use kinematics::*;
 pub use urdf_dynamics::UrdfDynamics;

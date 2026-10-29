@@ -4,8 +4,8 @@ use nalgebra as na;
 use roplat_behavior::{ForwardKinematics, JacobianModel};
 use roplat_description::RobotModel;
 use roplat_kinematics::{
-    ArmKineCache, ChainError, CommonStop, DhParam, Link, UrdfKinematics, chain_ik,
-    dh_chain_discrepancy,
+    ArmKineCache, ChainError, CommonStop, DhParam, IkSearch, Link, UrdfKinematics, chain_ik,
+    chain_ik_solutions, dh_chain_discrepancy,
 };
 
 /// Standard DH rows `(theta, d, r, alpha)`, as in `kine_cache.rs`.
@@ -214,4 +214,99 @@ fn dh_chain_discrepancy_tells_same_and_different_arms_apart() {
         *alpha = std::f64::consts::PI;
     }
     assert!(dh_chain_discrepancy(&flipped, &chain, &samples).unwrap() > 0.1);
+}
+
+fn largest_difference(a: &[f64], b: &[f64]) -> f64 {
+    a.iter()
+        .zip(b)
+        .map(|(x, y)| (x - y).abs())
+        .fold(0.0, f64::max)
+}
+
+fn search() -> IkSearch {
+    IkSearch::default()
+}
+
+#[test]
+fn chain_ik_solutions_are_distinct_valid_and_nearest_first() {
+    let model = RobotModel::from_urdf_str(&urdf()).unwrap();
+    let chain = model.chain("l0", "flange").unwrap();
+    // Within ±3 rad this pose has three solutions: two elbows and a
+    // shoulder flip (300 or even 2000 starts find no more).
+    let q_true = [-1.2, 0.3, -0.8, 1.5, 0.7, -2.0];
+    let target = chain.forward_kinematics(&q_true).unwrap();
+    let reference: Vec<f64> = q_true.iter().map(|q| q + 0.05).collect();
+
+    let all = chain_ik_solutions(&chain, &target, &reference, |_| true, search()).unwrap();
+    let wide = IkSearch { restarts: 300, ..search() };
+    let mut exhaustive = chain_ik_solutions(&chain, &target, &reference, |_| true, wide).unwrap();
+    assert_eq!(all.len(), 3, "{all:.3?}");
+    assert_eq!(exhaustive.len(), 3, "{exhaustive:.3?}");
+    for q in &all {
+        let k = exhaustive
+            .iter()
+            .position(|e| largest_difference(e, q) < 1e-5)
+            .unwrap();
+        exhaustive.remove(k);
+    }
+    assert!(largest_difference(&all[0], &q_true) < 1e-4);
+    let goal = target.quat();
+    for (i, q) in all.iter().enumerate() {
+        let reached = chain.forward_kinematics_iso(q).unwrap();
+        assert!((reached.translation.vector - goal.translation.vector).norm() < 1e-6);
+        assert!(reached.rotation.angle_to(&goal.rotation) < 1e-6);
+        assert!(q.iter().all(|v| (-3.0..=3.0).contains(v)));
+        for other in &all[..i] {
+            assert!(largest_difference(q, other) >= 1e-3);
+        }
+    }
+    let sorted = |solutions: &[Vec<f64>]| {
+        let d: Vec<f64> = solutions
+            .iter()
+            .map(|q| largest_difference(q, &reference))
+            .collect();
+        d.windows(2).all(|w| w[0] <= w[1])
+    };
+    assert!(sorted(&all));
+    // The order is by distance to the reference, not the order the search
+    // met the solutions: from this reference the solver first converges to
+    // a farther one.
+    let away = [-1.55, -1.2, -1.27, 1.75, -0.22, -2.54];
+    let mut met: Vec<Vec<f64>> = vec![];
+    let record = |q: &[f64]| {
+        met.push(q.to_vec());
+        true
+    };
+    let ordered = chain_ik_solutions(&chain, &target, &away, record, search()).unwrap();
+    let mut expected = met.clone();
+    expected.sort_by(|a, b| largest_difference(a, &away).total_cmp(&largest_difference(b, &away)));
+    assert_eq!(ordered, expected);
+
+    // The same seed gives the same solutions; a validity check keeps only
+    // the solutions it accepts; the count is capped.
+    assert_eq!(
+        all,
+        chain_ik_solutions(&chain, &target, &reference, |_| true, search()).unwrap()
+    );
+    let flipped =
+        chain_ik_solutions(&chain, &target, &reference, |q| q[0] > 0.0, search()).unwrap();
+    assert_eq!(flipped.len(), 1);
+    assert!(flipped[0][0] > 0.0);
+    let capped = IkSearch { max_solutions: 2, ..search() };
+    assert_eq!(
+        chain_ik_solutions(&chain, &target, &reference, |_| true, capped)
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn chain_ik_solutions_is_empty_out_of_reach_and_checks_the_length() {
+    let model = RobotModel::from_urdf_str(&urdf()).unwrap();
+    let chain = model.chain("l0", "flange").unwrap();
+    let far = roplat_behavior::Pose::from_isometry(na::Isometry3::translation(3.0, 0.0, 0.0));
+    let none = chain_ik_solutions(&chain, &far, &[0.0; 6], |_| true, search()).unwrap();
+    assert!(none.is_empty());
+    assert!(chain_ik_solutions(&chain, &far, &[0.0; 5], |_| true, search()).is_err());
 }
