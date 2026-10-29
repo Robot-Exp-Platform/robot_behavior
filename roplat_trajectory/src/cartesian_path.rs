@@ -19,6 +19,9 @@ use nalgebra as na;
 
 use crate::segment_is_valid;
 
+/// Steps per segment are rounded up after subtracting this, in units of a step.
+const STEP_ROUNDING: f64 = 1e-9;
+
 /// Settings for [`plan_cartesian_path`].
 #[derive(Clone, Copy, Debug)]
 pub struct CartesianPathOptions {
@@ -89,8 +92,10 @@ pub fn plan_cartesian_path<const N: usize>(
     for to in poses {
         let translation = (to.translation.vector - from.translation.vector).norm();
         let rotation = from.rotation.angle_to(&to.rotation);
-        let steps = (translation / options.max_step)
-            .max(rotation / options.max_rotation_step)
+        // A ratio within rounding of a whole number takes that many steps, so
+        // the count does not depend on the platform's `acos`.
+        let steps = ((translation / options.max_step).max(rotation / options.max_rotation_step)
+            - STEP_ROUNDING)
             .ceil()
             .max(1.0) as usize;
         segments.push((from, *to, steps));
