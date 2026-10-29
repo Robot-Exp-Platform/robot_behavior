@@ -36,15 +36,17 @@ pub use observe::{ControlObservation, ControlObserver};
 pub use roplat_msgs::{CartesianLimits, JointLimits, LoadState};
 pub use spaces::{
     BasePoseSpace, BaseVelocitySpace, CenterOfMassSpace, CoriolisInputSpace, EndSpace, FlangeSpace,
-    FootSpace, GaitCommand, GaitSpace, GravityInputSpace, HandSpace, Inertial, JacobianSpace,
-    JointSpace, JointTorqueSpace, MassMatrixSpace, Relative, TcpSpace, WholeBodyJointSpace,
+    FootSpace, GaitCommand, GaitSpace, GravityInputSpace, HandSpace, JacobianSpace, JointSpace,
+    JointTorqueSpace, MassMatrixSpace, Relative, RelativeSpace, TcpSpace, WholeBodyJointSpace,
     WholeBodyTorqueSpace, WholeBodyVelocitySpace,
 };
 pub use state::{
     BaseState, ContactSample, ContactState, EndEffectorState, HumanoidState, JointSample,
     JointState, MobileBaseState, QuadrupedState, SpatialSample, SpatialState, StateView,
 };
-pub use types::{Coord, Pose};
+pub use types::Pose;
+
+use std::time::Duration;
 
 use crate::RobotResult;
 
@@ -63,7 +65,10 @@ pub trait Robot {
     /// One frame of measured robot state.
     type State;
 
-    const CONTROL_PERIOD: f64;
+    /// The nominal period of the robot's control cycle. A control callback
+    /// receives this period as its `Duration`, or `(k + 1)` times it when `k`
+    /// cycles were missed before it.
+    const CONTROL_PERIOD: Duration;
 
     /// Driver / firmware version string.
     fn version() -> String;

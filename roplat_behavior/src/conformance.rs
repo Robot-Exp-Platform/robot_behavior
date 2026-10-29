@@ -247,8 +247,11 @@ pub fn check_joints<T: Joints<N>, const N: usize>() -> Result<(), Violation> {
 }
 
 /// What the `Duration` handed to a control callback measured, as
-/// [`check_control_session`] saw it. The contract says "elapsed cycle
-/// time"; drivers do not yet agree on what that is.
+/// [`check_control_session`] saw it. The contract says the nominal period, or
+/// `(k + 1)` periods after `k` missed cycles ([`ControlWith`]): a driver that
+/// keeps it shows [`CyclePeriod`](Self::CyclePeriod) on a loss-free session.
+///
+/// [`ControlWith`]: crate::ControlWith
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DurationPattern {
     /// The same nonzero duration every cycle: the cycle period.

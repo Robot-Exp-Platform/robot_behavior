@@ -26,7 +26,7 @@ impl TestRobot {
 }
 impl Robot for TestRobot {
     type State = ();
-    const CONTROL_PERIOD: f64 = 0.001;
+    const CONTROL_PERIOD: std::time::Duration = std::time::Duration::from_millis(1);
     fn version() -> String {
         "mock".into()
     }

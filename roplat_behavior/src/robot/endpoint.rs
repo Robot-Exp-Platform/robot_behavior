@@ -1,7 +1,7 @@
 use super::limits::unbounded_above;
-use crate::CartesianLimits;
+use crate::{CartesianLimits, Pose};
 
-/// Cartesian-space limits of an arm's end effector.
+/// An arm's end effector: where its flange is, and its Cartesian limits.
 ///
 /// Where [`Joints`](crate::Joints) describes per-joint limits, `EndPoint`
 /// describes the task-space envelope of the flange / TCP: how fast it may
@@ -9,6 +9,9 @@ use crate::CartesianLimits;
 /// quantities use rad/s, rad/s^2 and rad/s^3. Every constant defaults to
 /// unbounded, `f64::INFINITY`, so a driver overrides only the limits its
 /// firmware enforces. A declared `f64::MAX` also reads as unbounded.
+///
+/// Its current pose makes [`FlangeSpace`](crate::FlangeSpace) a
+/// [`RelativeSpace`](crate::RelativeSpace).
 ///
 /// `EndPoint` makes [`EndSpace`](crate::EndSpace) a valid
 /// [`MotionSpace`](crate::MotionSpace) and is a super-trait of
@@ -36,6 +39,9 @@ pub trait EndPoint {
     const ROTATION_ACC_BOUND: f64 = f64::INFINITY;
     /// Maximum angular jerk (rad/s^3). Defaults to unbounded.
     const ROTATION_JERK_BOUND: f64 = f64::INFINITY;
+
+    /// Current flange pose in the base frame.
+    fn get_endpoint(&self) -> Pose;
 
     /// The declared bounds as data. A bound at or beyond `f64::MAX` reads as
     /// unbounded (`f64::INFINITY`).

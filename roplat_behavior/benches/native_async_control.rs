@@ -29,7 +29,7 @@ impl<const W: usize> CpuRobot<W> {
 }
 impl<const W: usize> Robot for CpuRobot<W> {
     type State = ();
-    const CONTROL_PERIOD: f64 = 0.001;
+    const CONTROL_PERIOD: std::time::Duration = std::time::Duration::from_millis(1);
     fn version() -> String {
         "cpu-benchmark".into()
     }

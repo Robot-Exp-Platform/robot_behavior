@@ -66,7 +66,7 @@ mod tests {
     impl Robot for DummyRobot {
         type State = DummyState;
 
-        const CONTROL_PERIOD: f64 = 0.001;
+        const CONTROL_PERIOD: std::time::Duration = std::time::Duration::from_millis(1);
 
         fn version() -> String {
             "dummy".to_string()

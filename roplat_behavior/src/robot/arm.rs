@@ -5,7 +5,6 @@ use crate::{
         joint::Joints,
         motion::MoveTo,
         spaces::{FlangeSpace, JointSpace},
-        types::Pose,
     },
 };
 
@@ -75,10 +74,9 @@ pub trait Arm<const N: usize>:
     /// Configure the payload attached to the flange.
     fn set_load(&mut self, load: LoadState) -> RobotResult<()>;
 
-    /// Current joint positions (rad).
+    /// Current joint positions (rad). The flange pose is
+    /// [`EndPoint::get_endpoint`].
     fn get_joint(&self) -> [f64; N];
-    /// Current flange [`Pose`] in the base frame.
-    fn get_endpoint(&self) -> Pose;
 
     /// The limits subsequent motions respect.
     fn motion_limits(&self) -> MotionLimits<N>;

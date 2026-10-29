@@ -22,7 +22,7 @@ impl TwoJointArm {
 
 impl Robot for TwoJointArm {
     type State = ();
-    const CONTROL_PERIOD: f64 = 0.001;
+    const CONTROL_PERIOD: std::time::Duration = std::time::Duration::from_millis(1);
     fn version() -> String {
         "two-joint mock".into()
     }
@@ -40,6 +40,9 @@ impl Joints<2> for TwoJointArm {
 
 impl EndPoint for TwoJointArm {
     const CARTESIAN_VEL_BOUND: f64 = 1.0;
+    fn get_endpoint(&self) -> Pose {
+        Pose::default()
+    }
 }
 
 impl roplat_behavior::MoveTo<JointSpace<2>> for TwoJointArm {
@@ -69,9 +72,6 @@ impl Arm<2> for TwoJointArm {
     }
     fn get_joint(&self) -> [f64; 2] {
         [0.0; 2]
-    }
-    fn get_endpoint(&self) -> Pose {
-        Pose::default()
     }
     fn motion_limits(&self) -> MotionLimits<2> {
         self.limits

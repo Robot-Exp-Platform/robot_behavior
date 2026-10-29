@@ -11,6 +11,9 @@ use crate::{ControlSpace, ControlStep, Robot, RobotResult};
 /// for the complete session, so the caller can recover its state on any ordinary
 /// return. No boxed future, task spawn, or per-cycle state copy is required.
 ///
+/// The `Duration` is the cycle's, as for [`ControlWith`](crate::ControlWith):
+/// the nominal period, or `(k + 1)` periods after `k` missed cycles.
+///
 /// Ordinary `FnMut(Obs, Duration) -> Fut` closures implement this trait when
 /// `Fut: Send`. A closure cannot always lend mutable captures into that future;
 /// for such controllers implement this trait on a small named state struct.

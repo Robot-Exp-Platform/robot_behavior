@@ -1,12 +1,14 @@
-use std::marker::PhantomData;
+use std::{future::Future, marker::PhantomData};
 
 use serde::{Deserialize, Serialize};
 
+use crate::RobotResult;
 use crate::robot::{
+    arm::Arm,
     endpoint::EndPoint,
     joint::Joints,
     math::{JMat, Jaco},
-    motion::MotionSpace,
+    motion::{MotionSpace, MoveTo},
     types::Pose,
 };
 
@@ -155,23 +157,64 @@ pub struct CoriolisInputSpace<const N: usize>;
 /// Input marker for gravity terms.
 pub struct GravityInputSpace<const N: usize>;
 
-/// Wraps another [`MotionSpace`] so its target is interpreted *relative* to the
-/// robot's current pose (incremental motion) rather than in absolute
-/// coordinates. The wrapped command target type is unchanged.
+/// Wraps a [`MotionSpace`] so its target is an offset from where the robot is
+/// rather than an absolute target: `move_to::<Relative<JointSpace<N>>>(dq)`
+/// adds `dq` to the current joint positions, and
+/// `move_to::<Relative<FlangeSpace>>(delta)` moves the flange by `delta`
+/// expressed in the flange frame.
 ///
-/// See also [`Coord::Relative`](crate::Coord).
+/// The contract implements [`MoveTo`] for `Relative<S>` once, for every robot
+/// that can move to `S` and every `S` that is a [`RelativeSpace`]: it reads
+/// the current target, offsets it and moves there. Drivers implement nothing.
 pub struct Relative<S>(PhantomData<S>);
 
 impl<R, S: MotionSpace<R>> MotionSpace<R> for Relative<S> {
     type Target = S::Target;
 }
 
-/// Wraps another [`MotionSpace`] so its target is interpreted in a fixed
-/// *inertial* frame. The wrapped command target type is unchanged.
-///
-/// See also [`Coord::Inertial`](crate::Coord).
-pub struct Inertial<S>(PhantomData<S>);
+/// A [`MotionSpace`] whose targets compose: where the robot is now, and a
+/// target moved by an offset.
+pub trait RelativeSpace<R: ?Sized>: MotionSpace<R> {
+    /// The robot's current target in this space.
+    fn current(robot: &R) -> Self::Target;
+    /// `current` moved by `delta`.
+    fn offset(current: &Self::Target, delta: &Self::Target) -> Self::Target;
+}
 
-impl<R, S: MotionSpace<R>> MotionSpace<R> for Inertial<S> {
-    type Target = S::Target;
+/// Joint positions plus the offset.
+impl<R: Arm<N>, const N: usize> RelativeSpace<R> for JointSpace<N> {
+    fn current(robot: &R) -> [f64; N] {
+        robot.get_joint()
+    }
+    fn offset(current: &[f64; N], delta: &[f64; N]) -> [f64; N] {
+        std::array::from_fn(|i| current[i] + delta[i])
+    }
+}
+
+/// The flange pose followed by the offset, which is expressed in the flange
+/// frame: a translation along the flange's own axes, then a rotation about
+/// them.
+impl<R: EndPoint> RelativeSpace<R> for FlangeSpace {
+    fn current(robot: &R) -> Pose {
+        robot.get_endpoint()
+    }
+    fn offset(current: &Pose, delta: &Pose) -> Pose {
+        *current * *delta
+    }
+}
+
+impl<R, S> MoveTo<Relative<S>> for R
+where
+    R: MoveTo<S>,
+    S: RelativeSpace<R>,
+{
+    fn move_to(&mut self, delta: S::Target) -> RobotResult<()> {
+        let target = S::offset(&S::current(self), &delta);
+        <R as MoveTo<S>>::move_to(self, target)
+    }
+
+    fn move_to_async(&mut self, delta: S::Target) -> impl Future<Output = RobotResult<()>> {
+        let target = S::offset(&S::current(self), &delta);
+        <R as MoveTo<S>>::move_to_async(self, target)
+    }
 }

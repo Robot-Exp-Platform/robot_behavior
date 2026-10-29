@@ -24,7 +24,7 @@ pub struct Mock {
 
 impl Robot for Mock {
     type State = ();
-    const CONTROL_PERIOD: f64 = 0.001;
+    const CONTROL_PERIOD: std::time::Duration = std::time::Duration::from_millis(1);
     fn version() -> String {
         "mock".into()
     }
@@ -38,7 +38,11 @@ impl Joints<2> for Mock {
     const JOINT_MAX: [f64; 2] = [1.0; 2];
 }
 
-impl EndPoint for Mock {}
+impl EndPoint for Mock {
+    fn get_endpoint(&self) -> Pose {
+        Pose::default()
+    }
+}
 
 impl MoveTo<JointSpace<2>> for Mock {
     fn move_to(&mut self, _target: [f64; 2]) -> RobotResult<()> {
@@ -85,9 +89,6 @@ impl Arm<2> for Mock {
     }
     fn get_joint(&self) -> [f64; 2] {
         [0.0; 2]
-    }
-    fn get_endpoint(&self) -> Pose {
-        Pose::default()
     }
     fn motion_limits(&self) -> MotionLimits<2> {
         self.limits

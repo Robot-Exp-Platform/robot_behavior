@@ -27,33 +27,21 @@ pub use roplat_msgs as msgs;
 pub use roplat_msgs::{Accel, FrameId, Header, Quaternion, Stamp, Stamped, Twist, Vector3, Wrench};
 pub use simulation::*;
 pub use utils::*;
-
-pub const ROPLAT_ASCII: &str = r#"
-   #####     #####     ##### 
-  #     #   #     #   #     #
-  #     #   #     #   #     #
-  #     #   #     #   #     # 
-   #####    #     #    ##### 
-  #   #     #     #   #      
-  #    #    #     #   #      
-  #     #    #####    #      
-"#;
-
 pub mod behavior {
     pub use crate::robot::{
         Arm, ArmState, ArmTorqueControl, AsyncControl, AsyncControlCallback, BalanceControl,
         BasePoseSpace, BaseState, BaseVelocityControl, BaseVelocitySpace, Camera, CartesianLimits,
         CartesianPoseControl, CartesianVelocityControl, CenterOfMassSpace, ContactState, Control,
-        ControlObservation, ControlObserver, ControlSpace, ControlStep, Coord, CoriolisInput,
+        ControlObservation, ControlObserver, ControlSpace, ControlStep, CoriolisInput,
         CoriolisInputSpace, DynamicsModel, EndEffectorState, EndPoint, EndSpace, FlangeSpace,
         FootSpace, ForceTorqueSensor, ForwardKinematics, GaitCommand, GaitSpace, GravityInput,
-        GravityInputSpace, Gripper, HandSpace, Humanoid, HumanoidState, ImuSensor, Inertial,
+        GravityInputSpace, Gripper, HandSpace, Humanoid, HumanoidState, ImuSensor,
         InverseKinematics, JacobianModel, JacobianSpace, JointLimits, JointPositionControl,
         JointSample, JointSpace, JointState, JointTorqueSpace, JointVelocityControl, Joints,
         LoadState, MassMatrixSpace, MobileBase, MobileBaseState, Motion, MotionFile, MotionLimits,
-        MotionSpace, Pose, Quadruped, QuadrupedState, Relative, Robot, RobotDescription, SpaceMap,
-        SpatialSample, StateView, TcpSpace, TorqueControl, TypedSpaceMap, WholeBodyJointSpace,
-        WholeBodyTorqueSpace, WholeBodyVelocitySpace,
+        MotionSpace, Pose, Quadruped, QuadrupedState, Relative, RelativeSpace, Robot,
+        RobotDescription, SpaceMap, SpatialSample, StateView, TcpSpace, TorqueControl,
+        TypedSpaceMap, WholeBodyJointSpace, WholeBodyTorqueSpace, WholeBodyVelocitySpace,
     };
 
     pub use crate::simulation::{ModelFormat, SimulationModel};
