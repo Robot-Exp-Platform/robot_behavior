@@ -302,7 +302,7 @@ fn joint_limits_read_the_driver_constants() {
         (limits.q_min, limits.q_max, limits.dq_max),
         ([-2.; 2], [2.; 2], [3.; 2])
     );
-    // Bounds left at their `f64::MAX` default read as unbounded.
+    // Bounds left at their default are unbounded.
     assert_eq!(limits.tau_max, [f64::INFINITY; 2]);
 }
 

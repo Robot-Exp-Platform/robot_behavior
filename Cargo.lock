@@ -1653,6 +1653,7 @@ dependencies = [
  "roplat_behavior",
  "roplat_description",
  "roplat_kinematics",
+ "roplat_msgs",
  "thiserror 2.0.18",
  "tokio",
 ]

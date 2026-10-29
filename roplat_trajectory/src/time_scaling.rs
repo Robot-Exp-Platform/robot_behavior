@@ -1,9 +1,18 @@
+//! Time scaling of geometric paths: time-optimal parameterization of joint
+//! paths through COPP, and scalar time scaling of Cartesian paths through the
+//! caller's inverse kinematics.
+//!
+//! Every planner takes the joint bounds as [`JointLimits`] and the control
+//! period as a [`Duration`], and samples its result at that period. A speed
+//! fraction is applied by the caller before planning (roplat_behavior's
+//! `MotionLimits::scaled_joint` does). An unbounded entry is `f64::INFINITY`:
+//! the planners need finite velocity and acceleration bounds and refuse
+//! otherwise, while an infinite jerk bound leaves jerk unconstrained.
+
+use std::{fmt::Display, time::Duration};
+
 use nalgebra as na;
-use std::fmt::Display;
-
-use std::time::Duration;
-
-use roplat_behavior::{JointState, Joints, Pose, Robot, RobotException, RobotResult};
+use roplat_msgs::{CartesianLimits, JointLimits, Pose};
 
 use crate::path_generate::joint_s_curve;
 
@@ -13,7 +22,89 @@ pub const COPP_PATH_SAMPLES: usize = 1001;
 /// Default number of IK samples used to discretise a Cartesian geometric path.
 pub const CARTESIAN_TIME_SCALE_PATH_SAMPLES: usize = 201;
 
-/// Options for non-COPP Cartesian path time scaling.
+/// Why time scaling failed.
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+pub enum TimeScalingError {
+    /// An argument is outside what the planner accepts.
+    #[error("invalid time-scaling input: {0}")]
+    Invalid(String),
+    /// The path or its derivatives could not be evaluated.
+    #[error("path evaluation failed: {0}")]
+    Path(String),
+    /// The inverse kinematics failed or returned a non-finite solution.
+    #[error("inverse kinematics failed at s = {s}: {reason}")]
+    InverseKinematics { s: f64, reason: String },
+    /// COPP found no profile.
+    #[error("copp planning failed: {0}")]
+    Copp(String),
+    /// The Cartesian time scaling kept violating a joint bound.
+    #[error("joint limits still violated after {retries} retries: {last}")]
+    LimitsViolated { retries: usize, last: String },
+}
+
+type TimeScalingResult<T> = Result<T, TimeScalingError>;
+
+/// Bounds on the derivatives of the path parameter `s` in `[0, 1]` of a
+/// geometric path: ds/dt, d²s/dt² and d³s/dt³. Unbounded unless set.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PathBounds {
+    pub velocity: f64,
+    pub acceleration: f64,
+    pub jerk: f64,
+}
+
+impl PathBounds {
+    /// No bound on the path parameter.
+    pub const UNBOUNDED: Self = Self {
+        velocity: f64::INFINITY,
+        acceleration: f64::INFINITY,
+        jerk: f64::INFINITY,
+    };
+
+    /// The path bounds that keep a straight line with slerped orientation from
+    /// `start` to `target` within `limits`: along a line the tip's speed,
+    /// acceleration and jerk are the distance (or the rotation angle) times
+    /// those of `s`.
+    pub fn for_line(start: &Pose, target: &Pose, limits: &CartesianLimits) -> Self {
+        let (a, b) = (start.quat(), target.quat());
+        let distance = (b.translation.vector - a.translation.vector).norm();
+        let angle = a.rotation.angle_to(&b.rotation);
+        let bound = |linear: f64, angular: f64| {
+            let by_distance = if distance > 0.0 {
+                linear / distance
+            } else {
+                f64::INFINITY
+            };
+            let by_angle = if angle > 0.0 {
+                angular / angle
+            } else {
+                f64::INFINITY
+            };
+            by_distance.min(by_angle)
+        };
+        Self {
+            velocity: bound(limits.linear_velocity, limits.angular_velocity),
+            acceleration: bound(limits.linear_acceleration, limits.angular_acceleration),
+            jerk: bound(limits.linear_jerk, limits.angular_jerk),
+        }
+    }
+
+    fn min(self, other: Self) -> Self {
+        Self {
+            velocity: self.velocity.min(other.velocity),
+            acceleration: self.acceleration.min(other.acceleration),
+            jerk: self.jerk.min(other.jerk),
+        }
+    }
+}
+
+impl Default for PathBounds {
+    fn default() -> Self {
+        Self::UNBOUNDED
+    }
+}
+
+/// Options for Cartesian path time scaling.
 ///
 /// The planner first samples IK along a geometric Cartesian path `x(s)`, then
 /// generates a scalar S-curve `s(t)`. The final dense joint trajectory is
@@ -32,6 +123,8 @@ pub struct CartesianTimeScalingOptions {
     pub max_retries: usize,
     /// Whether to validate jerk with finite differences on the final trajectory.
     pub validate_jerk: bool,
+    /// Bounds on the path parameter itself, on top of the joint bounds.
+    pub path_bounds: PathBounds,
 }
 
 impl Default for CartesianTimeScalingOptions {
@@ -42,42 +135,21 @@ impl Default for CartesianTimeScalingOptions {
             retry_scale: 0.8,
             max_retries: 16,
             validate_jerk: false,
-        }
-    }
-}
-
-/// Effective per-motion bounds. Existing entry points use the robot constants.
-/// `scalar` optionally bounds ds/dt, d²s/dt² and d³s/dt³ for a geometric path.
-#[derive(Debug, Clone, Copy)]
-pub struct CartesianTimeScalingLimits<const N: usize> {
-    pub velocity: [f64; N],
-    pub acceleration: [f64; N],
-    pub jerk: [f64; N],
-    pub scalar: [f64; 3],
-}
-impl<const N: usize> CartesianTimeScalingLimits<N> {
-    pub fn from_robot<R: Joints<N> + ?Sized>(scale: f64) -> Self {
-        Self {
-            velocity: R::JOINT_VEL_BOUND.map(|v| v * scale),
-            acceleration: R::JOINT_ACC_BOUND.map(|v| v * scale),
-            jerk: R::JOINT_JERK_BOUND.map(|v| v * scale),
-            scalar: [f64::INFINITY; 3],
+            path_bounds: PathBounds::UNBOUNDED,
         }
     }
 }
 
 /// Run copp's TOPP2-RA → TOPP3-SOCP (2-iteration SCP) pipeline on a discretised
-/// joint-space path and return the time-uniform `s(t)` grid.
-pub fn plan_s_t_via_copp<R, const N: usize>(
+/// joint-space path and return the `s(t)` grid sampled every `period`.
+pub fn plan_s_t_via_copp<const N: usize>(
     q_grid: &na::DMatrix<f64>,
     dq_grid: &na::DMatrix<f64>,
     ddq_grid: &na::DMatrix<f64>,
     dddq_grid: Option<&na::DMatrix<f64>>,
-    scale: f64,
-) -> RobotResult<Vec<f64>>
-where
-    R: Joints<N> + Robot + ?Sized,
-{
+    limits: &JointLimits<N>,
+    period: Duration,
+) -> TimeScalingResult<Vec<f64>> {
     use copp::InterpolationMode;
     use copp::robot::Robot;
     use copp::solver::topp2_ra::{ReachSet2OptionsBuilder, Topp2ProblemBuilder, topp2_ra};
@@ -85,24 +157,11 @@ where
         ClarabelOptionsBuilder, Topp3ProblemBuilder, s_to_t_topp3, t_to_s_topp3, topp3_socp,
     };
 
-    let dt = R::CONTROL_PERIOD;
-    if !(dt.is_finite() && dt > 0.0) {
-        return Err(RobotException::UnprocessableInstructionError(format!(
-            "Robot::CONTROL_PERIOD must be a positive finite number, got {dt}"
-        )));
-    }
-    if !(scale.is_finite() && scale > 0.0) {
-        return Err(RobotException::UnprocessableInstructionError(format!(
-            "Arm::get_scale must return a positive finite number, got {scale}"
-        )));
-    }
+    check_period(period)?;
+    check_joint_bounds(limits, true)?;
 
-    let joint_vel_bound = R::JOINT_VEL_BOUND.map(|v| v * scale);
-    let joint_acc_bound = R::JOINT_ACC_BOUND.map(|v| v * scale);
-    let joint_jerk_bound = R::JOINT_JERK_BOUND.map(|v| v * scale);
-
-    fn map_err<E: Display>(e: E) -> RobotException {
-        RobotException::UnprocessableInstructionError(format!("copp planning failed: {e}"))
+    fn map_err<E: Display>(e: E) -> TimeScalingError {
+        TimeScalingError::Copp(e.to_string())
     }
 
     let n = COPP_PATH_SAMPLES;
@@ -121,25 +180,28 @@ where
         .map_err(map_err)?;
     robot
         .with_axial_velocity(
-            (joint_vel_bound.as_slice(), n),
-            (joint_vel_bound.map(|v| -v).as_slice(), n),
+            (limits.dq_max.as_slice(), n),
+            (limits.dq_max.map(|v| -v).as_slice(), n),
             0,
         )
         .map_err(map_err)?;
     robot
         .with_axial_acceleration(
-            (joint_acc_bound.as_slice(), n),
-            (joint_acc_bound.map(|v| -v).as_slice(), n),
+            (limits.ddq_max.as_slice(), n),
+            (limits.ddq_max.map(|v| -v).as_slice(), n),
             0,
         )
         .map_err(map_err)?;
-    robot
-        .with_axial_jerk(
-            (joint_jerk_bound.as_slice(), n),
-            (joint_jerk_bound.map(|v| -v).as_slice(), n),
-            0,
-        )
-        .map_err(map_err)?;
+    // copp leaves jerk unconstrained unless told otherwise.
+    if limits.dddq_max.iter().any(|j| j.is_finite()) {
+        robot
+            .with_axial_jerk(
+                (limits.dddq_max.as_slice(), n),
+                (limits.dddq_max.map(|v| -v).as_slice(), n),
+                0,
+            )
+            .map_err(map_err)?;
+    }
 
     let idx_s_interval = (0, n - 1);
     let a_boundary = (0.0, 0.0);
@@ -198,68 +260,66 @@ where
         &s,
         profile_qp2.as_parts(),
         &t_s,
-        InterpolationMode::UniformTimeGrid(0.0, dt, true),
+        InterpolationMode::UniformTimeGrid(0.0, period.as_secs_f64(), true),
     )
     .map_err(map_err)?;
     if s_t.is_empty() {
-        return Err(RobotException::UnprocessableInstructionError(
-            "copp t_to_s_topp3 produced an empty time grid".to_string(),
+        return Err(TimeScalingError::Copp(
+            "t_to_s_topp3 produced an empty time grid".to_string(),
         ));
     }
     Ok(s_t)
 }
 
-/// Plan a time-uniform joint trajectory through discrete `waypoints` via copp.
-pub fn plan_waypoints_traj_via_copp<R, const N: usize>(
+/// Plan a joint trajectory through discrete `waypoints` via copp, sampled
+/// every `period`.
+pub fn plan_waypoints_traj_via_copp<const N: usize>(
     waypoints: &[[f64; N]],
-    scale: f64,
-) -> RobotResult<Vec<[f64; N]>>
-where
-    R: Joints<N> + Robot + ?Sized,
-{
+    limits: &JointLimits<N>,
+    period: Duration,
+) -> TimeScalingResult<Vec<[f64; N]>> {
     use copp::path::{Path, SplineConfig};
 
     if waypoints.len() < 2 {
-        return Err(RobotException::UnprocessableInstructionError(
+        return Err(TimeScalingError::Invalid(
             "joint waypoint planning requires at least 2 waypoints".to_string(),
         ));
     }
 
     let n_pts = waypoints.len();
     let wp_mat = na::DMatrix::<f64>::from_fn(N, n_pts, |i, j| waypoints[j][i]);
-    let path = Path::from_waypoints(&wp_mat, SplineConfig::default()).map_err(|e| {
-        RobotException::UnprocessableInstructionError(format!(
-            "copp Path::from_waypoints failed: {e}"
-        ))
-    })?;
+    let path = Path::from_waypoints(&wp_mat, SplineConfig::default())
+        .map_err(|e| TimeScalingError::Path(format!("copp Path::from_waypoints: {e}")))?;
 
     let n = COPP_PATH_SAMPLES;
     let s: Vec<f64> = (0..n).map(|j| j as f64 / (n - 1) as f64).collect();
-    let derivs = path.evaluate_up_to_3rd(&s).map_err(|e| {
-        RobotException::UnprocessableInstructionError(format!("path.evaluate_up_to_3rd: {e}"))
-    })?;
+    let derivs = path
+        .evaluate_up_to_3rd(&s)
+        .map_err(|e| TimeScalingError::Path(format!("path.evaluate_up_to_3rd: {e}")))?;
 
-    let s_t = plan_s_t_via_copp::<R, N>(
+    let s_t = plan_s_t_via_copp::<N>(
         &derivs.q,
         derivs.dq.as_ref().unwrap(),
         derivs.ddq.as_ref().unwrap(),
         derivs.dddq.as_ref(),
-        scale,
+        limits,
+        period,
     )?;
 
-    let q_t = path.evaluate_q(&s_t).map_err(|e| {
-        RobotException::UnprocessableInstructionError(format!("path.evaluate_q: {e}"))
-    })?;
+    let q_t = path
+        .evaluate_q(&s_t)
+        .map_err(|e| TimeScalingError::Path(format!("path.evaluate_q: {e}")))?;
     Ok(q_grid_to_traj::<N>(&q_t.q))
 }
 
-/// Plan a time-uniform joint trajectory along a continuous user-supplied path.
-pub fn plan_path_traj_via_copp<P, F, const N: usize>(
+/// Plan a joint trajectory along a continuous path `q(s)`, `s` in `[0, 1]`,
+/// via copp, sampled every `period`.
+pub fn plan_path_traj_via_copp<F, const N: usize>(
     path_fn: &F,
-    scale: f64,
-) -> RobotResult<Vec<[f64; N]>>
+    limits: &JointLimits<N>,
+    period: Duration,
+) -> TimeScalingResult<Vec<[f64; N]>>
 where
-    P: Joints<N> + Robot + ?Sized,
     F: Fn(f64) -> Option<[f64; N]>,
 {
     let n = COPP_PATH_SAMPLES;
@@ -267,15 +327,22 @@ where
     let (q_grid, dq_grid, ddq_grid, dddq_grid) =
         finite_difference_path_derivatives(path_fn, &s_grid)?;
 
-    let s_t = plan_s_t_via_copp::<P, N>(&q_grid, &dq_grid, &ddq_grid, Some(&dddq_grid), scale)?;
+    let s_t = plan_s_t_via_copp::<N>(
+        &q_grid,
+        &dq_grid,
+        &ddq_grid,
+        Some(&dddq_grid),
+        limits,
+        period,
+    )?;
 
     let mut traj = Vec::with_capacity(s_t.len());
     for &s in &s_t {
         match path_fn(s) {
             Some(q) => traj.push(q),
             None => {
-                return Err(RobotException::UnprocessableInstructionError(format!(
-                    "move_path closure returned None at s={s} during final resampling"
+                return Err(TimeScalingError::Path(format!(
+                    "the path returned None at s={s} during final resampling"
                 )));
             }
         }
@@ -289,90 +356,46 @@ where
 /// an IK function that receives `(pose, seed)` and returns a joint solution. IK
 /// is sampled once along the path with the previous solution as the next seed,
 /// then a scalar S-curve `s(t)` is generated and shrunk until the dense joint
-/// trajectory satisfies the robot's joint velocity / acceleration limits.
+/// trajectory, sampled every `period`, satisfies the joint velocity and
+/// acceleration bounds (and jerk, if [`validate_jerk`]).
+///
+/// The joint bounds and [`path_bounds`] together must bound the speed and
+/// acceleration of `s` while the joints move.
 ///
 /// This is intentionally not time-optimal. It is a compact, deterministic
 /// planner for drivers that want a Cartesian straight-line style command while
 /// still executing through joint-space constraints.
-pub fn plan_cartesian_path_traj_via_time_scaling<R, F, IK, const N: usize>(
-    path_fn: F,
-    q_start: [f64; N],
-    scale: f64,
-    ik: IK,
-) -> RobotResult<Vec<[f64; N]>>
-where
-    R: Joints<N> + Robot + ?Sized,
-    F: Fn(f64) -> Pose,
-    IK: FnMut(Pose, [f64; N]) -> RobotResult<[f64; N]>,
-{
-    plan_cartesian_path_traj_via_time_scaling_with_options::<R, F, IK, N>(
-        path_fn,
-        q_start,
-        scale,
-        ik,
-        CartesianTimeScalingOptions::default(),
-    )
-}
-
-/// Same as [`plan_cartesian_path_traj_via_time_scaling`] with explicit options.
-pub fn plan_cartesian_path_traj_via_time_scaling_with_options<R, F, IK, const N: usize>(
-    path_fn: F,
-    q_start: [f64; N],
-    scale: f64,
-    ik: IK,
-    options: CartesianTimeScalingOptions,
-) -> RobotResult<Vec<[f64; N]>>
-where
-    R: Joints<N> + Robot + ?Sized,
-    F: Fn(f64) -> Pose,
-    IK: FnMut(Pose, [f64; N]) -> RobotResult<[f64; N]>,
-{
-    validate_time_scaling_inputs::<R, N>(scale, options)?;
-    plan_cartesian_path_traj_via_time_scaling_with_limits::<R, F, IK, N>(
-        path_fn,
-        q_start,
-        ik,
-        CartesianTimeScalingLimits::from_robot::<R>(scale),
-        options,
-    )
-}
-
-/// Plan with instance-specific joint bounds and optional geometric path bounds.
-/// This leaves the existing constant-based APIs and default jerk policy intact.
-pub fn plan_cartesian_path_traj_via_time_scaling_with_limits<R, F, IK, const N: usize>(
+///
+/// [`validate_jerk`]: CartesianTimeScalingOptions::validate_jerk
+/// [`path_bounds`]: CartesianTimeScalingOptions::path_bounds
+pub fn plan_cartesian_path_traj_via_time_scaling<F, IK, E, const N: usize>(
     path_fn: F,
     q_start: [f64; N],
     mut ik: IK,
-    limits: CartesianTimeScalingLimits<N>,
+    limits: &JointLimits<N>,
+    period: Duration,
     options: CartesianTimeScalingOptions,
-) -> RobotResult<Vec<[f64; N]>>
+) -> TimeScalingResult<Vec<[f64; N]>>
 where
-    R: Joints<N> + Robot + ?Sized,
     F: Fn(f64) -> Pose,
-    IK: FnMut(Pose, [f64; N]) -> RobotResult<[f64; N]>,
+    IK: FnMut(Pose, [f64; N]) -> Result<[f64; N], E>,
+    E: Display,
 {
-    validate_time_scaling_inputs::<R, N>(1.0, options)?;
-    if limits
-        .velocity
-        .iter()
-        .chain(&limits.acceleration)
-        .chain(&limits.jerk)
-        .any(|v| !v.is_finite() || *v <= 0.0)
-        || limits.scalar.iter().any(|v| v.is_nan() || *v <= 0.0)
-    {
-        return Err(RobotException::UnprocessableInstructionError(
-            "Cartesian motion bounds must be positive (joint bounds finite)".into(),
-        ));
-    }
+    check_period(period)?;
+    check_options(&options)?;
+    check_joint_bounds(limits, false)?;
+
     let s_grid = unit_grid(options.path_samples);
     let mut q_samples = Vec::with_capacity(s_grid.len());
     let mut seed = q_start;
     for &s in &s_grid {
-        let q = ik(path_fn(s), seed)?;
+        let q = ik(path_fn(s), seed)
+            .map_err(|e| TimeScalingError::InverseKinematics { s, reason: e.to_string() })?;
         if !q.iter().all(|v| v.is_finite()) {
-            return Err(RobotException::UnprocessableInstructionError(format!(
-                "cartesian time scaling IK returned non-finite joint values at s={s}"
-            )));
+            return Err(TimeScalingError::InverseKinematics {
+                s,
+                reason: "non-finite joint values".to_string(),
+            });
         }
         q_samples.push(q);
         seed = q;
@@ -384,21 +407,18 @@ where
 
     let (_q_grid, dq_ds, ddq_ds, dddq_ds) =
         finite_difference_sample_derivatives::<N>(&q_samples, &s_grid)?;
-    let (mut s_vel, mut s_acc, mut s_jerk) =
-        scalar_s_curve_bounds::<N>(&dq_ds, &ddq_ds, &dddq_ds, &limits, options.safety_scale)?;
-    s_vel = s_vel.min(limits.scalar[0]);
-    s_acc = s_acc.min(limits.scalar[1]);
-    s_jerk = s_jerk.min(limits.scalar[2]);
-    let dt = R::CONTROL_PERIOD;
-    let mut last_error = String::new();
+    let bounds = scalar_s_curve_bounds::<N>(&dq_ds, &ddq_ds, &dddq_ds, limits, &options)?;
+    let (mut s_vel, mut s_acc, mut s_jerk) = (bounds.velocity, bounds.acceleration, bounds.jerk);
+    let dt = period.as_secs_f64();
+    let mut last = String::new();
 
     for _attempt in 0..=options.max_retries {
         let (s_curve, total) = joint_s_curve::<1>(&[0.0], &[1.0], &[s_vel], &[s_acc], &[s_jerk]);
         let traj = sample_time_scaled_joint_path(&q_samples, &dq_ds, s_curve.as_ref(), total, dt);
 
-        match joint_traj_limit_violation_with_limits(&traj, dt, &limits, options.validate_jerk) {
+        match joint_traj_limit_violation(&traj, dt, limits, options.validate_jerk) {
             None => return Ok(traj),
-            Some(err) => last_error = err,
+            Some(err) => last = err,
         }
 
         s_vel *= options.retry_scale;
@@ -406,119 +426,42 @@ where
         s_jerk *= options.retry_scale * options.retry_scale * options.retry_scale;
     }
 
-    Err(RobotException::UnprocessableInstructionError(format!(
-        "cartesian time scaling failed to satisfy joint limits after {} retries: {last_error}",
-        options.max_retries
-    )))
+    Err(TimeScalingError::LimitsViolated { retries: options.max_retries, last })
 }
 
-/// Plan a Cartesian straight line / slerp orientation path without copp.
-pub fn plan_cartesian_line_traj_via_time_scaling<R, IK, const N: usize>(
+/// Plan a straight line with slerped orientation from `start` to `target`,
+/// within the joint bounds and the end effector's `cartesian` bounds, by
+/// [`plan_cartesian_path_traj_via_time_scaling`].
+#[allow(clippy::too_many_arguments)]
+pub fn plan_cartesian_line_traj_via_time_scaling<IK, E, const N: usize>(
     start: Pose,
     target: Pose,
     q_start: [f64; N],
-    scale: f64,
     ik: IK,
-) -> RobotResult<Vec<[f64; N]>>
-where
-    R: Joints<N> + Robot + ?Sized,
-    IK: FnMut(Pose, [f64; N]) -> RobotResult<[f64; N]>,
-{
-    plan_cartesian_line_traj_via_time_scaling_with_options::<R, IK, N>(
-        start,
-        target,
-        q_start,
-        scale,
-        ik,
-        CartesianTimeScalingOptions::default(),
-    )
-}
-
-/// Same as [`plan_cartesian_line_traj_via_time_scaling`] with explicit options.
-pub fn plan_cartesian_line_traj_via_time_scaling_with_options<R, IK, const N: usize>(
-    start: Pose,
-    target: Pose,
-    q_start: [f64; N],
-    scale: f64,
-    ik: IK,
+    limits: &JointLimits<N>,
+    cartesian: &CartesianLimits,
+    period: Duration,
     options: CartesianTimeScalingOptions,
-) -> RobotResult<Vec<[f64; N]>>
+) -> TimeScalingResult<Vec<[f64; N]>>
 where
-    R: Joints<N> + Robot + ?Sized,
-    IK: FnMut(Pose, [f64; N]) -> RobotResult<[f64; N]>,
+    IK: FnMut(Pose, [f64; N]) -> Result<[f64; N], E>,
+    E: Display,
 {
-    let start = start.quat();
-    let target = target.quat();
-    plan_cartesian_path_traj_via_time_scaling_with_options::<R, _, IK, N>(
+    let options = CartesianTimeScalingOptions {
+        path_bounds: options
+            .path_bounds
+            .min(PathBounds::for_line(&start, &target, cartesian)),
+        ..options
+    };
+    let (start, target) = (start.quat(), target.quat());
+    plan_cartesian_path_traj_via_time_scaling(
         move |s| Pose::from_isometry(start.lerp_slerp(&target, s.clamp(0.0, 1.0))),
         q_start,
-        scale,
         ik,
+        limits,
+        period,
         options,
     )
-}
-
-/// Wrap an already sampled joint trajectory as a `JointPositionControl` closure.
-///
-/// The closure emits one trajectory sample per non-zero control tick and reports
-/// `done = true` after the final sample. It is intentionally open-loop: it only
-/// generates position commands, while any feedback behavior should be layered
-/// through PID / impedance / dynamics controller helpers.
-pub fn joint_traj_position_control<const N: usize>(
-    traj: Vec<[f64; N]>,
-) -> impl FnMut(JointState<N>, Duration) -> ([f64; N], bool) + Send + 'static {
-    let mut step = 0usize;
-
-    move |state, duration| {
-        if traj.is_empty() {
-            return (
-                state
-                    .cmd
-                    .q()
-                    .or(state.des.q())
-                    .or(state.meas.q())
-                    .unwrap_or([0.0; N]),
-                true,
-            );
-        }
-        if duration == Duration::ZERO && step == 0 {
-            return (traj[0], false);
-        }
-
-        let index = step.min(traj.len() - 1);
-        let target = traj[index];
-        if duration > Duration::ZERO {
-            step += 1;
-        }
-        (target, step >= traj.len())
-    }
-}
-
-/// Plan waypoints with copp and return a closure usable by
-/// `control_with::<JointPositionControl<N>, _>(...)`.
-pub fn copp_waypoints_joint_position_control<R, const N: usize>(
-    waypoints: &[[f64; N]],
-    scale: f64,
-) -> RobotResult<impl FnMut(JointState<N>, Duration) -> ([f64; N], bool) + Send + 'static>
-where
-    R: Joints<N> + Robot + ?Sized,
-{
-    let traj = plan_waypoints_traj_via_copp::<R, N>(waypoints, scale)?;
-    Ok(joint_traj_position_control(traj))
-}
-
-/// Plan a continuous path with copp and return a closure usable by
-/// `control_with::<JointPositionControl<N>, _>(...)`.
-pub fn copp_path_joint_position_control<R, F, const N: usize>(
-    path_fn: &F,
-    scale: f64,
-) -> RobotResult<impl FnMut(JointState<N>, Duration) -> ([f64; N], bool) + Send + 'static>
-where
-    R: Joints<N> + Robot + ?Sized,
-    F: Fn(f64) -> Option<[f64; N]>,
-{
-    let traj = plan_path_traj_via_copp::<R, F, N>(path_fn, scale)?;
-    Ok(joint_traj_position_control(traj))
 }
 
 type PathDerivativeMatrices = (
@@ -531,13 +474,13 @@ type PathDerivativeMatrices = (
 fn finite_difference_path_derivatives<F, const N: usize>(
     path_fn: &F,
     s_grid: &[f64],
-) -> RobotResult<PathDerivativeMatrices>
+) -> TimeScalingResult<PathDerivativeMatrices>
 where
     F: Fn(f64) -> Option<[f64; N]>,
 {
     if s_grid.len() < 5 {
-        return Err(RobotException::UnprocessableInstructionError(
-            "move_path finite-difference planning requires at least 5 path samples".to_string(),
+        return Err(TimeScalingError::Invalid(
+            "finite-difference planning requires at least 5 path samples".to_string(),
         ));
     }
 
@@ -546,80 +489,84 @@ where
         match path_fn(s) {
             Some(q) if q.iter().all(|v| v.is_finite()) => q_samples.push(q),
             Some(_) => {
-                return Err(RobotException::UnprocessableInstructionError(format!(
-                    "move_path closure returned non-finite joint values at s={s}"
+                return Err(TimeScalingError::Path(format!(
+                    "the path returned non-finite joint values at s={s}"
                 )));
             }
             None => {
-                return Err(RobotException::UnprocessableInstructionError(format!(
-                    "move_path closure returned None at s={s}; must be defined on [0, 1]"
+                return Err(TimeScalingError::Path(format!(
+                    "the path returned None at s={s}; it must be defined on [0, 1]"
                 )));
             }
         }
     }
 
-    let n = s_grid.len();
-    let q = na::DMatrix::<f64>::from_fn(N, n, |i, j| q_samples[j][i]);
-    let mut dq = na::DMatrix::<f64>::zeros(N, n);
-    let mut ddq = na::DMatrix::<f64>::zeros(N, n);
-    let mut dddq = na::DMatrix::<f64>::zeros(N, n);
+    finite_difference_sample_derivatives::<N>(&q_samples, s_grid)
+}
 
-    for j in 0..n {
-        let start = j.saturating_sub(2).min(n - 5);
-        let indices = [start, start + 1, start + 2, start + 3, start + 4];
-        let offsets = indices.map(|idx| s_grid[idx] - s_grid[j]);
-        let weights_d1 = finite_difference_weights(&offsets, 1);
-        let weights_d2 = finite_difference_weights(&offsets, 2);
-        let weights_d3 = finite_difference_weights(&offsets, 3);
+fn check_period(period: Duration) -> TimeScalingResult<()> {
+    if period.is_zero() {
+        return Err(TimeScalingError::Invalid(
+            "the control period is zero".to_string(),
+        ));
+    }
+    Ok(())
+}
 
-        for axis in 0..N {
-            for (k, &idx) in indices.iter().enumerate() {
-                let q_value = q_samples[idx][axis];
-                dq[(axis, j)] += weights_d1[k] * q_value;
-                ddq[(axis, j)] += weights_d2[k] * q_value;
-                dddq[(axis, j)] += weights_d3[k] * q_value;
+/// Velocity, acceleration and jerk bounds positive (NaN refuses); velocity and
+/// acceleration also finite when `finite_rates`.
+fn check_joint_bounds<const N: usize>(
+    limits: &JointLimits<N>,
+    finite_rates: bool,
+) -> TimeScalingResult<()> {
+    for axis in 0..N {
+        for (what, bound, must_be_finite) in [
+            ("dq_max", limits.dq_max[axis], finite_rates),
+            ("ddq_max", limits.ddq_max[axis], finite_rates),
+            ("dddq_max", limits.dddq_max[axis], false),
+        ] {
+            if bound.is_nan() || bound <= 0.0 || (must_be_finite && !bound.is_finite()) {
+                let need = if must_be_finite {
+                    "positive and finite"
+                } else {
+                    "positive"
+                };
+                return Err(TimeScalingError::Invalid(format!(
+                    "joint {axis}: {what} is {bound}; it must be {need}"
+                )));
             }
         }
     }
-
-    Ok((q, dq, ddq, dddq))
+    Ok(())
 }
 
-fn validate_time_scaling_inputs<R, const N: usize>(
-    scale: f64,
-    options: CartesianTimeScalingOptions,
-) -> RobotResult<()>
-where
-    R: Joints<N> + Robot + ?Sized,
-{
-    let dt = R::CONTROL_PERIOD;
-    if !(dt.is_finite() && dt > 0.0) {
-        return Err(RobotException::UnprocessableInstructionError(format!(
-            "Robot::CONTROL_PERIOD must be a positive finite number, got {dt}"
-        )));
-    }
-    if !(scale.is_finite() && scale > 0.0) {
-        return Err(RobotException::UnprocessableInstructionError(format!(
-            "scale must be a positive finite number, got {scale}"
-        )));
-    }
+fn check_options(options: &CartesianTimeScalingOptions) -> TimeScalingResult<()> {
     if options.path_samples < 5 {
-        return Err(RobotException::UnprocessableInstructionError(format!(
+        return Err(TimeScalingError::Invalid(format!(
             "cartesian time scaling requires at least 5 path samples, got {}",
             options.path_samples
         )));
     }
     if !(options.safety_scale.is_finite() && options.safety_scale > 0.0) {
-        return Err(RobotException::UnprocessableInstructionError(format!(
-            "CartesianTimeScalingOptions::safety_scale must be positive finite, got {}",
+        return Err(TimeScalingError::Invalid(format!(
+            "safety_scale must be positive finite, got {}",
             options.safety_scale
         )));
     }
     if !(options.retry_scale.is_finite() && options.retry_scale > 0.0 && options.retry_scale < 1.0)
     {
-        return Err(RobotException::UnprocessableInstructionError(format!(
-            "CartesianTimeScalingOptions::retry_scale must be in (0, 1), got {}",
+        return Err(TimeScalingError::Invalid(format!(
+            "retry_scale must be in (0, 1), got {}",
             options.retry_scale
+        )));
+    }
+    let p = options.path_bounds;
+    if [p.velocity, p.acceleration, p.jerk]
+        .iter()
+        .any(|b| b.is_nan() || *b <= 0.0)
+    {
+        return Err(TimeScalingError::Invalid(format!(
+            "path bounds must be positive, got {p:?}"
         )));
     }
     Ok(())
@@ -641,9 +588,9 @@ fn joint_path_is_stationary<const N: usize>(q_samples: &[[f64; N]]) -> bool {
 fn finite_difference_sample_derivatives<const N: usize>(
     q_samples: &[[f64; N]],
     s_grid: &[f64],
-) -> RobotResult<PathDerivativeMatrices> {
+) -> TimeScalingResult<PathDerivativeMatrices> {
     if q_samples.len() != s_grid.len() || q_samples.len() < 5 {
-        return Err(RobotException::UnprocessableInstructionError(
+        return Err(TimeScalingError::Invalid(
             "joint sample derivative estimation requires matching grids with at least 5 samples"
                 .to_string(),
         ));
@@ -676,20 +623,18 @@ fn finite_difference_sample_derivatives<const N: usize>(
     Ok((q, dq, ddq, dddq))
 }
 
+/// Initial bounds on `s`: the tightest of the joint bounds divided by the
+/// path's derivatives and the caller's path bounds, times the safety scale.
 fn scalar_s_curve_bounds<const N: usize>(
     dq_ds: &na::DMatrix<f64>,
     ddq_ds: &na::DMatrix<f64>,
     dddq_ds: &na::DMatrix<f64>,
-    limits: &CartesianTimeScalingLimits<N>,
-    safety_scale: f64,
-) -> RobotResult<(f64, f64, f64)> {
-    let vel = limits.velocity;
-    let acc = limits.acceleration;
-    let jerk = limits.jerk;
+    limits: &JointLimits<N>,
+    options: &CartesianTimeScalingOptions,
+) -> TimeScalingResult<PathBounds> {
     let eps = 1e-9;
-    let mut s_vel = f64::INFINITY;
-    let mut s_acc = f64::INFINITY;
-    let mut s_jerk = f64::INFINITY;
+    let mut bounds = PathBounds::UNBOUNDED;
+    let mut moving = false;
 
     for axis in 0..N {
         let mut q1 = 0.0f64;
@@ -702,38 +647,44 @@ fn scalar_s_curve_bounds<const N: usize>(
         }
 
         if q1 > eps {
-            s_vel = s_vel.min(vel[axis] / q1);
-            s_acc = s_acc.min(acc[axis] / q1);
-            s_jerk = s_jerk.min(jerk[axis] / q1);
+            moving = true;
+            bounds.velocity = bounds.velocity.min(limits.dq_max[axis] / q1);
+            bounds.acceleration = bounds.acceleration.min(limits.ddq_max[axis] / q1);
+            bounds.jerk = bounds.jerk.min(limits.dddq_max[axis] / q1);
         }
         if q2 > eps {
-            s_vel = s_vel.min((acc[axis] / q2).sqrt());
+            bounds.velocity = bounds.velocity.min((limits.ddq_max[axis] / q2).sqrt());
         }
         if q3 > eps {
-            s_vel = s_vel.min((jerk[axis] / q3).cbrt());
+            bounds.velocity = bounds.velocity.min((limits.dddq_max[axis] / q3).cbrt());
         }
     }
 
-    if !s_vel.is_finite() {
-        s_vel = 1.0;
-    }
-    if !s_acc.is_finite() {
-        s_acc = s_vel.max(1e-3);
-    }
-    if !s_jerk.is_finite() {
-        s_jerk = s_acc.max(1e-3);
+    let mut bounds = bounds.min(options.path_bounds);
+    if !moving {
+        // The joints barely move: no joint bound applies, so any finite speed of
+        // `s` keeps them within their limits.
+        for bound in [
+            &mut bounds.velocity,
+            &mut bounds.acceleration,
+            &mut bounds.jerk,
+        ] {
+            if !bound.is_finite() {
+                *bound = 1.0;
+            }
+        }
+    } else if !(bounds.velocity.is_finite() && bounds.acceleration.is_finite()) {
+        return Err(TimeScalingError::Invalid(format!(
+            "the speed and acceleration along the path are unbounded ({bounds:?}); \
+             bound the joints' dq_max and ddq_max or set path_bounds"
+        )));
     }
 
-    s_vel *= safety_scale;
-    s_acc *= safety_scale;
-    s_jerk *= safety_scale;
-
-    if s_vel <= 0.0 || s_acc <= 0.0 || s_jerk <= 0.0 {
-        return Err(RobotException::UnprocessableInstructionError(
-            "cartesian time scaling produced non-positive scalar S-curve bounds".to_string(),
-        ));
-    }
-    Ok((s_vel, s_acc, s_jerk))
+    Ok(PathBounds {
+        velocity: bounds.velocity * options.safety_scale,
+        acceleration: bounds.acceleration * options.safety_scale,
+        jerk: bounds.jerk * options.safety_scale,
+    })
 }
 
 fn sample_time_scaled_joint_path<const N: usize>(
@@ -795,41 +746,21 @@ fn interpolate_joint_path<const N: usize>(
     q
 }
 
-#[cfg(test)]
-fn joint_traj_limit_violation<R, const N: usize>(
+/// The first finite-difference velocity, acceleration or (if `validate_jerk`)
+/// jerk of `traj` beyond its bound. An infinite bound is never exceeded.
+fn joint_traj_limit_violation<const N: usize>(
     traj: &[[f64; N]],
     dt: f64,
-    scale: f64,
-    validate_jerk: bool,
-) -> Option<String>
-where
-    R: Joints<N> + Robot + ?Sized,
-{
-    joint_traj_limit_violation_with_limits(
-        traj,
-        dt,
-        &CartesianTimeScalingLimits::from_robot::<R>(scale),
-        validate_jerk,
-    )
-}
-
-fn joint_traj_limit_violation_with_limits<const N: usize>(
-    traj: &[[f64; N]],
-    dt: f64,
-    limits: &CartesianTimeScalingLimits<N>,
+    limits: &JointLimits<N>,
     validate_jerk: bool,
 ) -> Option<String> {
-    let vel = limits.velocity;
-    let acc = limits.acceleration;
-    let jerk = limits.jerk;
-
     for step in 1..traj.len() {
         for axis in 0..N {
             let value = ((traj[step][axis] - traj[step - 1][axis]) / dt).abs();
-            if value > vel[axis] {
+            if value > limits.dq_max[axis] {
                 return Some(format!(
                     "velocity axis {axis} at sample {step}: {value} > {}",
-                    vel[axis]
+                    limits.dq_max[axis]
                 ));
             }
         }
@@ -840,10 +771,10 @@ fn joint_traj_limit_violation_with_limits<const N: usize>(
             let value = ((traj[step][axis] - 2.0 * traj[step - 1][axis] + traj[step - 2][axis])
                 / (dt * dt))
                 .abs();
-            if value > acc[axis] {
+            if value > limits.ddq_max[axis] {
                 return Some(format!(
                     "acceleration axis {axis} at sample {step}: {value} > {}",
-                    acc[axis]
+                    limits.ddq_max[axis]
                 ));
             }
         }
@@ -857,10 +788,10 @@ fn joint_traj_limit_violation_with_limits<const N: usize>(
                     - traj[step - 3][axis])
                     / (dt * dt * dt))
                     .abs();
-                if value > jerk[axis] {
+                if value > limits.dddq_max[axis] {
                     return Some(format!(
                         "jerk axis {axis} at sample {step}: {value} > {}",
-                        jerk[axis]
+                        limits.dddq_max[axis]
                     ));
                 }
             }
@@ -930,59 +861,124 @@ pub fn q_grid_to_traj<const N: usize>(q: &na::DMatrix<f64>) -> Vec<[f64; N]> {
 mod tests {
     use super::*;
 
-    struct OneJointRobot;
+    const PERIOD: Duration = Duration::from_millis(1);
 
-    impl Robot for OneJointRobot {
-        type State = ();
-        const CONTROL_PERIOD: f64 = 0.001;
-
-        fn version() -> String {
-            "test".to_string()
-        }
-
-        fn read_state(&mut self) -> RobotResult<Self::State> {
-            Ok(())
+    fn one_joint(jerk: f64) -> JointLimits<1> {
+        JointLimits {
+            q_min: [-10.0],
+            q_max: [10.0],
+            dq_max: [1.0],
+            ddq_max: [2.0],
+            dddq_max: [jerk],
+            ..JointLimits::UNBOUNDED
         }
     }
 
-    impl Joints<1> for OneJointRobot {
-        const JOINT_MIN: [f64; 1] = [-10.0];
-        const JOINT_MAX: [f64; 1] = [10.0];
-        const JOINT_VEL_BOUND: [f64; 1] = [1.0];
-        const JOINT_ACC_BOUND: [f64; 1] = [2.0];
-        const JOINT_JERK_BOUND: [f64; 1] = [20.0];
-    }
-
-    #[test]
-    fn cartesian_line_time_scaling_generates_limited_joint_traj() {
-        let options = CartesianTimeScalingOptions {
+    fn options() -> CartesianTimeScalingOptions {
+        CartesianTimeScalingOptions {
             path_samples: 21,
             safety_scale: 0.7,
             retry_scale: 0.8,
             max_retries: 8,
-            validate_jerk: false,
-        };
-        let traj = plan_cartesian_line_traj_via_time_scaling_with_options::<OneJointRobot, _, 1>(
+            ..Default::default()
+        }
+    }
+
+    fn line(
+        limits: &JointLimits<1>,
+        cartesian: &CartesianLimits,
+        options: CartesianTimeScalingOptions,
+    ) -> TimeScalingResult<Vec<[f64; 1]>> {
+        plan_cartesian_line_traj_via_time_scaling(
             Pose::from_position([0.0, 0.0, 0.0]),
             Pose::from_position([0.2, 0.0, 0.0]),
             [0.0],
-            1.0,
-            |pose, _seed| Ok([pose.position()[0]]),
+            |pose: Pose, _seed| Ok::<_, String>([pose.position()[0]]),
+            limits,
+            cartesian,
+            PERIOD,
             options,
         )
-        .unwrap();
+    }
 
-        assert!(traj.len() > 2);
-        assert!((traj[0][0] - 0.0).abs() < 1e-9);
-        assert!((traj.last().unwrap()[0] - 0.2).abs() < 1e-9);
-        assert!(
-            joint_traj_limit_violation::<OneJointRobot, 1>(
-                &traj,
-                OneJointRobot::CONTROL_PERIOD,
-                1.0,
-                false,
-            )
-            .is_none()
-        );
+    #[test]
+    fn cartesian_line_time_scaling_generates_limited_joint_traj() {
+        for jerk in [20.0, f64::INFINITY] {
+            let limits = one_joint(jerk);
+            let traj = line(&limits, &CartesianLimits::UNBOUNDED, options()).unwrap();
+
+            assert!(traj.len() > 2);
+            assert!((traj[0][0] - 0.0).abs() < 1e-9);
+            assert!((traj.last().unwrap()[0] - 0.2).abs() < 1e-9);
+            assert!(joint_traj_limit_violation(&traj, 0.001, &limits, false).is_none());
+            // No step to the target: an infinite jerk bound plans a trapezoid.
+            assert!(
+                traj.windows(2)
+                    .all(|w| (w[1][0] - w[0][0]).abs() <= 1.0 * 0.001 + 1e-12)
+            );
+        }
+    }
+
+    #[test]
+    fn cartesian_bounds_slow_the_line() {
+        let limits = one_joint(f64::INFINITY);
+        let free = line(&limits, &CartesianLimits::UNBOUNDED, options()).unwrap();
+        let cartesian = CartesianLimits { linear_velocity: 0.1, ..CartesianLimits::UNBOUNDED };
+        let slow = line(&limits, &cartesian, options()).unwrap();
+        assert!(slow.len() > free.len());
+        let speed = slow
+            .windows(2)
+            .map(|w| (w[1][0] - w[0][0]).abs() / 0.001)
+            .fold(0.0, f64::max);
+        assert!(speed <= 0.1 + 1e-9, "{speed}");
+    }
+
+    #[test]
+    fn unbounded_speed_along_a_moving_path_is_refused() {
+        let limits = JointLimits::<1>::UNBOUNDED;
+        let error = line(&limits, &CartesianLimits::UNBOUNDED, options()).unwrap_err();
+        assert!(matches!(error, TimeScalingError::Invalid(_)), "{error}");
+        // A Cartesian bound is enough.
+        let cartesian = CartesianLimits {
+            linear_velocity: 0.1,
+            linear_acceleration: 0.5,
+            ..CartesianLimits::UNBOUNDED
+        };
+        assert!(line(&limits, &cartesian, options()).is_ok());
+    }
+
+    #[test]
+    fn copp_takes_an_unbounded_jerk_and_refuses_an_unbounded_speed() {
+        let waypoints = [[0.0, 0.0], [0.5, -0.3], [1.0, 0.2]];
+        let limits = JointLimits::<2> {
+            dq_max: [1.0; 2],
+            ddq_max: [2.0; 2],
+            ..JointLimits::UNBOUNDED
+        };
+        let traj = plan_waypoints_traj_via_copp(&waypoints, &limits, PERIOD).unwrap();
+        assert!(traj.iter().flatten().all(|v| v.is_finite()));
+        let peak = traj
+            .windows(2)
+            .flat_map(|w| (0..2).map(move |i| (w[1][i] - w[0][i]).abs() / 0.001))
+            .fold(0.0, f64::max);
+        assert!(peak <= 1.0 + 1e-3, "{peak}");
+
+        let unbounded = JointLimits::<2> { ddq_max: [2.0; 2], ..JointLimits::UNBOUNDED };
+        let error = plan_waypoints_traj_via_copp(&waypoints, &unbounded, PERIOD).unwrap_err();
+        assert!(matches!(error, TimeScalingError::Invalid(_)), "{error}");
+    }
+
+    #[test]
+    fn line_bounds_follow_distance_and_angle() {
+        let start = Pose::from_position([0.0, 0.0, 0.0]);
+        let target = Pose::from_position([0.5, 0.0, 0.0]);
+        let limits = CartesianLimits {
+            linear_velocity: 0.25,
+            angular_velocity: 1.0,
+            ..CartesianLimits::UNBOUNDED
+        };
+        let bounds = PathBounds::for_line(&start, &target, &limits);
+        assert_eq!(bounds.velocity, 0.5);
+        assert_eq!(bounds.acceleration, f64::INFINITY);
     }
 }
