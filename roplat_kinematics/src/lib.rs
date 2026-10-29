@@ -11,7 +11,9 @@
 //! builds the same cache from a `roplat_description::Chain`, [`chain_ik`]
 //! solves its inverse kinematics within the URDF limits
 //! ([`chain_ik_solutions`] collects the distinct solutions that pass a
-//! validity check), and
+//! validity check), [`UrdfKinematics`] makes the chain a
+//! `ForwardKinematics` and `JacobianModel` (as `dh_kinematics!` does for a
+//! DH arm), and
 //! [`UrdfDynamics`] makes a URDF tree a `DynamicsModel` for the
 //! `roplat_control` torque controllers.
 //!
@@ -23,11 +25,13 @@ mod chain_ik;
 mod dh;
 mod kinematics;
 mod urdf_dynamics;
+mod urdf_kinematics;
 
 pub use chain_ik::{ChainIkSolution, IkSearch, chain_ik, chain_ik_solutions, dh_chain_discrepancy};
 pub use dh::DhParam;
 pub use kinematics::*;
 pub use urdf_dynamics::UrdfDynamics;
+pub use urdf_kinematics::UrdfKinematics;
 
 #[doc(hidden)]
 pub mod __private {
