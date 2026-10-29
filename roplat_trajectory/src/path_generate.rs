@@ -807,6 +807,12 @@ mod test {
 
     use plotters::prelude::*;
 
+    /// The plotting tests draw into the system temporary directory, not the
+    /// source tree.
+    fn plot_path() -> std::path::PathBuf {
+        std::env::temp_dir().join("roplat_trajectory_plot.svg")
+    }
+
     #[test]
     fn test_joint_s_curve() {
         let start = [-0.2, -0.77, -0.36, -2.42, 0.00, 2.57, 0.77];
@@ -846,7 +852,8 @@ mod test {
                 .collect::<Vec<f64>>()
         };
 
-        let root = plotters::prelude::SVGBackend::new("plot.svg", (640, 480)).into_drawing_area();
+        let path = plot_path();
+        let root = plotters::prelude::SVGBackend::new(&path, (640, 480)).into_drawing_area();
         root.fill(&plotters::prelude::WHITE).unwrap();
 
         let mut chart = plotters::prelude::ChartBuilder::on(&root)
@@ -930,7 +937,8 @@ mod test {
         let (t, f) = s_curve(delta, v_max, a_max, j_max);
         println!("t: {}", t);
 
-        let root = SVGBackend::new("plot.svg", (640, 480)).into_drawing_area();
+        let path = plot_path();
+        let root = SVGBackend::new(&path, (640, 480)).into_drawing_area();
         root.fill(&WHITE).unwrap();
 
         let mut chart = ChartBuilder::on(&root)
@@ -986,7 +994,8 @@ mod test {
             println!("time: {} | {:?}", i as f64 / 100., result);
         }
 
-        let root = plotters::prelude::SVGBackend::new("plot.svg", (640, 480)).into_drawing_area();
+        let path = plot_path();
+        let root = plotters::prelude::SVGBackend::new(&path, (640, 480)).into_drawing_area();
         root.fill(&plotters::prelude::WHITE).unwrap();
 
         let mut chart = plotters::prelude::ChartBuilder::on(&root)
