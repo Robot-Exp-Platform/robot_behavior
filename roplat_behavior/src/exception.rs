@@ -75,6 +75,15 @@ pub enum RobotException {
 /// A convenient alias for `Result<T, `[`RobotException`]`>`.
 pub type RobotResult<T> = Result<T, RobotException>;
 
+impl RobotException {
+    /// An algorithm crate's error (trajectory planning, kinematics, ...) as an
+    /// [`UnprocessableInstructionError`](Self::UnprocessableInstructionError)
+    /// keeping its message, for `plan(...).map_err(RobotException::from_algorithm)?`.
+    pub fn from_algorithm(error: impl std::fmt::Display) -> Self {
+        Self::UnprocessableInstructionError(error.to_string())
+    }
+}
+
 impl From<io::Error> for RobotException {
     fn from(e: io::Error) -> Self {
         RobotException::NetworkError(e.to_string())

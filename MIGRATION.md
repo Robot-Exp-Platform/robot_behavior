@@ -1,3 +1,73 @@
+# Migrating from roplat_behavior 0.9 to 0.10
+
+[简体中文](MIGRATION_zh.md)
+
+0.10 keeps the contracts' semantics and changes how limits, relative motion, periods and foreign bindings are expressed, and which crate holds what. Each crate now has its own version. Needs `roplat_msgs` with the new `JointLimits` fields (roplat branch `claude/msgs-limits` until it is released).
+
+## Crates
+
+| Need | 0.9 | 0.10 |
+|---|---|---|
+| Python / C++ bindings | `roplat_behavior` features `to_py` / `to_cxx` | `roplat_behavior_ffi` features `py` / `cxx` |
+| Simulator backends, physics engines, renderers, `SimulationRhythm` | `roplat_behavior` | `roplat_world` (`SimulationRhythm` with its feature `roplat`) |
+| Target sources (`joint_traj_target_fn`, …) | `roplat_trajectory::path_generate` | `roplat_control::target` |
+
+`roplat_trajectory` no longer depends on `roplat_behavior`, and `roplat_control` no longer on `roplat_trajectory`. The C bindings (`to_c`) are removed.
+
+## Limits
+
+- An unbounded limit is `f64::INFINITY` (`f64::NEG_INFINITY` for a lower position bound). `Joints` and `EndPoint` constants now default to it; a declared `f64::MAX` still reads as unbounded.
+- `Joints::joint_limits()` and `EndPoint::cartesian_limits()` return the declared envelope as `roplat_msgs::JointLimits` / `CartesianLimits`. `JointLimits` gains `dddq_max` (jerk) and `dtau_max` (effort rate); `..JointLimits::UNBOUNDED` fills fields you do not set.
+- `Arm<N>` drops `get_joint_min` … `get_rotation_jerk_bound` and every `with_*` builder. A driver keeps one `MotionLimits<N>` and implements:
+
+```rust
+fn motion_limits(&self) -> MotionLimits<N> { self.limits }
+fn set_motion_limits(&mut self, limits: MotionLimits<N>) -> RobotResult<()> {
+    limits.within(&MotionLimits::envelope::<Self>())?;
+    self.limits = limits;
+    Ok(())
+}
+```
+
+  It plans with `self.limits.scaled_joint()` / `scaled_cartesian()`. Callers use `robot.set_motion_limits(robot.motion_limits().scaled(0.2))` for a lasting change and `robot.with_limits(limits, |r| r.move_to::<…>(target))` for one motion; `with_limits` restores the previous limits even when the motion fails. `OverrideOnce`, `ArmBound` and `RobotBound` are removed.
+- `roplat_safety::joint_limits::<R, N>()` becomes `R::joint_limits()`; `roplat_safety::CartesianLimits` is `roplat_msgs::CartesianLimits`, and `JointTorqueCheck` reads `dtau_max` from the limits.
+
+## Relative motion, periods and the flange
+
+- `Coord` and `Inertial<S>` are removed. A relative move is `move_to::<Relative<JointSpace<N>>>(dq)` or `move_to::<Relative<FlangeSpace>>(delta)` (`delta` in the flange frame); the contract implements both for every robot.
+- `get_endpoint` moves from `Arm<N>` to `EndPoint`.
+- `Robot::CONTROL_PERIOD` is a `Duration`: `const CONTROL_PERIOD: Duration = Duration::from_millis(1);`. A control callback's `Duration` is that period, or `(k + 1)` periods after `k` missed cycles.
+
+## Trajectories
+
+- Planners take `&JointLimits<N>` and the control period instead of a robot type and a scale, and return `TimeScalingError`; a driver turns it into its own error with `.map_err(RobotException::from_algorithm)?`.
+- The Cartesian planners are `plan_cartesian_path_traj_via_time_scaling(path, q_start, ik, &limits, period, options)` and `plan_cartesian_line_traj_via_time_scaling(start, target, q_start, ik, &limits, &cartesian, period, options)`; path bounds are `CartesianTimeScalingOptions::path_bounds`. The `_with_options` / `_with_limits` variants and `CartesianTimeScalingLimits` are gone.
+- COPP and the Cartesian planner need finite velocity and acceleration bounds; an infinite jerk bound leaves jerk free.
+- `joint_traj_position_control` and `copp_*_joint_position_control` are removed. Play a plan with `JointTrajectoryFollower`; a driver without a clock uses `JointTrajectoryFollower::cycle_timed(points_from_samples(&plan, period))` and calls `step_by(dt, &state)` each cycle.
+
+## Kinematics
+
+- `ArmForwardKinematics::FLANGE` is the flange frame in the last DH frame (Franka: `Pose::from_position([0., 0., 0.107])`). Forward kinematics, `flange_jacobian` and the IK refer to the flange.
+- `dh_kinematics!(…, inverse)` uses `ik_solve_converged`: an unreachable target is now an error.
+
+## Foreign bindings
+
+```toml
+[dependencies]
+roplat_behavior_ffi = { version = "0.9.0", optional = true }
+pyo3 = { version = "0.28.3", optional = true, features = ["extension-module", "multiple-pymethods"] }
+
+[features]
+to_py = ["dep:pyo3", "dep:roplat_behavior_ffi", "roplat_behavior_ffi/py"]
+```
+
+Import the macros and classes from `roplat_behavior_ffi`. Code of your own that turned a `RobotResult` into a `PyResult` with `?` calls `.map_err(roplat_behavior_ffi::py_err)?` instead.
+
+## World
+
+`PhysicsEngine`, `AddSearchPath`, `Renderer`, `AttachFrom`, `Entity`, the entity builders, `SimulationBackend`, `select_simulation_model` and `SimulationRhythm` are imported from `roplat_world`; `roplat_data_dir()` is `roplat_world::assets_dir()`. `RobotDescription`, `ModelFormat` and `SimulationModel` stay in `roplat_behavior`. A URDF `Geometry` converts into an `Entity`.
+
+
 # Migrating from robot_behavior 0.8 to roplat_behavior 0.9
 
 [简体中文](MIGRATION_zh.md)
