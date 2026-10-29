@@ -1,7 +1,7 @@
 use std::time::Duration;
 
+use crate::target::constant_joint_target_fn;
 use roplat_behavior::{BaseState, JointState};
-use roplat_trajectory::path_generate::constant_joint_target_fn;
 
 /// Builds a joint-space PD torque controller toward one fixed joint target.
 ///
@@ -119,7 +119,7 @@ pub fn joint_pid_control<const N: usize>(
 
 /// Builds a joint-space PID controller around a dynamic target source.
 ///
-/// `target_fn` may be a closure returned by `utils::path_generate`, a custom
+/// `target_fn` may be a closure from [`crate::target`], a custom
 /// online planner, or a handle-backed source. It returns `(target, done)`; the
 /// controller forwards `done` unchanged.
 ///

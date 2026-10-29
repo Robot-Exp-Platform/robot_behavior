@@ -1532,7 +1532,6 @@ dependencies = [
  "roplat_behavior",
  "roplat_description",
  "roplat_kinematics",
- "roplat_trajectory",
  "winapi",
 ]
 
