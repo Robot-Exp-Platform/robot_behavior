@@ -1,8 +1,8 @@
 //! Motion limits as data: the declared envelope, tightening it, and limits
 //! applied to one motion.
 use roplat_behavior::{
-    Arm, ArmState, CartesianLimits, EndPoint, FlangeSpace, JointLimits, JointSpace, Joints,
-    LoadState, Motion, MotionLimits, Pose, Robot, RobotException, RobotResult,
+    Arm, ArmState, CartesianLimits, EndPoint, EndPointPose, FlangeSpace, JointLimits, JointSpace,
+    Joints, LoadState, Motion, MotionLimits, Pose, Robot, RobotException, RobotResult,
 };
 
 /// Records the joint velocity bound in force for every motion.
@@ -40,6 +40,9 @@ impl Joints<2> for TwoJointArm {
 
 impl EndPoint for TwoJointArm {
     const CARTESIAN_VEL_BOUND: f64 = 1.0;
+}
+
+impl EndPointPose for TwoJointArm {
     fn get_endpoint(&self) -> Pose {
         Pose::default()
     }

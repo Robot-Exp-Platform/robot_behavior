@@ -35,7 +35,7 @@ fn set_motion_limits(&mut self, limits: MotionLimits<N>) -> RobotResult<()> {
 ## 相对运动、周期与法兰
 
 - 删除 `Coord` 与 `Inertial<S>`。相对运动写 `move_to::<Relative<JointSpace<N>>>(dq)` 或 `move_to::<Relative<FlangeSpace>>(delta)`（`delta` 在法兰坐标系中表达），由契约为所有机器人统一实现。
-- `get_endpoint` 从 `Arm<N>` 移到 `EndPoint`。相对运动从机器人读取当前值：关节增量以 `Arm::state()` 中的实测位置为起点，法兰增量以 `EndPoint::read_endpoint()` 为起点，后者默认返回 `get_endpoint()`。`get_endpoint` 读不到机器人的驱动应覆写 `read_endpoint`。
+- `get_endpoint` 从 `Arm<N>` 移到新的 `EndPointPose`，每个 `Arm<N>` 都要实现它。`EndPoint` 只保留声明的笛卡尔限值，因此只描述模型的类型只实现 `EndPoint`，正如它只实现 `Joints` 而不实现 `Arm`。相对运动从机器人读取当前值：关节增量以 `Arm::state()` 中的实测位置为起点，法兰增量以 `EndPointPose::read_endpoint()` 为起点，后者默认返回 `get_endpoint()`。`get_endpoint` 读不到机器人的驱动应覆写 `read_endpoint`。
 - `Robot::CONTROL_PERIOD` 改为 `Duration`：`const CONTROL_PERIOD: Duration = Duration::from_millis(1);`。控制回调的 `Duration` 是这个周期，丢 `k` 个周期后为 `(k + 1)` 个周期。
 
 ## 轨迹

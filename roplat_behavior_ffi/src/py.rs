@@ -428,7 +428,7 @@ macro_rules! py_arm {
             }
 
             fn get_endpoint(&self) -> $crate::PyPose {
-                <$inner as $crate::__private::roplat_behavior::EndPoint>::get_endpoint(&self.0)
+                <$inner as $crate::__private::roplat_behavior::EndPointPose>::get_endpoint(&self.0)
                     .into()
             }
 

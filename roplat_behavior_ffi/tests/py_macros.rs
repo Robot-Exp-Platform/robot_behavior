@@ -8,9 +8,9 @@ use std::time::Duration;
 use pyo3::{pyclass, pymethods};
 use roplat_behavior::{
     Arm, ArmState, ArmTorqueControl, CartesianPoseControl, CartesianVelocityControl, ControlSpace,
-    ControlStep, ControlWith, EndPoint, FlangeSpace, JointPositionControl, JointSpace,
-    JointVelocityControl, Joints, LoadState, MotionLimits, MoveTo, MoveTraj, Pose, Robot,
-    RobotResult, TorqueControl,
+    ControlStep, ControlWith, EndPoint, EndPointPose, FlangeSpace, JointPositionControl,
+    JointSpace, JointVelocityControl, Joints, LoadState, MotionLimits, MoveTo, MoveTraj, Pose,
+    Robot, RobotResult, TorqueControl,
 };
 use roplat_behavior_ffi::{
     py_arm, py_arm_torque_control, py_cartesian_pose_control, py_cartesian_velocity_control,
@@ -38,7 +38,9 @@ impl Joints<2> for Mock {
     const JOINT_MAX: [f64; 2] = [1.0; 2];
 }
 
-impl EndPoint for Mock {
+impl EndPoint for Mock {}
+
+impl EndPointPose for Mock {
     fn get_endpoint(&self) -> Pose {
         Pose::default()
     }

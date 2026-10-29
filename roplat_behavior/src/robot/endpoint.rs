@@ -1,7 +1,7 @@
 use super::limits::unbounded_above;
 use crate::{CartesianLimits, Pose, RobotResult};
 
-/// An arm's end effector: where its flange is, and its Cartesian limits.
+/// The Cartesian limits an arm's end effector declares.
 ///
 /// Where [`Joints`](crate::Joints) describes per-joint limits, `EndPoint`
 /// describes the task-space envelope of the flange / TCP: how fast it may
@@ -10,8 +10,9 @@ use crate::{CartesianLimits, Pose, RobotResult};
 /// unbounded, `f64::INFINITY`, so a driver overrides only the limits its
 /// firmware enforces. A declared `f64::MAX` also reads as unbounded.
 ///
-/// Its current pose makes [`FlangeSpace`](crate::FlangeSpace) a
-/// [`RelativeSpace`](crate::RelativeSpace).
+/// Like `Joints`, it is a declaration, so a model description implements it
+/// too. Where the flange is now is [`EndPointPose`], as [`Arm`](crate::Arm)
+/// is to `Joints`.
 ///
 /// `EndPoint` makes [`EndSpace`](crate::EndSpace) a valid
 /// [`MotionSpace`](crate::MotionSpace) and is a super-trait of
@@ -40,17 +41,6 @@ pub trait EndPoint {
     /// Maximum angular jerk (rad/s^3). Defaults to unbounded.
     const ROTATION_JERK_BOUND: f64 = f64::INFINITY;
 
-    /// Current flange pose in the base frame, as last known to the driver.
-    fn get_endpoint(&self) -> Pose;
-
-    /// Read the flange pose from the robot, for a
-    /// [`Relative<FlangeSpace>`](crate::Relative) motion. Defaults to
-    /// [`get_endpoint`](Self::get_endpoint); a driver whose `get_endpoint`
-    /// cannot reach the robot overrides it.
-    fn read_endpoint(&mut self) -> RobotResult<Pose> {
-        Ok(self.get_endpoint())
-    }
-
     /// The declared bounds as data. A bound at or beyond `f64::MAX` reads as
     /// unbounded (`f64::INFINITY`).
     fn cartesian_limits() -> CartesianLimits {
@@ -62,5 +52,25 @@ pub trait EndPoint {
             angular_acceleration: unbounded_above(Self::ROTATION_ACC_BOUND),
             angular_jerk: unbounded_above(Self::ROTATION_JERK_BOUND),
         }
+    }
+}
+
+/// Where a robot's flange is: the current pose behind [`EndPoint`]'s
+/// declared limits.
+///
+/// Every [`Arm<N>`](crate::Arm) implements it. Its pose makes
+/// [`FlangeSpace`](crate::FlangeSpace) a [`RelativeSpace`](crate::RelativeSpace),
+/// so a [`Relative<FlangeSpace>`](crate::Relative) motion starts from
+/// [`read_endpoint`](Self::read_endpoint).
+pub trait EndPointPose {
+    /// Current flange pose in the base frame, as last known to the driver.
+    fn get_endpoint(&self) -> Pose;
+
+    /// Read the flange pose from the robot, for a
+    /// [`Relative<FlangeSpace>`](crate::Relative) motion. Defaults to
+    /// [`get_endpoint`](Self::get_endpoint); a driver whose `get_endpoint`
+    /// cannot reach the robot overrides it.
+    fn read_endpoint(&mut self) -> RobotResult<Pose> {
+        Ok(self.get_endpoint())
     }
 }

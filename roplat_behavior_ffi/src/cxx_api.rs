@@ -259,8 +259,10 @@ macro_rules! cxx_arm_bridge {
 
             fn get_endpoint(&self) -> $mod_name::CxxPoseData {
                 let (tran, rot) =
-                    <$inner as $crate::__private::roplat_behavior::EndPoint>::get_endpoint(&self.0)
-                        .quat_array();
+                    <$inner as $crate::__private::roplat_behavior::EndPointPose>::get_endpoint(
+                        &self.0,
+                    )
+                    .quat_array();
                 let mut values = Vec::with_capacity(7);
                 values.extend_from_slice(&tran);
                 values.extend_from_slice(&rot);

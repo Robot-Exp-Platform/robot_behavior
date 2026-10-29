@@ -1,6 +1,6 @@
 use crate::{
-    EndPoint, JointSample, JointState, LoadState, MotionLimits, Robot, RobotResult, SpatialSample,
-    StateView,
+    EndPoint, EndPointPose, JointSample, JointState, LoadState, MotionLimits, Robot, RobotResult,
+    SpatialSample, StateView,
     robot::{
         joint::Joints,
         motion::MoveTo,
@@ -57,17 +57,17 @@ impl<const N: usize> ArmState<N> {
 ///
 /// `Arm<N>` ties together everything needed to command a serial manipulator:
 /// the lifecycle of a [`Robot`], the joint envelope of [`Joints<N>`], the
-/// Cartesian envelope of [`EndPoint`], and the ability to [`MoveTo`] both a
-/// [`JointSpace<N>`] and a [`FlangeSpace`] target. On top of those it adds
-/// state read-back, payload configuration and the [`MotionLimits`] its own
-/// planned motions respect.
+/// Cartesian envelope of [`EndPoint`], the flange pose of [`EndPointPose`],
+/// and the ability to [`MoveTo`] both a [`JointSpace<N>`] and a
+/// [`FlangeSpace`] target. On top of those it adds state read-back, payload
+/// configuration and the [`MotionLimits`] its own planned motions respect.
 ///
 /// A driver keeps one [`MotionLimits`] value, starting from
 /// [`MotionLimits::envelope`], and reads it when it plans. Applying limits to
 /// a single motion is [`Motion::with_limits`](crate::Motion::with_limits),
 /// written once for every arm.
 pub trait Arm<const N: usize>:
-    Robot + Joints<N> + EndPoint + MoveTo<JointSpace<N>> + MoveTo<FlangeSpace> + Sized
+    Robot + Joints<N> + EndPoint + EndPointPose + MoveTo<JointSpace<N>> + MoveTo<FlangeSpace> + Sized
 {
     /// Read the full [`ArmState`] (measured / commanded / desired + load).
     fn state(&mut self) -> RobotResult<ArmState<N>>;
@@ -75,7 +75,7 @@ pub trait Arm<const N: usize>:
     fn set_load(&mut self, load: LoadState) -> RobotResult<()>;
 
     /// Current joint positions (rad). The flange pose is
-    /// [`EndPoint::get_endpoint`].
+    /// [`EndPointPose::get_endpoint`].
     fn get_joint(&self) -> [f64; N];
 
     /// The limits subsequent motions respect.

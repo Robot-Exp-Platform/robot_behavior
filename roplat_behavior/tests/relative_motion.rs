@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use roplat_behavior::{
-    Arm, ArmState, EndPoint, FlangeSpace, JointSample, JointSpace, Joints, LoadState, Motion,
-    MotionLimits, Pose, Relative, Robot, RobotResult, StateView,
+    Arm, ArmState, EndPoint, EndPointPose, FlangeSpace, JointSample, JointSpace, Joints, LoadState,
+    Motion, MotionLimits, Pose, Relative, Robot, RobotResult, StateView,
 };
 
 struct Recorder {
@@ -31,7 +31,9 @@ impl Joints<2> for Recorder {
     const JOINT_MAX: [f64; 2] = [3.0; 2];
 }
 
-impl EndPoint for Recorder {
+impl EndPoint for Recorder {}
+
+impl EndPointPose for Recorder {
     fn get_endpoint(&self) -> Pose {
         self.flange
     }

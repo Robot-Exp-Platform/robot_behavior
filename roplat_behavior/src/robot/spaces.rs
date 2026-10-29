@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::robot::{
     arm::Arm,
-    endpoint::EndPoint,
+    endpoint::{EndPoint, EndPointPose},
     joint::Joints,
     math::{JMat, Jaco},
     motion::{MotionSpace, MoveTo},
@@ -198,7 +198,7 @@ impl<R: Arm<N>, const N: usize> RelativeSpace<R> for JointSpace<N> {
 /// The flange pose followed by the offset, which is expressed in the flange
 /// frame: a translation along the flange's own axes, then a rotation about
 /// them.
-impl<R: EndPoint> RelativeSpace<R> for FlangeSpace {
+impl<R: EndPointPose> RelativeSpace<R> for FlangeSpace {
     fn current(robot: &mut R) -> RobotResult<Pose> {
         robot.read_endpoint()
     }

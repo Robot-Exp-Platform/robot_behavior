@@ -23,7 +23,7 @@ pub use control::{
     JointPositionControl, JointVelocityControl, TorqueControl,
 };
 pub use device::{Camera, ForceTorqueSensor, Gripper, ImuSensor};
-pub use endpoint::EndPoint;
+pub use endpoint::{EndPoint, EndPointPose};
 pub use joint::Joints;
 pub use limits::MotionLimits;
 pub use math::{Iso3, JMat, JVec, Jaco};
