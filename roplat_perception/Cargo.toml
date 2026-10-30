@@ -1,0 +1,22 @@
+[package]
+name = "roplat_perception"
+version = "0.9.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+readme = "../README.md"
+description = "Point clouds for manipulation: downsampling, filtering, table and object segmentation, box and cylinder fitting, ICP"
+keywords = ["robot", "robotics", "point-cloud", "perception", "roplat"]
+
+[dependencies]
+roplat_description = { version = "0.9.0", path = "../roplat_description" }
+nalgebra = "0.34.1"
+thiserror = "2.0.17"
+
+[dev-dependencies]
+roplat_grasp = { version = "0.9.0", path = "../roplat_grasp" }
+roplat_scene = { version = "0.9.0", path = "../roplat_scene" }
+roplat_msgs = "0.6.0-rc.1"
+parry3d-f64 = { version = "0.25.3", default-features = false, features = ["required-features", "std", "alloc"] }
