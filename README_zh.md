@@ -20,6 +20,7 @@
 | `roplat_safety` | 控制图的安全门：关节限位、限速、样本新鲜度、周期看门狗与共享停止锁存。被拒绝的命令使本周期失败，设备收到 `Break`、不发命令。见[设计](roplat_safety/docs/design_zh.md)。 |
 | `roplat_scene` | 运动规划的碰撞检查：由 URDF 构造的机器人（网格取凸包）、世界中的物体与附着在连杆上的物体、允许接触对（相邻连杆默认允许）与安全距离。`PlanningScene` 回答 `plan_joint_path` 的有效性检查，并给出最近的一对；碰撞几何由 parry3d-f64 计算，无原生依赖。 另有命名位姿（`NamedPoses`）与工具安装位置（`EndEffector`），即规划代码需要的 SRDF 内容，在代码中构造。 |
 | `roplat_grasp` | 平行夹爪对长方体、圆柱、球体的抓取候选（由优到劣），以及 `plan_pick`：到预抓取位姿的无碰撞路径、直线接近、带着物体直线抬起；按顺序尝试候选，并说明每个失败的原因。 |
+| `roplat_diagnostics` | 运行观测：频率、周期与延迟探针，给出均值、p99 与最坏值；`FrequencyCheck`、`LatencyCheck` 把它们判为 OK／WARN／ERROR／STALE（阈值同 ROS 的 `FrequencyStatus`）；`Updater` 与按名称前缀分组的 `Aggregator`。全部基于 `roplat_msgs::Clock`，仿真与回放时间同样适用。开启 `roplat` 后，直通的 `ProbeNode`／`LatencyNode` 在图内喂给检查，由图外读取。 |
 
 采样与几何类型（`Pose`、`JointSample`、`SpatialSample`、`LoadState`、`Twist` 等）来自 roplat 核心的 [`roplat_msgs`](https://github.com/Robot-Exp-Platform/roplat)，由 `roplat_behavior` 重新导出。每个类型只有一种表示和固定的原生布局，同一份数据可以跨进程、跨语言传递。除非打开 `roplat` feature，这些包都不依赖 roplat 运行时。
 
