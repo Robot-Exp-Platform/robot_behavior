@@ -10,7 +10,8 @@
 //! outline, so the hidden half does not matter, but the bottom is taken to
 //! rest on the plane. [`fit_on`] keeps whichever outline fits better.
 //! [`fit_box`] fits a box in any orientation, along the points' principal
-//! axes, for an object not resting on anything.
+//! axes, for an object not resting on anything; [`fit_sphere`] fits a ball
+//! anywhere, from the part of its surface that is seen.
 
 use nalgebra as na;
 use roplat_description::Geometry;
@@ -20,12 +21,14 @@ use crate::{grid::is_finite, segment::Plane};
 /// A primitive shape posed in the points' frame.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FittedShape {
-    /// A box (full edge lengths) or a cylinder along the pose's `z`.
+    /// A box (full edge lengths), a cylinder along the pose's `z`, or a
+    /// sphere.
     pub geometry: Geometry,
     /// The shape's centre, as URDF places geometry.
     pub pose: na::Isometry3<f64>,
     /// Root-mean-square distance (m) of the fitted outline's points from
-    /// the shape's outline; for [`fit_box`], of all points from its surface.
+    /// the shape's outline; for [`fit_box`] and [`fit_sphere`], of all
+    /// points from its surface.
     pub residual: f64,
 }
 
@@ -89,6 +92,74 @@ pub fn fit_on(points: &[[f64; 3]], plane: &Plane) -> Option<FittedShape> {
         Some(cylinder) if cylinder.residual < box_fit.residual => Some(cylinder),
         _ => Some(box_fit),
     }
+}
+
+/// The sphere that best fits the points, which may cover only the side of
+/// it a camera sees: an algebraic least-squares fit (`|p|² = 2 c·p + d`,
+/// linear in the centre `c` and `d`) refined by Gauss–Newton steps on the
+/// points' distances from the surface. `None` for fewer than four finite
+/// points or points that do not span a curved surface (all on one plane or
+/// line).
+pub fn fit_sphere(points: &[[f64; 3]]) -> Option<FittedShape> {
+    let finite: Vec<na::Vector3<f64>> = points
+        .iter()
+        .filter(|p| is_finite(p))
+        .map(|p| na::Vector3::from(*p))
+        .collect();
+    if finite.len() < 4 {
+        return None;
+    }
+    // Centred for conditioning.
+    let mean = finite.iter().sum::<na::Vector3<f64>>() / finite.len() as f64;
+    let local: Vec<na::Vector3<f64>> = finite.iter().map(|p| p - mean).collect();
+    let mut normal = na::Matrix4::<f64>::zeros();
+    let mut rhs = na::Vector4::<f64>::zeros();
+    for p in &local {
+        let row = na::Vector4::new(2.0 * p.x, 2.0 * p.y, 2.0 * p.z, 1.0);
+        normal += row * row.transpose();
+        rhs += row * p.norm_squared();
+    }
+    let x = normal.lu().solve(&rhs)?;
+    let mut centre = na::Vector3::new(x[0], x[1], x[2]);
+    let squared = x[3] + centre.norm_squared();
+    if !(squared > 0.0 && squared.is_finite()) {
+        return None;
+    }
+    let mut radius = squared.sqrt();
+    // Gauss–Newton on r_i = |p_i − c| − R over (c, R).
+    for _ in 0..20 {
+        let mut jtj = na::Matrix4::<f64>::zeros();
+        let mut jtr = na::Vector4::<f64>::zeros();
+        for p in &local {
+            let d = p - centre;
+            let distance = d.norm();
+            if distance == 0.0 {
+                continue;
+            }
+            let u = d / distance;
+            let row = na::Vector4::new(-u.x, -u.y, -u.z, -1.0);
+            let residual = distance - radius;
+            jtj += row * row.transpose();
+            jtr += row * residual;
+        }
+        let Some(step) = jtj.lu().solve(&(-jtr)) else {
+            break;
+        };
+        centre += step.fixed_rows::<3>(0);
+        radius += step[3];
+        if step.norm() < 1e-12 {
+            break;
+        }
+    }
+    if !(radius > 0.0 && radius.is_finite() && centre.iter().all(|c| c.is_finite())) {
+        return None;
+    }
+    let residual = rms(local.iter().map(|p| ((p - centre).norm() - radius).abs()));
+    Some(FittedShape {
+        geometry: Geometry::Sphere { radius },
+        pose: na::Isometry3::translation(centre.x + mean.x, centre.y + mean.y, centre.z + mean.z),
+        residual,
+    })
 }
 
 /// The box along the points' principal axes that encloses them. `None`
@@ -279,6 +350,46 @@ fn rms(values: impl Iterator<Item = f64>) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_ball_is_fitted_from_the_side_a_camera_sees() {
+        // A 4 cm ball at (0.5, 0.1, 0.74), seen from above and one side:
+        // only directions within 70° of the view, with ±0.5 mm of noise.
+        let (centre, radius) = (na::Vector3::new(0.5, 0.1, 0.74), 0.04);
+        let view = na::Vector3::new(0.0, -0.6, 0.8);
+        let golden = std::f64::consts::PI * (3.0 - 5f64.sqrt());
+        let n = 2000;
+        let points: Vec<[f64; 3]> = (0..n)
+            .filter_map(|i| {
+                let z = 1.0 - 2.0 * (i as f64 + 0.5) / n as f64;
+                let r = (1.0 - z * z).sqrt();
+                let a = golden * i as f64;
+                let direction = na::Vector3::new(r * a.cos(), r * a.sin(), z);
+                (direction.dot(&view) > 70f64.to_radians().cos()).then(|| {
+                    let noise = 0.0005 * ((i * 7919 % 1000) as f64 / 500.0 - 1.0);
+                    let p = centre + direction * (radius + noise);
+                    [p.x, p.y, p.z]
+                })
+            })
+            .collect();
+        assert!(points.len() > 300 && points.len() < n / 2);
+        let fit = fit_sphere(&points).unwrap();
+        let Geometry::Sphere { radius: found } = fit.geometry else {
+            panic!("{fit:?}")
+        };
+        assert!((found - radius).abs() < 1e-3, "{found}");
+        assert!(
+            (fit.pose.translation.vector - centre).norm() < 1e-3,
+            "{fit:?}"
+        );
+        assert!(fit.residual < 5e-4, "{}", fit.residual);
+        // Points on a plane span no sphere; too few points none either.
+        let flat: Vec<[f64; 3]> = (0..100)
+            .map(|i| [(i % 10) as f64 * 0.01, (i / 10) as f64 * 0.01, 0.7])
+            .collect();
+        assert!(fit_sphere(&flat).is_none());
+        assert!(fit_sphere(&points[..3]).is_none());
+    }
 
     fn table() -> Plane {
         Plane::through(&na::Point3::new(0.0, 0.0, 0.7), na::Vector3::z_axis())

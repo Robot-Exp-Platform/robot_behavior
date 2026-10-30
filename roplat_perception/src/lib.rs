@@ -60,7 +60,7 @@ pub mod segment;
 pub mod tabletop;
 
 pub use cloud::{crop_box, remove_sparse, remove_statistical_outliers, voxel_downsample};
-pub use fit::{FittedShape, fit_box, fit_box_on, fit_cylinder_on, fit_on};
+pub use fit::{FittedShape, fit_box, fit_box_on, fit_cylinder_on, fit_on, fit_sphere};
 pub use normals::{RegionOptions, SurfaceNormal, estimate_normals, smooth_regions};
 pub use registration::{IcpOptions, Registration, icp, icp_point_to_plane};
 pub use segment::{Plane, PlaneFit, PlaneOptions, euclidean_clusters, fit_plane};
