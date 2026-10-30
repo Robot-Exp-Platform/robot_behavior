@@ -26,6 +26,9 @@
 //! robot without changing the scene.
 
 mod mesh;
+pub mod semantics;
+
+pub use semantics::{EndEffector, NamedPoses};
 
 use std::{
     collections::{BTreeMap, BTreeSet},

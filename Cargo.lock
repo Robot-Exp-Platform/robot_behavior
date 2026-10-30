@@ -1564,6 +1564,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "roplat_grasp"
+version = "0.9.0"
+dependencies = [
+ "nalgebra",
+ "roplat_description",
+ "roplat_kinematics",
+ "roplat_msgs",
+ "roplat_scene",
+ "roplat_trajectory",
+]
+
+[[package]]
 name = "roplat_kinematics"
 version = "0.9.0"
 dependencies = [

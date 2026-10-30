@@ -1,0 +1,21 @@
+[package]
+name = "roplat_grasp"
+version = "0.9.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+readme = "../README.md"
+description = "Grasp candidates for primitive objects and pick planning (pre-grasp, approach, lift) over roplat_scene"
+keywords = ["robot", "robotics", "grasp", "planning", "roplat"]
+
+[dependencies]
+roplat_description = { version = "0.9.0", path = "../roplat_description" }
+roplat_scene = { version = "0.9.0", path = "../roplat_scene" }
+roplat_trajectory = { version = "0.9.0", path = "../roplat_trajectory" }
+nalgebra = "0.34.1"
+
+[dev-dependencies]
+roplat_kinematics = { version = "0.9.0", path = "../roplat_kinematics" }
+roplat_msgs = { version = "0.6.0-rc.1", features = ["nalgebra"] }

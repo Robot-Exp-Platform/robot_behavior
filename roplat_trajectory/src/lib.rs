@@ -14,12 +14,14 @@
 //! [`CartesianLimits`]: roplat_msgs::CartesianLimits
 
 pub mod cartesian_path;
+pub mod constraints;
 pub mod follow;
 pub mod path_generate;
 pub mod path_planning;
 pub mod time_scaling;
 
 pub use cartesian_path::{CartesianPath, CartesianPathOptions, CartesianStop, plan_cartesian_path};
+pub use constraints::{AxisConstraint, OrientationConstraint, PoseConstraint, constrained};
 pub use follow::{JointTrajectoryFollower, TrackingError, points_from_samples};
 pub use path_planning::{PlanError, PlannerOptions, plan_joint_path, segment_is_valid};
 pub use time_scaling::*;
