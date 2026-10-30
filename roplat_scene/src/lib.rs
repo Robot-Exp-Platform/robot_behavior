@@ -90,7 +90,8 @@ pub enum SceneError {
     InvalidPadding(f64),
 }
 
-/// Two bodies, links or objects, that come within the scene's padding.
+/// Two bodies, links or objects, that come within their padding: the
+/// scene's, or the pair's own (see [`PlanningScene::set_pair_padding`]).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Contact {
     pub first: String,
@@ -235,6 +236,9 @@ pub struct PlanningScene<const N: usize> {
     objects: Vec<Object>,
     allowed: AllowedCollisions,
     padding: f64,
+    /// Paddings of pairs that keep their own, under both orders of the
+    /// pair, so lookups borrow `&str`.
+    pair_padding: BTreeMap<String, BTreeMap<String, f64>>,
 }
 
 impl<const N: usize> PlanningScene<N> {
@@ -277,6 +281,7 @@ impl<const N: usize> PlanningScene<N> {
             objects: Vec::new(),
             allowed: AllowedCollisions::adjacent(&model),
             padding: 0.0,
+            pair_padding: BTreeMap::new(),
             model,
         })
     }
@@ -330,6 +335,60 @@ impl<const N: usize> PlanningScene<N> {
         }
         self.padding = padding;
         Ok(())
+    }
+
+    /// Keeps `padding` (m) between `a` and `b`, links or objects in either
+    /// order, in place of the scene's padding: more around a fragile
+    /// fixture or a person's workspace, less where the hand must pass close
+    /// to a shelf. Replaces the pair's earlier value; the names need not
+    /// exist yet.
+    pub fn set_pair_padding(&mut self, a: &str, b: &str, padding: f64) -> Result<(), SceneError> {
+        if !(padding.is_finite() && padding >= 0.0) {
+            return Err(SceneError::InvalidPadding(padding));
+        }
+        self.pair_padding
+            .entry(a.into())
+            .or_default()
+            .insert(b.into(), padding);
+        self.pair_padding
+            .entry(b.into())
+            .or_default()
+            .insert(a.into(), padding);
+        Ok(())
+    }
+
+    /// Returns the pair to the scene's padding; whether it had its own.
+    pub fn clear_pair_padding(&mut self, a: &str, b: &str) -> bool {
+        let mut remove = |from: &str, to: &str| {
+            let Some(paddings) = self.pair_padding.get_mut(from) else {
+                return false;
+            };
+            let removed = paddings.remove(to).is_some();
+            if paddings.is_empty() {
+                self.pair_padding.remove(from);
+            }
+            removed
+        };
+        remove(a, b) | remove(b, a)
+    }
+
+    /// The padding kept between `a` and `b`: the pair's own, else the
+    /// scene's.
+    pub fn pair_padding(&self, a: &str, b: &str) -> f64 {
+        self.pair_padding
+            .get(a)
+            .and_then(|paddings| paddings.get(b))
+            .copied()
+            .unwrap_or(self.padding)
+    }
+
+    /// The largest padding any pair keeps, which bounding boxes grow by.
+    fn widest_padding(&self) -> f64 {
+        self.pair_padding
+            .values()
+            .flat_map(|paddings| paddings.values())
+            .copied()
+            .fold(self.padding, f64::max)
     }
 
     /// Places a new object in the world. A mesh file name is read as a path.
@@ -618,10 +677,11 @@ impl<const N: usize> PlanningScene<N> {
     }
 
     /// Links with geometry, then objects, posed in the world at `q`, with
-    /// bounding boxes grown by half the padding each.
+    /// bounding boxes grown by half the widest padding each.
     fn bodies(&self, q: &[f64; N]) -> Vec<Body<'_>> {
         let frames = self.link_frames(q);
-        let body = |name, role, parts| Body::new(name, role, parts, self.padding);
+        let widest = self.widest_padding();
+        let body = |name, role, parts| Body::new(name, role, parts, widest);
         let mut bodies = Vec::new();
         for (link, parts) in self.links.iter().enumerate() {
             if !parts.is_empty() {
@@ -664,6 +724,7 @@ impl<const N: usize> PlanningScene<N> {
                 if !self.checked(a, b) {
                     continue;
                 }
+                let padding = self.pair_padding(a.name, b.name);
                 let mut closest: Option<f64> = None;
                 for ((pa, sa), ba) in a.parts.iter().zip(&a.bounds) {
                     for ((pb, sb), bb) in b.parts.iter().zip(&b.bounds) {
@@ -671,7 +732,7 @@ impl<const N: usize> PlanningScene<N> {
                             continue;
                         }
                         let distance =
-                            match query::contact(pa, sa.as_ref(), pb, sb.as_ref(), self.padding) {
+                            match query::contact(pa, sa.as_ref(), pb, sb.as_ref(), padding) {
                                 Ok(Some(contact)) => contact.dist,
                                 Ok(None) => continue,
                                 // Every shape built here is convex. Were a

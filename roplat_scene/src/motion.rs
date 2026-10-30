@@ -81,7 +81,7 @@ impl<const N: usize> PlanningScene<N> {
                 let Some(distance) = pair_distance(a, b, reach) else {
                     continue;
                 };
-                let clearance = distance - self.padding;
+                let clearance = distance - self.pair_padding(a.name, b.name);
                 if clearance <= MOTION_TOLERANCE {
                     let distance = if distance > 0.0 {
                         distance
@@ -221,9 +221,10 @@ fn radius(at: &na::Isometry3<f64>, shape: &SharedShape) -> f64 {
 }
 
 /// Smallest distance between the parts of `a` and `b` that could still come
-/// within the padding after closing by `reach`; `None` when none could.
-/// The bounds are grown by half the padding each, so a gap between them
-/// beyond `reach` leaves the parts farther apart than padding plus reach.
+/// within their padding after closing by `reach`; `None` when none could.
+/// The bounds are grown by half the widest padding each, so a gap between
+/// them beyond `reach` leaves the parts farther apart than their padding
+/// plus reach.
 fn pair_distance(a: &Body<'_>, b: &Body<'_>, reach: f64) -> Option<f64> {
     let mut nearest: Option<f64> = None;
     for ((pa, sa), ba) in a.parts.iter().zip(&a.bounds) {
