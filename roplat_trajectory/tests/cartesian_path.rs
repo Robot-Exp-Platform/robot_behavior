@@ -4,7 +4,9 @@ use nalgebra as na;
 use roplat_behavior::Pose;
 use roplat_description::{Chain, RobotModel};
 use roplat_kinematics::{CommonStop, chain_ik};
-use roplat_trajectory::{CartesianPathOptions, CartesianStop, plan_cartesian_path};
+use roplat_trajectory::{
+    CartesianPathOptions, CartesianStop, plan_cartesian_motion, plan_cartesian_path,
+};
 
 /// UR5 standard DH rows `(d, a, alpha)`, all offsets zero.
 const UR5: [(f64, f64, f64); 6] = [
@@ -245,4 +247,53 @@ fn stops_at_a_joint_jump_or_an_invalid_start() {
     );
     assert_eq!(path.stop, Some(CartesianStop::InvalidStart));
     assert_eq!((path.waypoints, path.fraction), (vec![HOME], 0.0));
+}
+
+#[test]
+fn a_whole_step_check_sees_the_slab_that_coarse_samples_miss() {
+    let chain = chain();
+    let start = fk(&chain, &HOME);
+    let x0 = start.translation.x;
+    let goal = shifted(start, [0.2, 0.0, 0.0]);
+    let in_slab = |x: f64| (0.103..0.107).contains(&(x - x0));
+    // Sampling only each step's end: no 5 cm waypoint lands in the slab.
+    let coarse = CartesianPathOptions { max_step: 0.05, resolution: 1.0, ..Default::default() };
+    let sampled = plan_cartesian_path(
+        HOME,
+        &[goal],
+        |q| fk(&chain, q),
+        ik(&chain),
+        |q| !in_slab(fk(&chain, q).translation.x),
+        coarse,
+    );
+    assert_eq!(sampled.stop, None);
+    // A step crosses the slab when its tip runs over it; the tip moves along x.
+    let crosses = |a: &[f64; 6], b: &[f64; 6]| {
+        let (xa, xb) = (
+            fk(&chain, a).translation.x - x0,
+            fk(&chain, b).translation.x - x0,
+        );
+        xa.min(xb) < 0.107 && xa.max(xb) >= 0.103
+    };
+    let whole = plan_cartesian_motion(
+        HOME,
+        &[goal],
+        |q| fk(&chain, q),
+        ik(&chain),
+        |a, b| !crosses(a, b),
+        coarse,
+    );
+    assert_eq!(whole.stop, Some(CartesianStop::Invalid));
+    assert_eq!(whole.waypoints.len(), 3);
+    assert_eq!(whole.fraction, 0.5);
+    // The start is checked as the motion from it to itself.
+    let refused = plan_cartesian_motion(
+        HOME,
+        &[goal],
+        |q| fk(&chain, q),
+        ik(&chain),
+        |_, _| false,
+        coarse,
+    );
+    assert_eq!(refused.stop, Some(CartesianStop::InvalidStart));
 }

@@ -83,8 +83,55 @@ pub fn plan_cartesian_path<const N: usize>(
     start: [f64; N],
     poses: &[na::Isometry3<f64>],
     forward: impl FnOnce(&[f64; N]) -> na::Isometry3<f64>,
-    mut inverse: impl FnMut(&na::Isometry3<f64>, &[f64; N]) -> Option<[f64; N]>,
+    inverse: impl FnMut(&na::Isometry3<f64>, &[f64; N]) -> Option<[f64; N]>,
     mut is_valid: impl FnMut(&[f64; N]) -> bool,
+    options: CartesianPathOptions,
+) -> CartesianPath<N> {
+    let start_valid = is_valid(&start);
+    cartesian(
+        start,
+        poses,
+        forward,
+        inverse,
+        start_valid,
+        |a, b| segment_is_valid(a, b, options.resolution, &mut is_valid),
+        options,
+    )
+}
+
+/// As [`plan_cartesian_path`], with each joint-space step checked whole by
+/// `motion_is_valid(from, to)` instead of sampled, such as
+/// `PlanningScene::motion_is_free` in `roplat_scene`; the start is checked
+/// as the motion from it to itself. `options.resolution` is not used.
+pub fn plan_cartesian_motion<const N: usize>(
+    start: [f64; N],
+    poses: &[na::Isometry3<f64>],
+    forward: impl FnOnce(&[f64; N]) -> na::Isometry3<f64>,
+    inverse: impl FnMut(&na::Isometry3<f64>, &[f64; N]) -> Option<[f64; N]>,
+    mut motion_is_valid: impl FnMut(&[f64; N], &[f64; N]) -> bool,
+    options: CartesianPathOptions,
+) -> CartesianPath<N> {
+    let start_valid = motion_is_valid(&start, &start);
+    cartesian(
+        start,
+        poses,
+        forward,
+        inverse,
+        start_valid,
+        motion_is_valid,
+        options,
+    )
+}
+
+/// The path through `poses`, with `segment` deciding whether each joint-space
+/// step is valid.
+fn cartesian<const N: usize>(
+    start: [f64; N],
+    poses: &[na::Isometry3<f64>],
+    forward: impl FnOnce(&[f64; N]) -> na::Isometry3<f64>,
+    mut inverse: impl FnMut(&na::Isometry3<f64>, &[f64; N]) -> Option<[f64; N]>,
+    start_valid: bool,
+    mut segment: impl FnMut(&[f64; N], &[f64; N]) -> bool,
     options: CartesianPathOptions,
 ) -> CartesianPath<N> {
     let mut from = forward(&start);
@@ -112,7 +159,7 @@ pub fn plan_cartesian_path<const N: usize>(
         };
         CartesianPath { waypoints, fraction, stop: Some(stop) }
     };
-    if !is_valid(&start) {
+    if !start_valid {
         return CartesianPath {
             waypoints,
             fraction: 0.0,
@@ -133,7 +180,7 @@ pub fn plan_cartesian_path<const N: usize>(
             if jump > options.max_joint_step {
                 return stopped(waypoints, CartesianStop::JointJump);
             }
-            if !segment_is_valid(&previous, &next, options.resolution, &mut is_valid) {
+            if !segment(&previous, &next) {
                 return stopped(waypoints, CartesianStop::Invalid);
             }
             waypoints.push(next);

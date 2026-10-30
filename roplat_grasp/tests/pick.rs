@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use nalgebra::{Isometry3, Vector3};
 use roplat_description::{Geometry, RobotModel};
-use roplat_grasp::{GraspOptions, PickFailure, PickOptions, grasps, plan_pick};
+use roplat_grasp::{GraspOptions, PickFailure, PickOptions, grasps, plan_pick, plan_pick_motion};
 use roplat_kinematics::{IkSearch, chain_ik_solutions};
 use roplat_msgs::geometry::Pose;
 use roplat_scene::{CollisionCheck, EndEffector, NamedPoses, PlanningScene};
@@ -222,4 +222,59 @@ fn named_poses_check_against_the_scene() {
             .map(|(n, _)| n),
         Some("slumped")
     );
+}
+
+#[test]
+fn a_pick_checked_whole_has_every_segment_free() {
+    let at = Vector3::new(0.45, 0.1, 0.24);
+    let scene = scene(at);
+    let hand = hand();
+    let candidates = grasps(
+        &Geometry::Box { size: BLOCK },
+        &Isometry3::translation(at.x, at.y, at.z),
+        &GraspOptions::default(),
+    );
+    let model = model();
+    let plan = plan_pick_motion(
+        &scene,
+        &hand,
+        "block",
+        Some("table"),
+        &candidates,
+        start(),
+        LOWER,
+        UPPER,
+        inverse(&model),
+        PickOptions::default(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert!((plan.grasp.approach() - (-Vector3::z())).norm() < 1e-9);
+    assert_eq!(plan.to_pregrasp.first(), Some(&start()));
+    assert_eq!(plan.to_pregrasp.last(), plan.approach.first());
+    assert_eq!(plan.approach.last(), plan.lift.first());
+
+    // Each path is free as whole motions, in the scene it was planned in.
+    for pair in plan.to_pregrasp.windows(2) {
+        assert!(scene.motion_is_free(&pair[0], &pair[1]), "{pair:?}");
+    }
+    let mut approaching = scene.clone();
+    for link in hand.links() {
+        approaching.allowed_mut().allow("block", link);
+    }
+    for pair in plan.approach.windows(2) {
+        assert!(approaching.motion_is_free(&pair[0], &pair[1]), "{pair:?}");
+    }
+    let mut carrying = approaching;
+    carrying
+        .attach(
+            "block",
+            "flange",
+            &hand.links(),
+            &plan.grasp_configuration(),
+        )
+        .unwrap();
+    carrying.allowed_mut().allow("block", "table");
+    for pair in plan.lift.windows(2) {
+        assert!(carrying.motion_is_free(&pair[0], &pair[1]), "{pair:?}");
+    }
 }
