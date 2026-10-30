@@ -116,7 +116,7 @@ async 有两种不同用法：
 
 `roplat_control` 返回可直接交给 `control_with` 的普通闭包。`roplat_trajectory` 按 `JointLimits` 与控制周期规划；无界写 `f64::INFINITY`，规划要求速度、加速度有界。增益与模型数据需按后端选择；它们不提供时序保证。
 
-`roplat_control::CartesianTrajectoryFollower` 在 `CartesianPoseControl` 上播放定时的 `CartesianWaypoint`：相邻路点之间位置走直线、姿态做球面插值；路径与终点容差以米和弧度计，与测得的法兰位姿比较，超出时返回错误而不修改命令。`cartesian_line` 生成按控制周期采样的直线最小加加速度运动。
+`roplat_control::CartesianTrajectoryFollower` 在 `CartesianPoseControl` 上播放定时的 `CartesianWaypoint`：相邻路点之间位置走直线、姿态做球面插值；路径与终点容差以米和弧度计，与测得的法兰位姿比较，超出时返回错误而不修改命令。`cartesian_line` 生成按控制周期采样的直线最小加加速度运动。开启 `roplat_control` 的 `roplat` feature 后，它也是一个节点，与关节轨迹跟随相同。
 
 ## Feature 与 Roplat 集成
 

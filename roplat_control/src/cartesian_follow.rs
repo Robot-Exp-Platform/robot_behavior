@@ -35,6 +35,11 @@
 //! // })
 //! # let _ = &mut follower;
 //! ```
+//!
+//! With feature `roplat` the follower is also a roplat `Node` on the control
+//! Yield `(ArmState, Duration)`, as `roplat_trajectory`'s joint follower is:
+//! `follower?` in a `ControlRhythm` graph turns a refusal into `Break`, and
+//! [`CartesianTrackingError::find`] recovers it from the drive's error.
 
 use std::time::Duration;
 
@@ -340,6 +345,53 @@ fn beyond<const N: usize>(
     let rotation = measured.rotation.angle_to(&reference.rotation);
     let within = position <= position_tol && rotation <= rotation_tol;
     Ok((!within).then_some((position, rotation)))
+}
+
+#[cfg(feature = "roplat")]
+mod node {
+    use std::time::Duration;
+
+    use roplat::{Lifecycle, Node, RoplatError};
+    use roplat_behavior::{
+        ArmState,
+        msgs::{Clock, Pose},
+    };
+
+    use super::{CartesianTrackingError, CartesianTrajectoryFollower};
+
+    /// Carried as `RoplatError::Io`, as the joint follower's `TrackingError`
+    /// is, so the core needs no variant for it.
+    impl From<CartesianTrackingError> for RoplatError {
+        fn from(error: CartesianTrackingError) -> Self {
+            std::io::Error::other(error).into()
+        }
+    }
+
+    impl CartesianTrackingError {
+        /// The tracking error a drive failed with, when it failed with one.
+        pub fn find(error: &RoplatError) -> Option<&Self> {
+            match error {
+                RoplatError::Io(io) => io.get_ref()?.downcast_ref(),
+                _ => None,
+            }
+        }
+    }
+
+    impl<C, const N: usize> Lifecycle for CartesianTrajectoryFollower<C, N> {
+        type Error = RoplatError;
+    }
+
+    /// Input is the control Yield `(state, dt)`; `dt` is not used, time comes
+    /// from the follower's clock. Output is the Feed, refused as an error.
+    impl<C: Clock, const N: usize> Node for CartesianTrajectoryFollower<C, N> {
+        type Resources = ();
+        type Input = (ArmState<N>, Duration);
+        type Output = Result<(Pose, bool), CartesianTrackingError>;
+
+        async fn process(&mut self, (state, _): Self::Input, _: ()) -> Self::Output {
+            self.step(&state)
+        }
+    }
 }
 
 #[cfg(test)]
