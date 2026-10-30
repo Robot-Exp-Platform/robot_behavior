@@ -1,5 +1,5 @@
-//! Thinning and filtering a cloud: PCL's voxel grid, crop box and radius
-//! outlier filters.
+//! Thinning and filtering a cloud: PCL's voxel grid, crop box, radius
+//! outlier and statistical outlier filters.
 //!
 //! Non-finite points (no return) are dropped by all of them.
 
@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use nalgebra as na;
 
-use crate::grid::{Grid, is_finite};
+use crate::grid::{Grid, is_finite, squared_distance};
 
 /// One point per voxel of edge `voxel` (m) that holds any: the centroid of
 /// the points in it, so the cloud keeps its shape at an even density.
@@ -73,9 +73,108 @@ pub fn remove_sparse(points: &[[f64; 3]], radius: f64, min_neighbours: usize) ->
         .collect()
 }
 
+/// The points whose mean distance to their `k` nearest neighbours is at
+/// most `std_ratio` standard deviations above that distance's mean over the
+/// cloud, as PCL's `StatisticalOutlierRemoval` (`setMeanK(k)`,
+/// `setStddevMulThresh(std_ratio)`). Speckle and the flying pixels between
+/// an edge and the background go; the cloud's own density sets the scale,
+/// so unlike [`remove_sparse`] no radius is chosen. In input order; with
+/// `k = 0` or no more than `k` points, every finite point is kept.
+pub fn remove_statistical_outliers(points: &[[f64; 3]], k: usize, std_ratio: f64) -> Vec<[f64; 3]> {
+    let finite: Vec<[f64; 3]> = points.iter().filter(|p| is_finite(p)).copied().collect();
+    if k == 0 || finite.len() <= k {
+        return finite;
+    }
+    // A radius that holds about k points if the cloud is a surface spanning
+    // the two largest extents of its box. Doubled while it holds fewer, up
+    // to eight times; past that the whole cloud is searched, which only an
+    // isolated point needs.
+    let mut extent: Vec<f64> = (0..3)
+        .map(|axis| {
+            let (lo, hi) = finite
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
+                    (lo.min(p[axis]), hi.max(p[axis]))
+                });
+            hi - lo
+        })
+        .collect();
+    extent.sort_by(f64::total_cmp);
+    let area = extent[1] * extent[2];
+    let start = (area * k as f64 / (std::f64::consts::PI * finite.len() as f64))
+        .sqrt()
+        .max(1e-6);
+    let grid = Grid::new(&finite, start);
+    let mut distances = Vec::new();
+    let means: Vec<f64> = finite
+        .iter()
+        .map(|p| {
+            let mut radius = start;
+            distances.clear();
+            loop {
+                grid.within(p, radius, |j| {
+                    distances.push(squared_distance(&finite[j], p))
+                });
+                if distances.len() > k {
+                    break;
+                }
+                distances.clear();
+                if radius >= 8.0 * start {
+                    distances.extend(finite.iter().map(|q| squared_distance(q, p)));
+                    break;
+                }
+                radius *= 2.0;
+            }
+            // The k + 1 smallest, the point itself (at zero) among them.
+            distances.select_nth_unstable_by(k, f64::total_cmp);
+            distances[..=k].iter().map(|d| d.sqrt()).sum::<f64>() / k as f64
+        })
+        .collect();
+    let n = means.len() as f64;
+    let mean = means.iter().sum::<f64>() / n;
+    let deviation = (means.iter().map(|m| (m - mean).powi(2)).sum::<f64>() / n).sqrt();
+    let limit = mean + std_ratio * deviation;
+    finite
+        .into_iter()
+        .zip(means)
+        .filter(|&(_, m)| m <= limit)
+        .map(|(p, _)| p)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn statistical_outliers_are_the_points_far_from_their_neighbours() {
+        // A 40 x 40 grid 5 mm apart, and 20 stray points 2 to 10 cm above
+        // it, about a centimetre from each other.
+        let mut points: Vec<[f64; 3]> = (0..40)
+            .flat_map(|i| (0..40).map(move |j| [i as f64 * 0.005, j as f64 * 0.005, 0.0]))
+            .collect();
+        let strays: Vec<[f64; 3]> = (0..20)
+            .map(|k| {
+                let (a, b) = ((k % 10) as f64, (k / 10) as f64);
+                [0.01 * a + 0.003, 0.02 * b + 0.05, 0.02 + 0.004 * k as f64]
+            })
+            .collect();
+        points.extend(&strays);
+        points.push([f64::NAN, 0.0, 0.0]);
+        let kept = remove_statistical_outliers(&points, 8, 1.0);
+        assert!(strays.iter().all(|s| !kept.contains(s)));
+        // The grid stays, in order; at most its corners, whose neighbours
+        // are farther, go too.
+        assert!(
+            kept.len() >= 1596 && kept.iter().all(|p| p[2] == 0.0),
+            "{}",
+            kept.len()
+        );
+        assert!(kept.windows(2).all(|w| w[0] < w[1]));
+        // Nothing to compare with: every finite point stays.
+        assert_eq!(remove_statistical_outliers(&points[..5], 8, 1.0).len(), 5);
+        assert_eq!(remove_statistical_outliers(&points, 0, 1.0).len(), 1620);
+    }
 
     #[test]
     fn downsampling_keeps_one_centroid_per_voxel() {
