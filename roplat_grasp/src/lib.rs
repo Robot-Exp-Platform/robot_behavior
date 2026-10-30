@@ -13,6 +13,9 @@
 //!   with the object attached. For each candidate that fails it says why.
 //!   [`plan_pick_motion`] does the same with every segment checked whole
 //!   rather than sampled.
+//! - [`plan_place`] (and [`plan_place_motion`]) puts the held object down:
+//!   a path carrying it to above the first placement that works, a
+//!   straight descent onto it, and a straight retreat once released.
 //!
 //! Closing the fingers is not planned: the caller commands its `Gripper`
 //! between the approach and the lift. Times are not assigned either; the
@@ -36,8 +39,10 @@
 
 mod candidates;
 mod pick;
+mod place;
 mod verify;
 
 pub use candidates::{Grasp, GraspOptions, box_grasps, cylinder_grasps, grasps, sphere_grasps};
 pub use pick::{PickError, PickFailure, PickOptions, PickPlan, plan_pick, plan_pick_motion};
+pub use place::{PlaceError, PlaceFailure, PlaceOptions, PlacePlan, plan_place, plan_place_motion};
 pub use verify::{GraspCheck, GraspOutcome, carried_mass};
