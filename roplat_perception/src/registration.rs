@@ -1,5 +1,8 @@
-//! Aligning a model's points with sensed ones: iterative closest point
-//! (point-to-point, as PCL's `IterativeClosestPoint` and Open3D's default).
+//! Aligning a model's points with sensed ones: iterative closest point,
+//! point-to-point ([`icp`], as PCL's `IterativeClosestPoint` and Open3D's
+//! default) or point-to-plane ([`icp_point_to_plane`], as Open3D's
+//! `TransformationEstimationPointToPlane`), which uses the target's normals
+//! and on surfaces of planes converges in fewer iterations.
 //!
 //! Given a model of a known object and an initial guess of its pose, such
 //! as the pose of the box [`segment_tabletop`](crate::segment_tabletop)
@@ -15,7 +18,10 @@
 
 use nalgebra as na;
 
-use crate::grid::{Grid, is_finite};
+use crate::{
+    grid::{Grid, is_finite},
+    normals::SurfaceNormal,
+};
 
 /// Settings for [`icp`].
 #[derive(Clone, Copy, Debug)]
@@ -74,6 +80,92 @@ pub fn icp(
             return Some(score(&pairs, source.len(), transform, iterations));
         }
         let step = kabsch(&pairs);
+        transform = step * transform;
+        iterations += 1;
+        let moved = step.translation.vector.norm() + step.rotation.angle() * extent;
+        if moved < options.tolerance {
+            let pairs = matches(&grid, target, &source, &transform, options.max_distance);
+            return (!pairs.is_empty()).then(|| score(&pairs, source.len(), transform, iterations));
+        }
+    }
+}
+
+/// As [`icp`], but each iteration minimises the distances of the moved
+/// source points from the tangent planes of their matches: `normals[k]` is
+/// the normal of `target[k]`, as [`estimate_normals`](crate::estimate_normals)
+/// gives them (their sign does not matter), and targets without one are not
+/// matched. Sliding along a surface costs nothing, so a pair of points that
+/// are not yet the right ones pulls only across the surface; this converges
+/// in fewer iterations where the target is made of planes. A target with
+/// no curvature in some direction (a single plane) leaves the motion along
+/// it undetermined; the step there is zero. `rmse` is still of
+/// point-to-point distances, as for [`icp`].
+///
+/// # Panics
+///
+/// If `normals` and `target` differ in length.
+pub fn icp_point_to_plane(
+    source: &[[f64; 3]],
+    target: &[[f64; 3]],
+    normals: &[Option<SurfaceNormal>],
+    initial: &na::Isometry3<f64>,
+    options: &IcpOptions,
+) -> Option<Registration> {
+    assert_eq!(target.len(), normals.len(), "one normal per target point");
+    let grid = Grid::new(target, options.max_distance);
+    let source: Vec<na::Point3<f64>> = source
+        .iter()
+        .filter(|p| is_finite(p))
+        .map(|p| na::Point3::from(*p))
+        .collect();
+    let extent = source.iter().map(|p| p.coords.norm()).fold(0.0, f64::max);
+    let mut transform = *initial;
+    let mut iterations = 0;
+    loop {
+        let pairs = matches(&grid, target, &source, &transform, options.max_distance);
+        if pairs.is_empty() {
+            return None;
+        }
+        if iterations == options.max_iterations {
+            return Some(score(&pairs, source.len(), transform, iterations));
+        }
+        // Linearised in a small rotation ω and translation t about the
+        // moved points: ((p + ω × p + t) − q) · n = 0 for each pair.
+        let mut normal_matrix = na::Matrix6::<f64>::zeros();
+        let mut rhs = na::Vector6::<f64>::zeros();
+        let mut used = 0;
+        for p in &source {
+            let moved = transform * p;
+            let Some((nearest, _)) = grid.nearest(&moved.coords.into(), options.max_distance)
+            else {
+                continue;
+            };
+            let Some(normal) = normals[nearest] else {
+                continue;
+            };
+            let n = na::Vector3::from(normal.normal);
+            let row =
+                na::Vector6::from_iterator(moved.coords.cross(&n).iter().chain(n.iter()).copied());
+            let residual = (moved - na::Point3::from(target[nearest])).dot(&n);
+            normal_matrix += row * row.transpose();
+            rhs -= row * residual;
+            used += 1;
+        }
+        if used == 0 {
+            return None;
+        }
+        // A little damping keeps directions the target leaves free still.
+        let damping = 1e-12 * normal_matrix.trace().max(f64::MIN_POSITIVE);
+        let Some(x) = (normal_matrix + na::Matrix6::identity() * damping)
+            .cholesky()
+            .map(|c| c.solve(&rhs))
+        else {
+            return Some(score(&pairs, source.len(), transform, iterations));
+        };
+        let step = na::Isometry3::from_parts(
+            na::Translation3::new(x[3], x[4], x[5]),
+            na::UnitQuaternion::from_scaled_axis(na::Vector3::new(x[0], x[1], x[2])),
+        );
         transform = step * transform;
         iterations += 1;
         let moved = step.translation.vector.norm() + step.rotation.angle() * extent;
@@ -186,6 +278,42 @@ mod tests {
         assert!((found.transform.translation.vector - truth.translation.vector).norm() < 1e-5);
         assert!(found.transform.rotation.angle_to(&truth.rotation) < 1e-4);
         assert!((found.fitness - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn point_to_plane_recovers_the_offset_in_fewer_iterations() {
+        let model = bracket();
+        let truth = na::Isometry3::new(
+            na::Vector3::new(0.008, -0.006, 0.004),
+            na::Vector3::new(0.08, -0.05, 0.1),
+        );
+        let sensed: Vec<[f64; 3]> = model
+            .iter()
+            .map(|p| (truth * na::Point3::from(*p)).coords.into())
+            .collect();
+        let normals = crate::estimate_normals(&sensed, 0.008, [1.0, 1.0, 1.0]);
+        let options = IcpOptions { max_iterations: 200, ..IcpOptions::default() };
+        let start = na::Isometry3::identity();
+        let plane = icp_point_to_plane(&model, &sensed, &normals, &start, &options).unwrap();
+        let point = icp(&model, &sensed, &start, &options).unwrap();
+        eprintln!(
+            "iterations: point-to-plane {}, point-to-point {}",
+            plane.iterations, point.iterations
+        );
+        for found in [&plane, &point] {
+            assert!(found.rmse < 1e-6, "{found:?}");
+            assert!((found.transform.translation.vector - truth.translation.vector).norm() < 1e-5);
+            assert!(found.transform.rotation.angle_to(&truth.rotation) < 1e-4);
+        }
+        assert!(
+            plane.iterations < point.iterations,
+            "{} vs {}",
+            plane.iterations,
+            point.iterations
+        );
+        // No normals, nothing matched.
+        let none = vec![None; sensed.len()];
+        assert!(icp_point_to_plane(&model, &sensed, &none, &start, &options).is_none());
     }
 
     #[test]

@@ -10,7 +10,8 @@ use roplat_description::{Geometry, RobotModel};
 use roplat_grasp::{GraspOptions, grasps};
 use roplat_msgs::CameraInfo;
 use roplat_perception::{
-    IcpOptions, PlaneOptions, TabletopOptions, crop_box, fit_plane, icp, segment_tabletop,
+    IcpOptions, PlaneOptions, TabletopOptions, crop_box, estimate_normals, fit_plane, icp,
+    icp_point_to_plane, segment_tabletop,
 };
 use roplat_scene::{CollisionCheck, PlanningScene, points::depth_to_points};
 
@@ -346,6 +347,25 @@ fn icp_refines_a_model_onto_the_sensed_box() {
         registered.rmse < 0.002 && registered.fitness > 0.99,
         "{registered:?}"
     );
+    // Point-to-plane with the model's normals: as close, in fewer
+    // iterations.
+    let normals = estimate_normals(&model, 0.008, [0.0, 0.0, 1.0]);
+    let planar = icp_point_to_plane(&near, &model, &normals, &guess.inverse(), &options).unwrap();
+    let planar_pose = planar.transform.inverse();
+    let planar_error = planar_pose.translation.vector - truth_pose.translation.vector;
+    eprintln!(
+        "box: point-to-point {} iterations, {:.4} m off; point-to-plane {} iterations, {:.4} m off",
+        registered.iterations,
+        error.norm(),
+        planar.iterations,
+        planar_error.norm()
+    );
+    assert!(planar_error.norm() < 0.003, "{planar:?}");
+    assert!(
+        planar_pose.rotation.angle_to(&truth_pose.rotation) < 0.02,
+        "{planar:?}"
+    );
+    assert!(planar.iterations < registered.iterations, "{planar:?}");
     // The fitted pose is a guess good enough to start from.
     assert!((tall.shape.pose.translation.vector - truth_pose.translation.vector).norm() < 0.01);
 }

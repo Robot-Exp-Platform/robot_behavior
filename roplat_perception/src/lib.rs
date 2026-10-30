@@ -16,8 +16,9 @@
 //!   `PlanningScene::add_object` in `roplat_scene`.
 //! - [`tabletop`]: all of it in one call ([`segment_tabletop`]): the table
 //!   and each object on it.
-//! - [`registration`]: ICP ([`icp`]), for the pose of an object whose
-//!   model is known.
+//! - [`registration`]: ICP, point-to-point ([`icp`]) or point-to-plane
+//!   ([`icp_point_to_plane`]), for the pose of an object whose model is
+//!   known.
 //! - [`normals`]: surface normals and curvature ([`estimate_normals`]), and
 //!   smooth surfaces grown across them ([`smooth_regions`]), which separate
 //!   surfaces that touch at a crease.
@@ -61,6 +62,6 @@ pub mod tabletop;
 pub use cloud::{crop_box, remove_sparse, remove_statistical_outliers, voxel_downsample};
 pub use fit::{FittedShape, fit_box, fit_box_on, fit_cylinder_on, fit_on};
 pub use normals::{RegionOptions, SurfaceNormal, estimate_normals, smooth_regions};
-pub use registration::{IcpOptions, Registration, icp};
+pub use registration::{IcpOptions, Registration, icp, icp_point_to_plane};
 pub use segment::{Plane, PlaneFit, PlaneOptions, euclidean_clusters, fit_plane};
 pub use tabletop::{Tabletop, TabletopError, TabletopObject, TabletopOptions, segment_tabletop};
