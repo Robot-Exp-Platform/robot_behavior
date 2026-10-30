@@ -18,5 +18,6 @@ thiserror = "2.0.17"
 [dev-dependencies]
 roplat_grasp = { version = "0.9.0", path = "../roplat_grasp" }
 roplat_scene = { version = "0.9.0", path = "../roplat_scene" }
-roplat_msgs = "0.6.0-rc.1"
+roplat_kinematics = { version = "0.9.0", path = "../roplat_kinematics" }
+roplat_msgs = { version = "0.6.0-rc.1", features = ["nalgebra"] }
 parry3d-f64 = { version = "0.25.3", default-features = false, features = ["required-features", "std", "alloc"] }

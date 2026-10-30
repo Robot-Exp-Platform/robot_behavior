@@ -1647,6 +1647,7 @@ dependencies = [
  "parry3d-f64",
  "roplat_description",
  "roplat_grasp",
+ "roplat_kinematics",
  "roplat_msgs",
  "roplat_scene",
  "thiserror 2.0.18",
