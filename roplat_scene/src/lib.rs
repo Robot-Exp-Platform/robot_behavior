@@ -22,7 +22,9 @@
 //! hull fills a concave object's hollows, so nothing can reach into a bin or
 //! a shelf; [`PlanningScene::add_concave_object`] and
 //! [`PlanningScene::add_trimesh`] split such an object into convex parts
-//! instead.
+//! instead, and [`PlanningScene::decompose_link`] does the same for a link.
+//! Before sensed points join the scene,
+//! [`PlanningScene::without_robot_points`] removes those on the robot.
 //! Distances come from [parry3d-f64](https://parry.rs).
 //!
 //! The planners sample a motion between two configurations every few
@@ -37,6 +39,7 @@
 mod mesh;
 pub mod motion;
 pub mod points;
+mod robot;
 pub mod semantics;
 
 pub use motion::{MOTION_TOLERANCE, MotionContact, REJECT_STEP};
