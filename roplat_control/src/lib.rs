@@ -1,10 +1,12 @@
 //! Controllers for `roplat_behavior` robots: joint PD/PID and base-velocity
 //! PID ([`pid`]), joint and Cartesian impedance ([`impedance`]), gravity
 //! compensation and computed torque ([`dynamics`]), operator teleoperation
-//! ([`teleop`]), Cartesian servoing ([`servo`]), the target sources the
-//! tracking controllers take ([`target`]), and helpers to raise a control
-//! thread to real-time priority.
+//! ([`teleop`]), Cartesian servoing ([`servo`]), following a timed tool-pose
+//! trajectory ([`cartesian_follow`]), the target sources the tracking
+//! controllers take ([`target`]), and helpers to raise a control thread to
+//! real-time priority.
 
+pub mod cartesian_follow;
 pub mod dynamics;
 pub mod impedance;
 pub mod pid;
@@ -13,6 +15,7 @@ pub mod servo;
 pub mod target;
 pub mod teleop;
 
+pub use cartesian_follow::*;
 pub use dynamics::*;
 pub use impedance::*;
 pub use pid::*;

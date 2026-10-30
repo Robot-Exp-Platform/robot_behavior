@@ -1,0 +1,491 @@
+//! Following a timed tool-pose trajectory on the Cartesian pose channel.
+//!
+//! [`CartesianTrajectoryFollower`] is the Cartesian counterpart of
+//! `roplat_trajectory`'s `JointTrajectoryFollower`: every cycle it commands
+//! the pose its trajectory has at the clock's time since the first cycle.
+//! Between two waypoints the position moves on the straight line and the
+//! orientation by spherical interpolation, at a constant rate; a smooth motion
+//! comes from timing the waypoints well, for which [`cartesian_line`] gives a
+//! straight move with a minimum-jerk profile sampled every control period.
+//!
+//! Tolerances refuse rather than correct, as the joint follower's do: a
+//! measured flange pose farther from the trajectory than the path tolerance,
+//! or a goal not reached within the goal time, is a
+//! [`CartesianTrackingError`]. The command is a pose in whatever frame the
+//! driver's `CartesianPoseControl` channel commands (usually the flange in the
+//! base frame); the tolerances compare against `ArmState::flange`'s measured
+//! pose, so give waypoints in that frame.
+//!
+//! ```
+//! # use std::time::Duration;
+//! # use nalgebra::{Isometry3, Translation3};
+//! use roplat_behavior::msgs::ManualClock;
+//! use roplat_control::{CartesianTrajectoryFollower, cartesian_line};
+//!
+//! let from = Isometry3::translation(0.4, 0.0, 0.3);
+//! let to = Translation3::new(0.0, 0.0, -0.1) * from; // 10 cm straight down
+//! let waypoints = cartesian_line(&from, &to, Duration::from_secs(1), Duration::from_millis(1));
+//! let mut follower = CartesianTrajectoryFollower::<_, 7>::new(waypoints, ManualClock::simulation())
+//!     .unwrap()
+//!     .with_path_tolerance(0.01, 0.05);
+//! // In a session, an error ends it:
+//! // arm.control_with_flow::<CartesianPoseControl, _>(|state, dt| match follower.step_by(dt, &state) {
+//! //     Ok(step) => ControlFlow::Continue(step),
+//! //     Err(_) => ControlFlow::Break(()),
+//! // })
+//! # let _ = &mut follower;
+//! ```
+
+use std::time::Duration;
+
+use nalgebra as na;
+use roplat_behavior::{
+    ArmState,
+    msgs::{Clock, ManualClock, Pose, Stamp},
+};
+
+/// A tool pose to be at `time_from_start` after the run starts.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CartesianWaypoint {
+    pub time_from_start: Duration,
+    pub pose: na::Isometry3<f64>,
+}
+
+/// Why a Cartesian trajectory was rejected or its following stopped.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CartesianTrackingError {
+    /// A trajectory needs at least one waypoint.
+    Empty,
+    /// `time_from_start` must increase strictly.
+    Timing { index: usize },
+    /// The pose must be finite.
+    NonFinite { index: usize },
+    /// A tolerance is checked but the state has no measured flange pose.
+    Unobserved,
+    /// The clock went back behind the trajectory's start.
+    ClockWentBack { nanos: i64 },
+    /// The measured flange is farther from the trajectory than the path
+    /// tolerance allows.
+    PathTolerance {
+        position: f64,
+        rotation: f64,
+        at: Duration,
+    },
+    /// The goal was not reached within the goal time.
+    GoalTolerance {
+        position: f64,
+        rotation: f64,
+        goal_time: Duration,
+    },
+}
+
+impl std::fmt::Display for CartesianTrackingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => write!(f, "a trajectory needs at least one waypoint"),
+            Self::Timing { index } => {
+                write!(
+                    f,
+                    "waypoint {index}: time_from_start must increase strictly"
+                )
+            }
+            Self::NonFinite { index } => write!(f, "waypoint {index}: the pose must be finite"),
+            Self::Unobserved => {
+                write!(
+                    f,
+                    "a tolerance is checked but the state has no measured flange pose"
+                )
+            }
+            Self::ClockWentBack { nanos } => {
+                write!(
+                    f,
+                    "the clock went back {nanos} ns behind the trajectory's start"
+                )
+            }
+            Self::PathTolerance { position, rotation, at } => write!(
+                f,
+                "the flange is {position} m and {rotation} rad from the trajectory at {at:?}, beyond the path tolerance"
+            ),
+            Self::GoalTolerance { position, rotation, goal_time } => write!(
+                f,
+                "the flange is still {position} m and {rotation} rad from the goal {goal_time:?} after the trajectory ended"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for CartesianTrackingError {}
+
+/// Commands a timed tool-pose trajectory; see the [module](self) docs.
+///
+/// A run starts at the first [`step`](Self::step) and ends when it reports
+/// `done` or an error; the next step starts the trajectory again. A session
+/// that ends otherwise leaves the run open: [`reset`](Self::reset) before
+/// reusing the follower.
+#[derive(Clone, Debug)]
+pub struct CartesianTrajectoryFollower<C, const N: usize> {
+    waypoints: Vec<CartesianWaypoint>,
+    clock: C,
+    start: Option<Stamp>,
+    path_tolerance: (f64, f64),
+    goal_tolerance: (f64, f64),
+    goal_time: Duration,
+}
+
+impl<C: Clock, const N: usize> CartesianTrajectoryFollower<C, N> {
+    pub fn new(
+        waypoints: Vec<CartesianWaypoint>,
+        clock: C,
+    ) -> Result<Self, CartesianTrackingError> {
+        check(&waypoints)?;
+        Ok(Self {
+            waypoints,
+            clock,
+            start: None,
+            path_tolerance: (f64::INFINITY, f64::INFINITY),
+            goal_tolerance: (f64::INFINITY, f64::INFINITY),
+            goal_time: Duration::ZERO,
+        })
+    }
+
+    /// Largest position (m) and rotation (rad) distance between the
+    /// measured flange pose and the trajectory while it runs.
+    pub fn with_path_tolerance(mut self, position: f64, rotation: f64) -> Self {
+        self.path_tolerance = (position, rotation);
+        self
+    }
+
+    /// Distance within which the final pose counts as reached, and how long
+    /// after the trajectory ends the arm may take to get there; until then
+    /// the final pose stays commanded and `done` is withheld.
+    pub fn with_goal_tolerance(
+        mut self,
+        position: f64,
+        rotation: f64,
+        goal_time: Duration,
+    ) -> Self {
+        self.goal_tolerance = (position, rotation);
+        self.goal_time = goal_time;
+        self
+    }
+
+    pub fn waypoints(&self) -> &[CartesianWaypoint] {
+        &self.waypoints
+    }
+
+    /// Time of the final waypoint.
+    pub fn duration(&self) -> Duration {
+        self.last().time_from_start
+    }
+
+    /// Ends the current run.
+    pub fn reset(&mut self) {
+        self.start = None;
+    }
+
+    /// The trajectory at `t`: the first pose before it starts, the final
+    /// pose after it ends, and the interpolated pose in between.
+    pub fn sample(&self, t: Duration) -> na::Isometry3<f64> {
+        let after = self.waypoints.partition_point(|w| w.time_from_start <= t);
+        match after {
+            0 => self.waypoints[0].pose,
+            n if n == self.waypoints.len() => self.last().pose,
+            n => {
+                let (a, b) = (&self.waypoints[n - 1], &self.waypoints[n]);
+                let span = (b.time_from_start - a.time_from_start).as_secs_f64();
+                let s = (t - a.time_from_start).as_secs_f64() / span;
+                interpolate(&a.pose, &b.pose, s)
+            }
+        }
+    }
+
+    /// One control cycle: the pose to command and whether the trajectory
+    /// is done. `state` is read only when a tolerance is checked.
+    pub fn step(&mut self, state: &ArmState<N>) -> Result<(Pose, bool), CartesianTrackingError> {
+        let step = self.advance(state);
+        if !matches!(step, Ok((_, false))) {
+            self.reset();
+        }
+        step
+    }
+
+    fn advance(&mut self, state: &ArmState<N>) -> Result<(Pose, bool), CartesianTrackingError> {
+        let now = self.clock.now();
+        let start = *self.start.get_or_insert(now);
+        let nanos = now.nanos_since(&start).unwrap_or(i64::MIN);
+        if nanos < 0 {
+            return Err(CartesianTrackingError::ClockWentBack { nanos: nanos.saturating_neg() });
+        }
+        let at = Duration::from_nanos(nanos as u64);
+        if at < self.duration() {
+            let reference = self.sample(at);
+            if let Some((position, rotation)) = beyond(self.path_tolerance, state, &reference)? {
+                return Err(CartesianTrackingError::PathTolerance { position, rotation, at });
+            }
+            return Ok((Pose::from_isometry(reference), false));
+        }
+        let goal = self.last().pose;
+        match beyond(self.goal_tolerance, state, &goal)? {
+            None => Ok((Pose::from_isometry(goal), true)),
+            Some(_) if at <= self.duration() + self.goal_time => {
+                Ok((Pose::from_isometry(goal), false))
+            }
+            Some((position, rotation)) => Err(CartesianTrackingError::GoalTolerance {
+                position,
+                rotation,
+                goal_time: self.goal_time,
+            }),
+        }
+    }
+
+    fn last(&self) -> &CartesianWaypoint {
+        self.waypoints.last().expect("checked non-empty in new")
+    }
+}
+
+impl<const N: usize> CartesianTrajectoryFollower<ManualClock, N> {
+    /// A follower timed by the cycle durations the control callback reports,
+    /// for a driver without a clock: call [`step_by`](Self::step_by) with the
+    /// callback's `Duration` each cycle.
+    pub fn cycle_timed(waypoints: Vec<CartesianWaypoint>) -> Result<Self, CartesianTrackingError> {
+        Self::new(waypoints, ManualClock::simulation())
+    }
+
+    /// One control cycle, `dt` after the previous one. The first cycle of a
+    /// run is at the trajectory's start whatever its `dt`.
+    pub fn step_by(
+        &mut self,
+        dt: Duration,
+        state: &ArmState<N>,
+    ) -> Result<(Pose, bool), CartesianTrackingError> {
+        self.clock.advance(dt);
+        self.step(state)
+    }
+}
+
+/// A straight move from `from` to `to` lasting `duration`, sampled every
+/// `period`: the position along the line and the orientation by spherical
+/// interpolation, both following the minimum-jerk profile
+/// `s = 10τ³ − 15τ⁴ + 6τ⁵`, so it starts and ends at rest with zero
+/// acceleration.
+pub fn cartesian_line(
+    from: &na::Isometry3<f64>,
+    to: &na::Isometry3<f64>,
+    duration: Duration,
+    period: Duration,
+) -> Vec<CartesianWaypoint> {
+    let steps = (duration.as_secs_f64() / period.as_secs_f64().max(f64::MIN_POSITIVE))
+        .ceil()
+        .max(1.0) as u32;
+    (0..=steps)
+        .map(|k| {
+            let tau = f64::from(k) / f64::from(steps);
+            let s = tau * tau * tau * (10.0 - 15.0 * tau + 6.0 * tau * tau);
+            CartesianWaypoint {
+                time_from_start: duration.mul_f64(tau),
+                pose: interpolate(from, to, s),
+            }
+        })
+        .collect()
+}
+
+fn interpolate(a: &na::Isometry3<f64>, b: &na::Isometry3<f64>, s: f64) -> na::Isometry3<f64> {
+    let translation = a.translation.vector.lerp(&b.translation.vector, s);
+    let rotation = a
+        .rotation
+        .try_slerp(&b.rotation, s, 1e-9)
+        .unwrap_or(b.rotation);
+    na::Isometry3::from_parts(na::Translation3::from(translation), rotation)
+}
+
+fn check(waypoints: &[CartesianWaypoint]) -> Result<(), CartesianTrackingError> {
+    if waypoints.is_empty() {
+        return Err(CartesianTrackingError::Empty);
+    }
+    for (index, w) in waypoints.iter().enumerate() {
+        let finite = w
+            .pose
+            .translation
+            .vector
+            .iter()
+            .chain(w.pose.rotation.coords.iter())
+            .all(|c| c.is_finite());
+        if !finite {
+            return Err(CartesianTrackingError::NonFinite { index });
+        }
+        if index > 0 && w.time_from_start <= waypoints[index - 1].time_from_start {
+            return Err(CartesianTrackingError::Timing { index });
+        }
+    }
+    Ok(())
+}
+
+/// The distances, if either is beyond its `(position, rotation)` tolerance.
+/// NaN counts as beyond.
+fn beyond<const N: usize>(
+    (position_tol, rotation_tol): (f64, f64),
+    state: &ArmState<N>,
+    reference: &na::Isometry3<f64>,
+) -> Result<Option<(f64, f64)>, CartesianTrackingError> {
+    if position_tol.is_infinite() && rotation_tol.is_infinite() {
+        return Ok(None);
+    }
+    let measured: na::Isometry3<f64> = state
+        .flange
+        .meas
+        .pose()
+        .ok_or(CartesianTrackingError::Unobserved)?
+        .into();
+    let position = (measured.translation.vector - reference.translation.vector).norm();
+    let rotation = measured.rotation.angle_to(&reference.rotation);
+    let within = position <= position_tol && rotation <= rotation_tol;
+    Ok((!within).then_some((position, rotation)))
+}
+
+#[cfg(test)]
+mod tests {
+    use roplat_behavior::msgs::SpatialSample;
+
+    use super::*;
+
+    const MS: Duration = Duration::from_millis(1);
+
+    fn at_flange(pose: &na::Isometry3<f64>) -> ArmState<7> {
+        let mut state = ArmState::<7>::default();
+        state.flange.meas = SpatialSample::default().with_pose(Pose::from_isometry(*pose));
+        state
+    }
+
+    fn line() -> (
+        na::Isometry3<f64>,
+        na::Isometry3<f64>,
+        Vec<CartesianWaypoint>,
+    ) {
+        let from = na::Isometry3::translation(0.4, 0.0, 0.3);
+        let to = na::Isometry3::from_parts(
+            na::Translation3::new(0.4, 0.2, 0.2),
+            na::UnitQuaternion::from_euler_angles(0.0, 0.0, 0.5),
+        );
+        (
+            from,
+            to,
+            cartesian_line(&from, &to, Duration::from_millis(100), MS),
+        )
+    }
+
+    #[test]
+    fn the_line_starts_and_ends_at_rest_and_moves_straight() {
+        let (from, to, waypoints) = line();
+        assert_eq!(waypoints.len(), 101);
+        let close = |a: &na::Isometry3<f64>, b: &na::Isometry3<f64>| {
+            (a.translation.vector - b.translation.vector).norm() < 1e-12
+                && a.rotation.angle_to(&b.rotation) < 1e-9
+        };
+        assert!(close(&waypoints[0].pose, &from) && close(&waypoints[100].pose, &to));
+        assert_eq!(waypoints[100].time_from_start, Duration::from_millis(100));
+        // Minimum jerk: the first and last steps are tiny, the middle fastest.
+        let step = |k: usize| {
+            (waypoints[k + 1].pose.translation.vector - waypoints[k].pose.translation.vector).norm()
+        };
+        assert!(step(0) < step(50) / 100.0 && step(99) < step(50) / 100.0);
+        // Every point on the segment between the ends.
+        let dir = (to.translation.vector - from.translation.vector).normalize();
+        for w in &waypoints {
+            let off = w.pose.translation.vector - from.translation.vector;
+            assert!((off - dir * off.dot(&dir)).norm() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn follows_on_its_clock_and_reports_done_at_the_end() {
+        let (_, to, waypoints) = line();
+        let mut follower = CartesianTrajectoryFollower::<_, 7>::cycle_timed(waypoints).unwrap();
+        let state = ArmState::<7>::default(); // no tolerance: state unread
+        let mut cycles = 0;
+        loop {
+            let (pose, done) = follower.step_by(MS, &state).unwrap();
+            cycles += 1;
+            if done {
+                let reached: na::Isometry3<f64> = pose.into();
+                assert!((reached.translation.vector - to.translation.vector).norm() < 1e-12);
+                break;
+            }
+        }
+        // 100 ms at 1 ms: cycles at 0..=100 ms, done on the last.
+        assert_eq!(cycles, 101);
+    }
+
+    #[test]
+    fn tolerances_refuse_a_lagging_arm() {
+        let (from, to, waypoints) = line();
+        // The arm stays at the start: within 1 cm at first, then beyond.
+        let mut follower = CartesianTrajectoryFollower::<_, 7>::cycle_timed(waypoints.clone())
+            .unwrap()
+            .with_path_tolerance(0.01, 0.1);
+        let stuck = at_flange(&from);
+        let error = loop {
+            match follower.step_by(MS, &stuck) {
+                Ok(_) => continue,
+                Err(e) => break e,
+            }
+        };
+        assert!(
+            matches!(error, CartesianTrackingError::PathTolerance { position, .. } if position > 0.01)
+        );
+        // Goal: an arm short of the goal gets the goal time, then an error.
+        let mut follower = CartesianTrajectoryFollower::<_, 7>::cycle_timed(waypoints)
+            .unwrap()
+            .with_goal_tolerance(0.001, 0.01, Duration::from_millis(5));
+        let short = at_flange(&na::Isometry3::from_parts(
+            na::Translation3::new(to.translation.x, to.translation.y - 0.01, to.translation.z),
+            to.rotation,
+        ));
+        let mut last = Ok((Pose::IDENTITY, false));
+        for _ in 0..120 {
+            last = follower.step_by(MS, &short);
+            if last.is_err() {
+                break;
+            }
+        }
+        assert!(
+            matches!(last, Err(CartesianTrackingError::GoalTolerance { .. })),
+            "{last:?}"
+        );
+        // At the goal it is done.
+        let mut follower = CartesianTrajectoryFollower::<_, 7>::cycle_timed(line().2)
+            .unwrap()
+            .with_goal_tolerance(0.001, 0.01, Duration::from_millis(5));
+        let at_goal = at_flange(&to);
+        let done = (0..120).any(|_| matches!(follower.step_by(MS, &at_goal), Ok((_, true))));
+        assert!(done);
+    }
+
+    #[test]
+    fn invalid_trajectories_and_unobserved_states_are_refused() {
+        assert!(matches!(
+            CartesianTrajectoryFollower::<_, 7>::cycle_timed(Vec::new()),
+            Err(CartesianTrackingError::Empty)
+        ));
+        let mut waypoints = line().2;
+        waypoints[3].time_from_start = waypoints[2].time_from_start;
+        assert!(matches!(
+            CartesianTrajectoryFollower::<_, 7>::cycle_timed(waypoints),
+            Err(CartesianTrackingError::Timing { index: 3 })
+        ));
+        let mut follower = CartesianTrajectoryFollower::<_, 7>::cycle_timed(line().2)
+            .unwrap()
+            .with_path_tolerance(0.01, 0.1);
+        let mut unobserved = ArmState::<7>::default();
+        unobserved.flange.meas = SpatialSample::EMPTY;
+        assert_eq!(
+            follower.step_by(MS, &unobserved),
+            Err(CartesianTrackingError::Unobserved)
+        );
+        // A NaN measurement is beyond any tolerance.
+        let nan = at_flange(&na::Isometry3::translation(f64::NAN, 0.0, 0.0));
+        assert!(matches!(
+            follower.step_by(MS, &nan),
+            Err(CartesianTrackingError::PathTolerance { .. })
+        ));
+    }
+}
