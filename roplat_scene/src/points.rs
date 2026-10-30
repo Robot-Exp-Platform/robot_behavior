@@ -30,7 +30,8 @@ use roplat_msgs::CameraInfo;
 /// pixel outside `range`, or not finite (no return), gives no point; every
 /// `stride`-th pixel in each direction is used (1 for all). Distortion is
 /// not removed: give a rectified image, as simulators and most depth
-/// cameras' aligned streams are.
+/// cameras' aligned streams are (`roplat_frames::lens::Rectify::nearest`
+/// rectifies a raw one).
 pub fn depth_to_points(
     depth: &[f32],
     info: &CameraInfo,

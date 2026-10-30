@@ -14,6 +14,8 @@
 //! - [`target`] finds a chessboard's corners in an image and the board's
 //!   pose relative to the camera, the target pose each calibration sample
 //!   needs.
+//! - [`lens`] applies and removes the lens distortion a `CameraInfo`
+//!   describes, and rectifies raw images for the pinhole code above.
 //! - Feature `roplat` adds [`roplat::JointStateNode`], which records joint
 //!   states into a borrowed buffer.
 //! - Feature `scene` adds [`scene`]: planning-scene objects moved to their
@@ -27,6 +29,7 @@
 
 mod buffer;
 pub mod calibration;
+pub mod lens;
 pub mod target;
 mod tree;
 
