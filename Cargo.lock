@@ -1552,6 +1552,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "roplat_diagnostics"
+version = "0.9.0"
+dependencies = [
+ "roplat",
+ "roplat_msgs",
+ "tokio",
+]
+
+[[package]]
 name = "roplat_frames"
 version = "0.9.0"
 dependencies = [
