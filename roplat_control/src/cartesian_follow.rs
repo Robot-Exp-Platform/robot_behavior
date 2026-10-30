@@ -6,7 +6,8 @@
 //! Between two waypoints the position moves on the straight line and the
 //! orientation by spherical interpolation, at a constant rate; a smooth motion
 //! comes from timing the waypoints well, for which [`cartesian_line`] gives a
-//! straight move with a minimum-jerk profile sampled every control period.
+//! straight move with a minimum-jerk profile sampled every control period, and
+//! [`cartesian_arc`] a move along the circle through a via point.
 //!
 //! Tolerances refuse rather than correct, as the joint follower's do: a
 //! measured flange pose farther from the trajectory than the path tolerance,
@@ -279,6 +280,83 @@ pub fn cartesian_line(
     duration: Duration,
     period: Duration,
 ) -> Vec<CartesianWaypoint> {
+    minimum_jerk(duration, period, |s| interpolate(from, to, s))
+}
+
+/// A move along the circle through `from`'s position, `via` and `to`'s
+/// position, lasting `duration` and sampled every `period`: from `from` past
+/// `via` to `to` on the arc that contains `via`, with the orientation
+/// interpolated spherically from `from`'s to `to`'s, both following the
+/// minimum-jerk profile of [`cartesian_line`]. `via` constrains the position
+/// only (as the interim point of MoveIt's Pilz `CIRC` does), and the move
+/// passes it where its share of the arc length puts it on the profile.
+///
+/// `None` when the three positions do not define one circle: they are
+/// collinear, or two of them are the same (so a full circle back to `from`
+/// takes two arcs).
+///
+/// ```
+/// # use std::time::Duration;
+/// # use nalgebra::{Isometry3, Point3, Vector3};
+/// use roplat_control::cartesian_arc;
+///
+/// // Half a circle of radius 10 cm over the top, in the x-z plane.
+/// let from = Isometry3::translation(0.3, 0.0, 0.3);
+/// let to = Isometry3::translation(0.5, 0.0, 0.3);
+/// let over = Point3::new(0.4, 0.0, 0.4);
+/// let period = Duration::from_millis(1);
+/// let waypoints = cartesian_arc(&from, &over, &to, Duration::from_secs(2), period).unwrap();
+/// let centre = Vector3::new(0.4, 0.0, 0.3);
+/// assert!(waypoints.iter().all(|w| ((w.pose.translation.vector - centre).norm() - 0.1).abs() < 1e-12));
+/// ```
+pub fn cartesian_arc(
+    from: &na::Isometry3<f64>,
+    via: &na::Point3<f64>,
+    to: &na::Isometry3<f64>,
+    duration: Duration,
+    period: Duration,
+) -> Option<Vec<CartesianWaypoint>> {
+    let start = from.translation.vector;
+    let a = via.coords - start;
+    let b = to.translation.vector - start;
+    let normal = a.cross(&b);
+    let area = normal.norm();
+    if !area.is_finite() || area <= 1e-9 * a.norm() * b.norm() {
+        return None;
+    }
+    // The circumcentre of the triangle (from, via, to).
+    let centre = start
+        + (b.cross(&normal) * a.norm_squared() + normal.cross(&a) * b.norm_squared())
+            / (2.0 * area * area);
+    let axis = na::Unit::new_unchecked(normal / area);
+    let radius = start - centre;
+    let end = to.translation.vector - centre;
+    // Counter-clockwise about `axis`, the order the triangle's vertices go
+    // round its circumcircle, `via` comes before `to`.
+    let mut sweep = axis.dot(&radius.cross(&end)).atan2(radius.dot(&end));
+    if sweep < 0.0 {
+        sweep += std::f64::consts::TAU;
+    }
+    Some(minimum_jerk(duration, period, |s| {
+        let position = if s >= 1.0 {
+            to.translation.vector
+        } else {
+            centre + na::UnitQuaternion::from_axis_angle(&axis, s * sweep) * radius
+        };
+        na::Isometry3::from_parts(
+            na::Translation3::from(position),
+            turn(&from.rotation, &to.rotation, s),
+        )
+    }))
+}
+
+/// Waypoints every `period` over `duration`, with the pose at the
+/// minimum-jerk progress `s = 10τ³ − 15τ⁴ + 6τ⁵` of normalized time `τ`.
+fn minimum_jerk(
+    duration: Duration,
+    period: Duration,
+    pose: impl Fn(f64) -> na::Isometry3<f64>,
+) -> Vec<CartesianWaypoint> {
     let steps = (duration.as_secs_f64() / period.as_secs_f64().max(f64::MIN_POSITIVE))
         .ceil()
         .max(1.0) as u32;
@@ -286,21 +364,25 @@ pub fn cartesian_line(
         .map(|k| {
             let tau = f64::from(k) / f64::from(steps);
             let s = tau * tau * tau * (10.0 - 15.0 * tau + 6.0 * tau * tau);
-            CartesianWaypoint {
-                time_from_start: duration.mul_f64(tau),
-                pose: interpolate(from, to, s),
-            }
+            CartesianWaypoint { time_from_start: duration.mul_f64(tau), pose: pose(s) }
         })
         .collect()
 }
 
 fn interpolate(a: &na::Isometry3<f64>, b: &na::Isometry3<f64>, s: f64) -> na::Isometry3<f64> {
     let translation = a.translation.vector.lerp(&b.translation.vector, s);
-    let rotation = a
-        .rotation
-        .try_slerp(&b.rotation, s, 1e-9)
-        .unwrap_or(b.rotation);
-    na::Isometry3::from_parts(na::Translation3::from(translation), rotation)
+    na::Isometry3::from_parts(
+        na::Translation3::from(translation),
+        turn(&a.rotation, &b.rotation, s),
+    )
+}
+
+fn turn(
+    a: &na::UnitQuaternion<f64>,
+    b: &na::UnitQuaternion<f64>,
+    s: f64,
+) -> na::UnitQuaternion<f64> {
+    a.try_slerp(b, s, 1e-9).unwrap_or(*b)
 }
 
 fn check(waypoints: &[CartesianWaypoint]) -> Result<(), CartesianTrackingError> {
@@ -446,6 +528,75 @@ mod tests {
             let off = w.pose.translation.vector - from.translation.vector;
             assert!((off - dir * off.dot(&dir)).norm() < 1e-12);
         }
+    }
+
+    /// A point on the circle of radius 0.1 about (0.4, 0, 0.3) in a plane
+    /// tilted off every axis, at an angle in degrees.
+    fn on_circle(degrees: f64) -> na::Point3<f64> {
+        let tilt = na::UnitQuaternion::from_euler_angles(0.4, -0.7, 1.1);
+        let (sin, cos) = degrees.to_radians().sin_cos();
+        na::Point3::new(0.4, 0.0, 0.3) + tilt * na::Vector3::new(0.1 * cos, 0.1 * sin, 0.0)
+    }
+
+    fn arc(via: f64, to: f64) -> (na::Isometry3<f64>, Vec<CartesianWaypoint>) {
+        let from = na::Isometry3::from_parts(on_circle(0.0).into(), na::UnitQuaternion::identity());
+        let to = na::Isometry3::from_parts(
+            on_circle(to).into(),
+            na::UnitQuaternion::from_euler_angles(0.0, 0.3, 0.5),
+        );
+        let waypoints = cartesian_arc(&from, &on_circle(via), &to, Duration::from_secs(1), MS)
+            .expect("three points on one circle");
+        assert_eq!(waypoints.len(), 1001);
+        let (first, last) = (&waypoints[0].pose, &waypoints[1000].pose);
+        assert!((first.translation.vector - from.translation.vector).norm() < 1e-15);
+        assert_eq!(last.translation, to.translation);
+        assert!(first.rotation.angle_to(&from.rotation) < 1e-9);
+        assert!(last.rotation.angle_to(&to.rotation) < 1e-9);
+        (to, waypoints)
+    }
+
+    fn nearest(waypoints: &[CartesianWaypoint], p: &na::Point3<f64>) -> f64 {
+        waypoints
+            .iter()
+            .map(|w| (w.pose.translation.vector - p.coords).norm())
+            .fold(f64::INFINITY, f64::min)
+    }
+
+    #[test]
+    fn the_arc_stays_on_the_circle_and_passes_its_via_point() {
+        // Via between the ends the short way round, then the long way.
+        for (via, to, other_side) in [(100.0, 150.0, 250.0), (250.0, 150.0, 75.0)] {
+            let (to, waypoints) = arc(via, to);
+            let centre = na::Vector3::new(0.4, 0.0, 0.3);
+            for w in &waypoints {
+                assert!(((w.pose.translation.vector - centre).norm() - 0.1).abs() < 1e-12);
+            }
+            // Within half a step of the via point, and the other arc not taken.
+            assert!(nearest(&waypoints, &on_circle(via)) < 5e-4);
+            assert!(nearest(&waypoints, &on_circle(other_side)) > 0.05);
+            // At rest at both ends, as on the line.
+            let step = |k: usize| {
+                (waypoints[k + 1].pose.translation.vector - waypoints[k].pose.translation.vector)
+                    .norm()
+            };
+            assert!(step(0) < step(500) / 1e4 && step(999) < step(500) / 1e4);
+            assert!(waypoints[500].pose.rotation.angle_to(&to.rotation) > 0.1);
+        }
+    }
+
+    #[test]
+    fn three_points_off_one_circle_give_no_arc() {
+        let from = na::Isometry3::translation(0.4, 0.0, 0.3);
+        let to = na::Isometry3::translation(0.6, 0.2, 0.3);
+        let arc = |via: na::Point3<f64>, to: &na::Isometry3<f64>| {
+            cartesian_arc(&from, &via, to, Duration::from_secs(1), MS)
+        };
+        assert!(arc(na::Point3::new(0.5, 0.1, 0.3), &to).is_none()); // collinear
+        assert!(arc(na::Point3::new(0.4, 0.0, 0.3), &to).is_none()); // via at the start
+        assert!(arc(na::Point3::new(0.6, 0.2, 0.3), &to).is_none()); // via at the end
+        assert!(arc(na::Point3::new(0.5, 0.0, 0.3), &from).is_none()); // back to the start
+        assert!(arc(na::Point3::new(f64::NAN, 0.0, 0.3), &to).is_none());
+        assert!(arc(na::Point3::new(0.5, 0.0, 0.3), &to).is_some());
     }
 
     #[test]

@@ -13,7 +13,7 @@
 | `roplat_behavior_ffi` | 契约的 Python（`py`）与 C++（`cxx`）绑定，供不依赖 roplat 运行时的驱动包使用：`py_*`／`cxx_*` 宏与数据类。 |
 | `roplat_world` | 机器人所处世界的契约：仿真后端与模型选择、物理引擎、渲染器、世界实体、共享资产目录；`roplat` 特性下有 `SimulationRhythm`。 |
 | `roplat_kinematics` | 以法兰为准的 DH 正运动学、雅可比与迭代逆运动学（`FLANGE`、`ik_solve_converged`）；`dh_kinematics!` 把机械臂接入模型映射。`ArmKineCache::from_chain` 可用 `roplat_description` 的 URDF 链代替 DH 表，`chain_ik` 在 URDF 限位内求其逆运动学（支持各类关节），`chain_ik_solutions` 收集通过有效性检查（如碰撞）的不同解，按与参考位形的距离排序，`UrdfKinematics` 把该链作为 `ForwardKinematics` 与 `JacobianModel`；`UrdfDynamics` 把 URDF 树作为 `DynamicsModel`，供 `roplat_control` 的力矩控制器使用。 |
-| `roplat_control` | 关节 PD/PID、底盘速度 PID、关节与笛卡尔阻抗、重力补偿、计算力矩、跟踪控制器所用的目标源（`target`）、操作员遥操作（`cartesian_teleop_control`：死区、使能按键、输入超时、加速度限制）、笛卡尔伺服（`CartesianServo`：末端速度旋量转为关节速度或位置命令，只在趋近奇异时减速，到关节限位即停，不超关节速度上限，可加接近障碍的减速系数）、在笛卡尔位姿通道上跟随定时的工具位姿轨迹（`CartesianTrajectoryFollower`、`cartesian_line`）、实时线程优先级。 |
+| `roplat_control` | 关节 PD/PID、底盘速度 PID、关节与笛卡尔阻抗、重力补偿、计算力矩、跟踪控制器所用的目标源（`target`）、操作员遥操作（`cartesian_teleop_control`：死区、使能按键、输入超时、加速度限制）、笛卡尔伺服（`CartesianServo`：末端速度旋量转为关节速度或位置命令，只在趋近奇异时减速，到关节限位即停，不超关节速度上限，可加接近障碍的减速系数）、在笛卡尔位姿通道上跟随定时的工具位姿轨迹（`CartesianTrajectoryFollower`、`cartesian_line`、`cartesian_arc`）、实时线程优先级。 |
 | `roplat_trajectory` | 以数据表达限值（`JointLimits`、`CartesianLimits`、`PathBounds`）的关节与笛卡尔插值（直线、梯形、S 曲线、四次曲线）和 COPP 时间缩放，只依赖 `roplat_msgs` 与 copp；`plan_joint_path` 在关节空间求无碰撞路径点（RRT-Connect，碰撞检查由调用方提供），`simplify_path` 与 `smooth_path` 去掉不需要的路径点并圆滑拐角，每段新路径都经过检查，与 OMPL 的路径简化器相同；`plan_joint_motion`、`simplify_motion` 与 `smooth_motion` 做同样的事，但对每段直线运动整体检查，不再逐点采样；`plan_cartesian_path` 让末端沿直线依次经过给定位姿，每步用调用方带种子的逆解求关节位形，在不可达、关节跳变或关节段无效之前停下；`plan_cartesian_motion` 对每一步整体检查。 |
 | `roplat_description` | 从 URDF 读出的同一份机器人模型：运动学树、惯量、可视/碰撞几何、关节限位、链式正运动学与雅可比、整棵树各连杆的位姿与逆动力学（含重力补偿），供运动学、仿真、可视化与限位检查共用；只依赖 `roplat_msgs`。 |
 | `roplat_frames` | 机器人工作单元的坐标树：编译期确定的帧 id，来自 URDF 与标定的静态变换，相机安装位置的手眼标定（`calibration::calibrate_hand_eye`，眼在手上或眼在手外），以及从图像得到标定板位姿（`target::detect_chessboard` 以亚像素精度找出棋盘格角点，各视角下顺序一致；`target::target_pose` 求标定板位姿），按 `Stamp` 缓冲并查询的关节与动态变换，查询不分配内存；可选的 `JointStateNode`（feature `roplat`）；开启 feature `scene` 后，`scene::place_objects` 把规划场景中的物体移到其跟踪坐标系在某一时刻的位姿，`scene::add_sensed_points` 按图像时刻的相机位姿加入深度读数。见[设计](roplat_frames/docs/design_zh.md)。 |
@@ -117,7 +117,7 @@ async 有两种不同用法：
 
 `roplat_control` 返回可直接交给 `control_with` 的普通闭包。`roplat_trajectory` 按 `JointLimits` 与控制周期规划；无界写 `f64::INFINITY`，规划要求速度、加速度有界。增益与模型数据需按后端选择；它们不提供时序保证。
 
-`roplat_control::CartesianTrajectoryFollower` 在 `CartesianPoseControl` 上播放定时的 `CartesianWaypoint`：相邻路点之间位置走直线、姿态做球面插值；路径与终点容差以米和弧度计，与测得的法兰位姿比较，超出时返回错误而不修改命令。`cartesian_line` 生成按控制周期采样的直线最小加加速度运动。开启 `roplat_control` 的 `roplat` feature 后，它也是一个节点，与关节轨迹跟随相同。
+`roplat_control::CartesianTrajectoryFollower` 在 `CartesianPoseControl` 上播放定时的 `CartesianWaypoint`：相邻路点之间位置走直线、姿态做球面插值；路径与终点容差以米和弧度计，与测得的法兰位姿比较，超出时返回错误而不修改命令。`cartesian_line` 生成按控制周期采样的直线最小加加速度运动，`cartesian_arc` 生成经过一个途经点的圆弧运动（相当于 Pilz `CIRC` 的 interim 点方式）。开启 `roplat_control` 的 `roplat` feature 后，它也是一个节点，与关节轨迹跟随相同。
 
 ## Feature 与 Roplat 集成
 
