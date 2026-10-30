@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-readme = "../README.md"
+readme = "README.md"
 description = "Limit, rate, freshness, watchdog and latch gates that refuse commands in roplat control graphs"
 keywords = ["robot", "robotics", "safety", "roplat"]
 

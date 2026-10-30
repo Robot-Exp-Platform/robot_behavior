@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-readme = "../README.md"
+readme = "README.md"
 description = "Typed robot capability contracts for roplat drivers"
 keywords = ["robot", "robotics", "behavior", "roplat"]
 

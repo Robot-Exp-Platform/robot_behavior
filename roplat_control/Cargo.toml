@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-readme = "../README.md"
+readme = "README.md"
 description = "PID, impedance and model-based controllers for roplat_behavior robots"
 keywords = ["robot", "robotics", "control", "roplat"]
 

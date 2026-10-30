@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-readme = "../README.md"
+readme = "README.md"
 description = "Collision checking for motion planning: robot self-collision, world and attached objects, allowed contacts"
 keywords = ["robot", "robotics", "collision", "planning", "roplat"]
 

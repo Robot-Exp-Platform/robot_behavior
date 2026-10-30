@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-readme = "../README.md"
+readme = "README.md"
 description = "Trajectory interpolation, COPP time scaling and trajectory following on roplat_msgs data"
 keywords = ["robot", "robotics", "trajectory", "roplat"]
 

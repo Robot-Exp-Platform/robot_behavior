@@ -6,8 +6,8 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-readme = "../README.md"
-description = "Grasp candidates for primitive objects and pick planning (pre-grasp, approach, lift) over roplat_scene"
+readme = "README.md"
+description = "Grasp candidates for primitive objects, and pick and place planning over roplat_scene"
 keywords = ["robot", "robotics", "grasp", "planning", "roplat"]
 
 [dependencies]

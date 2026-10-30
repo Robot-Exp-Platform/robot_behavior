@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-readme = "../README.md"
+readme = "README.md"
 description = "Denavit-Hartenberg kinematics and inverse kinematics for roplat_behavior arms"
 keywords = ["robot", "robotics", "kinematics", "roplat"]
 
