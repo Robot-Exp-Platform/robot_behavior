@@ -18,7 +18,11 @@
 //!
 //! URDF boxes, spheres, cylinders and capsules keep their shape. A mesh (OBJ
 //! or STL) becomes the convex hull of its vertices, which contains the mesh:
-//! the hull may report a contact the mesh would not, never the reverse.
+//! the hull may report a contact the mesh would not, never the reverse. A
+//! hull fills a concave object's hollows, so nothing can reach into a bin or
+//! a shelf; [`PlanningScene::add_concave_object`] and
+//! [`PlanningScene::add_trimesh`] split such an object into convex parts
+//! instead.
 //! Distances come from [parry3d-f64](https://parry.rs).
 //!
 //! The scene is plain data with no clock, registry or runtime. Its owner
@@ -42,6 +46,7 @@ use parry3d_f64::{
     bounding_volume::{Aabb, BoundingVolume},
     query,
     shape::SharedShape,
+    transformation::vhacd::{VHACD, VHACDParameters},
 };
 use roplat_description::{Geometry, RobotModel};
 
@@ -331,6 +336,82 @@ impl<const N: usize> PlanningScene<N> {
         self.objects
             .push(Object { name: name.into(), part, mount: Mount::World(pose) });
         Ok(())
+    }
+
+    /// Places a new object that may be concave, such as a bin or a shelf. A
+    /// mesh is split into convex parts by approximate convex decomposition
+    /// (V-HACD) rather than wrapped in one hull, so its hollows stay free;
+    /// other geometry is placed as [`add_object`](Self::add_object) does.
+    /// Returns the number of convex parts. A mesh file name is read as a path,
+    /// and its faces are needed (OBJ `f` lines, or STL).
+    ///
+    /// The parts follow the mesh to within about 1/64 of its largest extent;
+    /// walls thinner than that may close small openings. Decomposing takes
+    /// time, a fraction of a second for a simple bin and seconds for a
+    /// detailed mesh, so add a concave object once and move it with
+    /// [`move_object`](Self::move_object). Unoptimised it is about 200 times
+    /// slower; a debug build that adds concave objects should optimise parry:
+    ///
+    /// ```toml
+    /// [profile.dev.package.parry3d-f64]
+    /// opt-level = 3
+    /// ```
+    pub fn add_concave_object(
+        &mut self,
+        name: &str,
+        geometry: &Geometry,
+        pose: na::Isometry3<f64>,
+    ) -> Result<usize, SceneError> {
+        let Geometry::Mesh { filename, scale } = geometry else {
+            self.add_object(name, geometry, pose)?;
+            return Ok(1);
+        };
+        if self.model.link(name).is_some() || self.object(name).is_ok() {
+            return Err(SceneError::NameTaken(name.into()));
+        }
+        let path = PathBuf::from(filename);
+        let failed = |reason: String| SceneError::Mesh { path: path.clone(), reason };
+        if !scale.iter().all(|v| v.is_finite() && *v > 0.0) {
+            return Err(SceneError::InvalidGeometry(format!(
+                "mesh scale {scale:?} must be positive"
+            )));
+        }
+        let (vertices, triangles) = mesh::triangles(&path).map_err(failed)?;
+        let vertices: Vec<[f64; 3]> = vertices
+            .into_iter()
+            .map(|v| [v[0] * scale[0], v[1] * scale[1], v[2] * scale[2]])
+            .collect();
+        let shape = decompose(&vertices, &triangles).map_err(failed)?;
+        Ok(self.place(name, shape, pose))
+    }
+
+    /// Places a new concave object given as triangles over `vertices`, in
+    /// the object's frame, as [`add_concave_object`](Self::add_concave_object)
+    /// does for a mesh file. For objects built in code, such as a bin of given
+    /// dimensions.
+    pub fn add_trimesh(
+        &mut self,
+        name: &str,
+        vertices: &[[f64; 3]],
+        triangles: &[[u32; 3]],
+        pose: na::Isometry3<f64>,
+    ) -> Result<usize, SceneError> {
+        if self.model.link(name).is_some() || self.object(name).is_ok() {
+            return Err(SceneError::NameTaken(name.into()));
+        }
+        let shape = decompose(vertices, triangles).map_err(SceneError::InvalidGeometry)?;
+        Ok(self.place(name, shape, pose))
+    }
+
+    /// Adds `shape` as a world object; returns its number of convex parts.
+    fn place(&mut self, name: &str, shape: SharedShape, pose: na::Isometry3<f64>) -> usize {
+        let parts = shape
+            .as_compound()
+            .map_or(1, |compound| compound.shapes().len());
+        let part = Part { at: na::Isometry3::identity(), shape };
+        self.objects
+            .push(Object { name: name.into(), part, mount: Mount::World(pose) });
+        parts
     }
 
     /// Places sensed `points` (in the frame `pose` gives in the world) as
@@ -690,6 +771,41 @@ fn part(
         }
     };
     Ok(Part { at, shape })
+}
+
+/// Convex parts of the solid the triangles bound (or of the shell, where
+/// they bound none), each the hull of the mesh within one part.
+fn decompose(vertices: &[[f64; 3]], triangles: &[[u32; 3]]) -> Result<SharedShape, String> {
+    if triangles.is_empty() {
+        return Err("no triangles".into());
+    }
+    if let Some(v) = vertices
+        .iter()
+        .position(|v| !v.iter().all(|c| c.is_finite()))
+    {
+        return Err(format!("vertex {v} is not finite"));
+    }
+    if let Some(t) = triangles
+        .iter()
+        .position(|t| t.iter().any(|&i| i as usize >= vertices.len()))
+    {
+        return Err(format!(
+            "triangle {t} names a vertex beyond the {} given",
+            vertices.len()
+        ));
+    }
+    let points: Vec<na::Point3<f64>> = vertices.iter().map(|&v| v.into()).collect();
+    let decomposition = VHACD::decompose(&VHACDParameters::default(), &points, triangles, true);
+    let parts: Vec<_> = decomposition
+        .compute_exact_convex_hulls(&points, triangles)
+        .into_iter()
+        .filter_map(|(vertices, indices)| SharedShape::convex_mesh(vertices, &indices))
+        .map(|convex| (na::Isometry3::identity(), convex))
+        .collect();
+    if parts.is_empty() {
+        return Err("the triangles enclose no volume".into());
+    }
+    Ok(SharedShape::compound(parts))
 }
 
 fn hull(path: &Path, scale: &[f64; 3]) -> Result<SharedShape, SceneError> {
