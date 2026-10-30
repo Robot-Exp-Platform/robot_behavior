@@ -14,7 +14,10 @@
 //!
 //! Closing the fingers is not planned: the caller commands its `Gripper`
 //! between the approach and the lift. Times are not assigned either; the
-//! paths are waypoints for `roplat_trajectory`'s time scaling.
+//! paths are waypoints for `roplat_trajectory`'s time scaling. Whether the
+//! closed fingers hold the object, [`GraspCheck`] judges from the opening
+//! any gripper reports, and [`carried_mass`] confirms after the lift from a
+//! wrist force sensor.
 //!
 //! # Tool frame
 //!
@@ -31,6 +34,8 @@
 
 mod candidates;
 mod pick;
+mod verify;
 
 pub use candidates::{Grasp, GraspOptions, box_grasps, cylinder_grasps, grasps, sphere_grasps};
 pub use pick::{PickError, PickFailure, PickOptions, PickPlan, plan_pick};
+pub use verify::{GraspCheck, GraspOutcome, carried_mass};
