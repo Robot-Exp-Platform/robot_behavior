@@ -3,8 +3,8 @@
 use nalgebra as na;
 use roplat_scene::{CollisionCheck, EndEffector, PlanningScene};
 use roplat_trajectory::{
-    CartesianPathOptions, CartesianStop, PlanError, PlannerOptions, plan_cartesian_path,
-    plan_joint_path,
+    CartesianPathOptions, CartesianStop, PlanError, PlannerOptions, plan_cartesian_motion,
+    plan_cartesian_path, plan_joint_motion, plan_joint_path,
 };
 
 use crate::Grasp;
@@ -126,8 +126,80 @@ pub fn plan_pick<const N: usize>(
     start: [f64; N],
     lower: [f64; N],
     upper: [f64; N],
+    inverse: impl FnMut(&na::Isometry3<f64>, &[f64; N]) -> Option<[f64; N]>,
+    options: PickOptions,
+) -> Result<PickPlan<N>, PickError> {
+    pick(
+        scene,
+        hand,
+        object,
+        support,
+        grasps,
+        start,
+        lower,
+        upper,
+        inverse,
+        options,
+        Check::Sampled,
+    )
+}
+
+/// As [`plan_pick`], with every segment checked whole by
+/// [`PlanningScene::motion_is_free`] instead of sampled every
+/// `resolution` radians: the free path, the approach and the lift (see
+/// `roplat_scene::motion`). A thin obstacle between two samples, such as a
+/// shelf edge, is not stepped over. The `resolution` of `options` is not
+/// used.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_pick_motion<const N: usize>(
+    scene: &PlanningScene<N>,
+    hand: &EndEffector,
+    object: &str,
+    support: Option<&str>,
+    grasps: &[Grasp],
+    start: [f64; N],
+    lower: [f64; N],
+    upper: [f64; N],
+    inverse: impl FnMut(&na::Isometry3<f64>, &[f64; N]) -> Option<[f64; N]>,
+    options: PickOptions,
+) -> Result<PickPlan<N>, PickError> {
+    pick(
+        scene,
+        hand,
+        object,
+        support,
+        grasps,
+        start,
+        lower,
+        upper,
+        inverse,
+        options,
+        Check::Whole,
+    )
+}
+
+/// How segments are checked.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Check {
+    /// At samples `resolution` apart.
+    Sampled,
+    /// As whole motions.
+    Whole,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn pick<const N: usize>(
+    scene: &PlanningScene<N>,
+    hand: &EndEffector,
+    object: &str,
+    support: Option<&str>,
+    grasps: &[Grasp],
+    start: [f64; N],
+    lower: [f64; N],
+    upper: [f64; N],
     mut inverse: impl FnMut(&na::Isometry3<f64>, &[f64; N]) -> Option<[f64; N]>,
     options: PickOptions,
+    check: Check,
 ) -> Result<PickPlan<N>, PickError> {
     let inside = |q: &[f64; N]| (0..N).all(|i| (lower[i]..=upper[i]).contains(&q[i]));
     let mut attempts = Vec::new();
@@ -144,6 +216,7 @@ pub fn plan_pick<const N: usize>(
             &inside,
             &mut inverse,
             &options,
+            check,
         ) {
             Ok((to_pregrasp, approach, lift)) => {
                 return Ok(PickPlan { grasp: *grasp, candidate, to_pregrasp, approach, lift });
@@ -169,6 +242,7 @@ fn try_grasp<const N: usize>(
     inside: &impl Fn(&[f64; N]) -> bool,
     inverse: &mut impl FnMut(&na::Isometry3<f64>, &[f64; N]) -> Option<[f64; N]>,
     options: &PickOptions,
+    check: Check,
 ) -> Result<Paths<N>, PickFailure> {
     let scene_error = |e: roplat_scene::SceneError| PickFailure::Scene(e.to_string());
 
@@ -179,14 +253,24 @@ fn try_grasp<const N: usize>(
     if !inside(&q_pre) || !scene.is_free(&q_pre) {
         return Err(PickFailure::PregraspInvalid);
     }
-    let to_pregrasp = plan_joint_path(
-        start,
-        q_pre,
-        lower,
-        upper,
-        |q| scene.is_free(q),
-        options.planner,
-    )
+    let to_pregrasp = match check {
+        Check::Sampled => plan_joint_path(
+            start,
+            q_pre,
+            lower,
+            upper,
+            |q| scene.is_free(q),
+            options.planner,
+        ),
+        Check::Whole => plan_joint_motion(
+            start,
+            q_pre,
+            lower,
+            upper,
+            |a, b| scene.motion_is_free(a, b),
+            options.planner,
+        ),
+    }
     .map_err(PickFailure::Path)?;
 
     // 2. Straight in; the tool may touch the object.
@@ -199,14 +283,31 @@ fn try_grasp<const N: usize>(
             .expect("the hand's link is in the scene")
     };
     hand.pose(scene, &start).map_err(scene_error)?;
-    let approach = plan_cartesian_path(
-        q_pre,
-        &[grasp.pose],
-        |q| forward(&approach_scene, q),
-        |pose, seed| inverse(&hand.link_target(pose), seed),
-        |q| inside(q) && approach_scene.is_free(q),
-        options.cartesian,
-    );
+    // A straight tool motion from `from` to `pose`, valid in `scene`.
+    let mut straight = |scene: &PlanningScene<N>, from: [f64; N], pose: na::Isometry3<f64>| {
+        let forward = |q: &[f64; N]| forward(scene, q);
+        let inverse =
+            |pose: &na::Isometry3<f64>, seed: &[f64; N]| inverse(&hand.link_target(pose), seed);
+        match check {
+            Check::Sampled => plan_cartesian_path(
+                from,
+                &[pose],
+                forward,
+                inverse,
+                |q| inside(q) && scene.is_free(q),
+                options.cartesian,
+            ),
+            Check::Whole => plan_cartesian_motion(
+                from,
+                &[pose],
+                forward,
+                inverse,
+                |a, b| inside(a) && inside(b) && scene.motion_is_free(a, b),
+                options.cartesian,
+            ),
+        }
+    };
+    let approach = straight(&approach_scene, q_pre, grasp.pose);
     if let Some(stop) = approach.stop {
         return Err(PickFailure::Approach { stop, fraction: approach.fraction });
     }
@@ -224,14 +325,7 @@ fn try_grasp<const N: usize>(
         lift_scene.allowed_mut().allow(object, support);
     }
     let lifted = na::Translation3::from(options.lift) * grasp.pose;
-    let lift = plan_cartesian_path(
-        q_grasp,
-        &[lifted],
-        |q| forward(&lift_scene, q),
-        |pose, seed| inverse(&hand.link_target(pose), seed),
-        |q| inside(q) && lift_scene.is_free(q),
-        options.cartesian,
-    );
+    let lift = straight(&lift_scene, q_grasp, lifted);
     if let Some(stop) = lift.stop {
         return Err(PickFailure::Lift { stop, fraction: lift.fraction });
     }

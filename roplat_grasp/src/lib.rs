@@ -11,6 +11,8 @@
 //!   that works as three joint paths: a collision-free path to the
 //!   pre-grasp pose, a straight approach to the grasp, and a straight lift
 //!   with the object attached. For each candidate that fails it says why.
+//!   [`plan_pick_motion`] does the same with every segment checked whole
+//!   rather than sampled.
 //!
 //! Closing the fingers is not planned: the caller commands its `Gripper`
 //! between the approach and the lift. Times are not assigned either; the
@@ -37,5 +39,5 @@ mod pick;
 mod verify;
 
 pub use candidates::{Grasp, GraspOptions, box_grasps, cylinder_grasps, grasps, sphere_grasps};
-pub use pick::{PickError, PickFailure, PickOptions, PickPlan, plan_pick};
+pub use pick::{PickError, PickFailure, PickOptions, PickPlan, plan_pick, plan_pick_motion};
 pub use verify::{GraspCheck, GraspOutcome, carried_mass};
