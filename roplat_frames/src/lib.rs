@@ -13,6 +13,9 @@
 //!   (hand-eye calibration), for the fixed edge it becomes.
 //! - Feature `roplat` adds [`roplat::JointStateNode`], which records joint
 //!   states into a borrowed buffer.
+//! - Feature `scene` adds [`scene`]: planning-scene objects moved to their
+//!   tracked frames, and depth readings placed at the camera pose of their
+//!   stamp.
 //!
 //! There is no global registry or buffer: a `FrameBuffer` is an ordinary value
 //! owned by its creating scope and lent to nodes as a resource.
@@ -25,6 +28,8 @@ mod tree;
 
 #[cfg(feature = "roplat")]
 pub mod roplat;
+#[cfg(feature = "scene")]
+pub mod scene;
 
 pub use buffer::FrameBuffer;
 pub use roplat_msgs::FrameId;

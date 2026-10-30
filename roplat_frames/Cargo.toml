@@ -14,6 +14,7 @@ keywords = ["robot", "robotics", "frames", "transform", "roplat"]
 roplat_msgs = { version = "0.6.0-rc.1", features = ["nalgebra"] }
 roplat_description = { version = "0.9.0", path = "../roplat_description" }
 roplat = { version = "0.6.0-rc.1", optional = true }
+roplat_scene = { version = "0.9.0", path = "../roplat_scene", optional = true }
 nalgebra = "0.34.1"
 thiserror = "2.0.17"
 
@@ -23,3 +24,4 @@ tokio = { version = "1", features = ["rt", "macros"] }
 [features]
 default = []
 roplat = ["dep:roplat"]
+scene = ["dep:roplat_scene"]

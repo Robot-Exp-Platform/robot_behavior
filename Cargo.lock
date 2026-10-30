@@ -1568,6 +1568,7 @@ dependencies = [
  "roplat",
  "roplat_description",
  "roplat_msgs",
+ "roplat_scene",
  "thiserror 2.0.18",
  "tokio",
 ]
