@@ -7,6 +7,12 @@
 //! checked by sampling it every `resolution` radians. The sampler is a seeded
 //! xorshift, so a seed always gives the same path. The waypoints can be timed
 //! with [`plan_waypoints_traj_via_copp`](crate::plan_waypoints_traj_via_copp).
+//!
+//! Sampling can step over an obstacle thinner than what a link sweeps
+//! between two samples. [`plan_joint_motion`] runs the same search with a
+//! check that answers for a whole straight motion instead, such as
+//! `PlanningScene::motion_is_free` in `roplat_scene`, which leaves no
+//! resolution to choose.
 
 /// Search settings for [`plan_joint_path`].
 #[derive(Clone, Copy, Debug)]
@@ -66,14 +72,63 @@ pub fn plan_joint_path<const N: usize>(
     mut is_valid: impl FnMut(&[f64; N]) -> bool,
     options: PlannerOptions,
 ) -> Result<Vec<[f64; N]>, PlanError> {
+    check_ends(&start, &goal, &lower, &upper, &mut is_valid)?;
+    connect(
+        start,
+        goal,
+        lower,
+        upper,
+        |a, b| segment_is_valid(a, b, options.resolution, &mut is_valid),
+        options,
+    )
+}
+
+/// As [`plan_joint_path`], with each straight segment checked whole by
+/// `motion_is_valid(from, to)` instead of sampled; a configuration is
+/// checked as the motion from it to itself. `options.resolution` is not
+/// used. Every segment between consecutive waypoints of the result passed
+/// the check.
+pub fn plan_joint_motion<const N: usize>(
+    start: [f64; N],
+    goal: [f64; N],
+    lower: [f64; N],
+    upper: [f64; N],
+    mut motion_is_valid: impl FnMut(&[f64; N], &[f64; N]) -> bool,
+    options: PlannerOptions,
+) -> Result<Vec<[f64; N]>, PlanError> {
+    check_ends(&start, &goal, &lower, &upper, |q| motion_is_valid(q, q))?;
+    connect(start, goal, lower, upper, motion_is_valid, options)
+}
+
+/// Refuses a start or goal outside the bounds or invalid.
+fn check_ends<const N: usize>(
+    start: &[f64; N],
+    goal: &[f64; N],
+    lower: &[f64; N],
+    upper: &[f64; N],
+    mut is_valid: impl FnMut(&[f64; N]) -> bool,
+) -> Result<(), PlanError> {
     let inside = |q: &[f64; N]| (0..N).all(|i| (lower[i]..=upper[i]).contains(&q[i]));
-    if !inside(&start) || !is_valid(&start) {
+    if !inside(start) || !is_valid(start) {
         return Err(PlanError::InvalidStart);
     }
-    if !inside(&goal) || !is_valid(&goal) {
+    if !inside(goal) || !is_valid(goal) {
         return Err(PlanError::InvalidGoal);
     }
-    if segment_is_valid(&start, &goal, options.resolution, &mut is_valid) {
+    Ok(())
+}
+
+/// RRT-Connect and shortcutting between valid ends, with `segment` deciding
+/// whether a straight segment is valid.
+fn connect<const N: usize>(
+    start: [f64; N],
+    goal: [f64; N],
+    lower: [f64; N],
+    upper: [f64; N],
+    mut segment: impl FnMut(&[f64; N], &[f64; N]) -> bool,
+    options: PlannerOptions,
+) -> Result<Vec<[f64; N]>, PlanError> {
+    if segment(&start, &goal) {
         return Ok(vec![start, goal]);
     }
 
@@ -84,13 +139,13 @@ pub fn plan_joint_path<const N: usize>(
         let (a, b) = if iteration % 2 == 0 { (0, 1) } else { (1, 0) };
         let sample: [f64; N] =
             std::array::from_fn(|i| lower[i] + rng.unit() * (upper[i] - lower[i]));
-        let Some(new) = extend(&mut trees[a], &sample, &options, &mut is_valid) else {
+        let Some(new) = extend(&mut trees[a], &sample, &options, &mut segment) else {
             continue;
         };
         // Greedily grow the other tree towards the new node.
         let target = trees[a][new].0;
         let mut reached = None;
-        while let Some(node) = extend(&mut trees[b], &target, &options, &mut is_valid) {
+        while let Some(node) = extend(&mut trees[b], &target, &options, &mut segment) {
             if distance(&trees[b][node].0, &target) == 0.0 {
                 reached = Some(node);
                 break;
@@ -105,7 +160,7 @@ pub fn plan_joint_path<const N: usize>(
             if a == 1 {
                 path.reverse();
             }
-            shortcut(&mut path, &options, &mut rng, &mut is_valid);
+            shortcut(&mut path, &options, &mut rng, &mut segment);
             return Ok(path);
         }
     }
@@ -138,7 +193,7 @@ fn extend<const N: usize>(
     tree: &mut Vec<([f64; N], usize)>,
     target: &[f64; N],
     options: &PlannerOptions,
-    is_valid: &mut impl FnMut(&[f64; N]) -> bool,
+    segment: &mut impl FnMut(&[f64; N], &[f64; N]) -> bool,
 ) -> Option<usize> {
     let (nearest, gap) = tree
         .iter()
@@ -151,7 +206,7 @@ fn extend<const N: usize>(
     let from = tree[nearest].0;
     let t = (options.max_step / gap).min(1.0);
     let to: [f64; N] = std::array::from_fn(|i| from[i] + t * (target[i] - from[i]));
-    if !segment_is_valid(&from, &to, options.resolution, &mut *is_valid) {
+    if !segment(&from, &to) {
         return None;
     }
     tree.push((to, nearest));
@@ -172,7 +227,7 @@ fn shortcut<const N: usize>(
     path: &mut Vec<[f64; N]>,
     options: &PlannerOptions,
     rng: &mut XorShift,
-    is_valid: &mut impl FnMut(&[f64; N]) -> bool,
+    segment: &mut impl FnMut(&[f64; N], &[f64; N]) -> bool,
 ) {
     for _ in 0..options.shortcut_attempts {
         if path.len() < 3 {
@@ -181,7 +236,7 @@ fn shortcut<const N: usize>(
         let i = (rng.unit() * (path.len() - 2) as f64) as usize;
         let j = i + 2 + (rng.unit() * (path.len() - i - 2) as f64) as usize;
         let j = j.min(path.len() - 1);
-        if segment_is_valid(&path[i], &path[j], options.resolution, &mut *is_valid) {
+        if segment(&path[i], &path[j]) {
             path.drain(i + 1..j);
         }
     }

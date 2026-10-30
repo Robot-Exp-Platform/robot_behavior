@@ -18,6 +18,8 @@
 //! Both keep the endpoints, take collision checking from the caller like the
 //! planner (`is_valid` for one configuration, segments sampled every
 //! `resolution` per joint), and return a path whose new segments are valid.
+//! [`simplify_motion`] and [`smooth_motion`] take a check of a whole straight
+//! motion instead, as [`plan_joint_motion`](crate::plan_joint_motion) does.
 //! Time the result with [`plan_waypoints_traj_via_copp`](crate::plan_waypoints_traj_via_copp).
 //!
 //! ```
@@ -42,6 +44,17 @@ pub fn simplify_path<const N: usize>(
     resolution: f64,
     mut is_valid: impl FnMut(&[f64; N]) -> bool,
 ) -> Vec<[f64; N]> {
+    simplify_motion(path, |a, b| {
+        segment_is_valid(a, b, resolution, &mut is_valid)
+    })
+}
+
+/// As [`simplify_path`], with each straight segment checked whole by
+/// `motion_is_valid(from, to)`.
+pub fn simplify_motion<const N: usize>(
+    path: &[[f64; N]],
+    mut motion_is_valid: impl FnMut(&[f64; N], &[f64; N]) -> bool,
+) -> Vec<[f64; N]> {
     let Some(&first) = path.first() else {
         return Vec::new();
     };
@@ -51,7 +64,7 @@ pub fn simplify_path<const N: usize>(
         // The farthest waypoint in sight; the next one at worst.
         let next = (at + 2..path.len())
             .rev()
-            .find(|&j| segment_is_valid(&path[at], &path[j], resolution, &mut is_valid))
+            .find(|&j| motion_is_valid(&path[at], &path[j]))
             .unwrap_or(at + 1);
         kept.push(path[next]);
         at = next;
@@ -72,6 +85,18 @@ pub fn smooth_path<const N: usize>(
     resolution: f64,
     mut is_valid: impl FnMut(&[f64; N]) -> bool,
 ) -> Vec<[f64; N]> {
+    smooth_motion(path, passes, |a, b| {
+        segment_is_valid(a, b, resolution, &mut is_valid)
+    })
+}
+
+/// As [`smooth_path`], with each new chord checked whole by
+/// `motion_is_valid(from, to)`.
+pub fn smooth_motion<const N: usize>(
+    path: &[[f64; N]],
+    passes: usize,
+    mut motion_is_valid: impl FnMut(&[f64; N], &[f64; N]) -> bool,
+) -> Vec<[f64; N]> {
     let mut path = path.to_vec();
     for _ in 0..passes {
         if path.len() < 3 {
@@ -84,7 +109,7 @@ pub fn smooth_path<const N: usize>(
             let chord = [0.25, 0.125, 0.0625].into_iter().find_map(|f| {
                 let a: [f64; N] = std::array::from_fn(|i| corner[i] + f * (before[i] - corner[i]));
                 let b: [f64; N] = std::array::from_fn(|i| corner[i] + f * (after[i] - corner[i]));
-                segment_is_valid(&a, &b, resolution, &mut is_valid).then_some([a, b])
+                motion_is_valid(&a, &b).then_some([a, b])
             });
             match chord {
                 Some(chord) => cut.extend(chord),
