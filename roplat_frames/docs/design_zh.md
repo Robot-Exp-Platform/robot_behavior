@@ -30,6 +30,8 @@
 | 关节 | URDF revolute、continuous、prismatic 关节 | `roplat_description::Joint::transform(q)`，q 来自所属关节组 |
 | 动态 | 外部给出的 parent→child 位姿，如检测到的物体 | 按时间缓冲，见下节 |
 
+相机的标定外参可以用 `calibration::calibrate_hand_eye` 求出：在若干工位同时记录法兰位姿（正运动学）与标定板在相机光学系中的位姿，按 `A X = X B` 求解（Park–Martin：先拟合旋转，再用线性最小二乘求平移）。眼在手上时结果是相机在法兰系中的位姿，眼在手外时是相机在基座系中的位姿，再用 `fixed` 写入树。结果附带各工位推算出的标定板位姿的离散程度（`rotation_rms`、`translation_rms`），用来判断标定是否可信。各工位须绕至少两根明显不同的轴转动，否则报 `Degenerate`。
+
 建树时检查并报错：
 
 - 恰好一个根，每帧一个父，无环。因此任意两帧连通，查询不会因为断开而失败。

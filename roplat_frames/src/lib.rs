@@ -9,6 +9,8 @@
 //! - [`FrameBuffer`] keeps a time history of joint positions and dynamic
 //!   transforms on one clock and answers [`FrameBuffer::lookup`] at a
 //!   [`Stamp`]. Writes and lookups do not allocate and never block.
+//! - [`calibration`] solves a camera's mount from paired arm and target poses
+//!   (hand-eye calibration), for the fixed edge it becomes.
 //! - Feature `roplat` adds [`roplat::JointStateNode`], which records joint
 //!   states into a borrowed buffer.
 //!
@@ -18,6 +20,7 @@
 //! [`Stamp`]: roplat_msgs::Stamp
 
 mod buffer;
+pub mod calibration;
 mod tree;
 
 #[cfg(feature = "roplat")]
