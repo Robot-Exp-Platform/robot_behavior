@@ -29,7 +29,10 @@
 //! planar board: a homography gives the first pose, refined by
 //! Levenberg–Marquardt on the reprojection error.
 //!
-//! Images must be rectified: lens distortion is not modelled.
+//! Images must be rectified: lens distortion is not modelled here. Rectify
+//! raw images with [`lens::Rectify`](crate::lens::Rectify) first, or
+//! undistort the detected corners with [`lens::undistort`](crate::lens::undistort)
+//! and solve the pose with [`lens::rectified`](crate::lens::rectified)`(info)`.
 //!
 //! ```
 //! use roplat_frames::target::Chessboard;
