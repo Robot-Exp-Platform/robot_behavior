@@ -1,0 +1,36 @@
+//! Grasping for a parallel gripper: where to grasp an object, and how to
+//! get there and away with it.
+//!
+//! The two halves answer what MoveIt Grasps and MoveIt's pick stage answer:
+//!
+//! - [`grasps`] lists [`Grasp`] candidates for a box, cylinder or sphere:
+//!   every tool pose from which the fingers close across the object at a
+//!   width the gripper opens to, best first (approach from above first).
+//! - [`plan_pick`] tries candidates in order against a
+//!   [`PlanningScene`](roplat_scene::PlanningScene) and returns the first
+//!   that works as three joint paths: a collision-free path to the
+//!   pre-grasp pose, a straight approach to the grasp, and a straight lift
+//!   with the object attached. For each candidate that fails it says why.
+//!
+//! Closing the fingers is not planned: the caller commands its `Gripper`
+//! between the approach and the lift. Times are not assigned either; the
+//! paths are waypoints for `roplat_trajectory`'s time scaling.
+//!
+//! # Tool frame
+//!
+//! A grasp is a pose of the tool centre point (TCP) in the world: `z` is
+//! the approach direction (into the object), `y` the closing direction of
+//! the fingers, `x = y × z`. [`EndEffector`](roplat_scene::EndEffector)
+//! places the TCP on the arm's link with the same convention.
+//!
+//! # Limits
+//!
+//! Candidates come from the shape alone: friction, mass and the object's
+//! neighbours are not considered, so a candidate can still be blocked or
+//! slip; the planner rejects the blocked ones. Meshes give no candidates.
+
+mod candidates;
+mod pick;
+
+pub use candidates::{Grasp, GraspOptions, box_grasps, cylinder_grasps, grasps, sphere_grasps};
+pub use pick::{PickError, PickFailure, PickOptions, PickPlan, plan_pick};

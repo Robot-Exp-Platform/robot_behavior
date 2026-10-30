@@ -1,0 +1,239 @@
+//! Planning a pick: pre-grasp, approach, lift.
+
+use nalgebra as na;
+use roplat_scene::{CollisionCheck, EndEffector, PlanningScene};
+use roplat_trajectory::{
+    CartesianPathOptions, CartesianStop, PlanError, PlannerOptions, plan_cartesian_path,
+    plan_joint_path,
+};
+
+use crate::Grasp;
+
+/// Settings for [`plan_pick`].
+#[derive(Clone, Copy, Debug)]
+pub struct PickOptions {
+    /// How far back along the approach the straight approach starts (m).
+    pub pregrasp_distance: f64,
+    /// The tool's straight motion after the fingers close, in the world
+    /// (m); usually up.
+    pub lift: na::Vector3<f64>,
+    /// Search for the free path to the pre-grasp pose.
+    pub planner: PlannerOptions,
+    /// Steps of the straight approach and lift.
+    pub cartesian: CartesianPathOptions,
+}
+
+impl Default for PickOptions {
+    fn default() -> Self {
+        Self {
+            pregrasp_distance: 0.1,
+            lift: na::Vector3::new(0.0, 0.0, 0.1),
+            planner: PlannerOptions::default(),
+            cartesian: CartesianPathOptions::default(),
+        }
+    }
+}
+
+/// A pick that works: the candidate used and the three joint paths, each
+/// starting where the previous one ended.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PickPlan<const N: usize> {
+    pub grasp: Grasp,
+    /// Index of [`grasp`](Self::grasp) in the candidates given.
+    pub candidate: usize,
+    /// From the start to the pre-grasp pose, avoiding the object.
+    pub to_pregrasp: Vec<[f64; N]>,
+    /// Straight in to the grasp; the tool's links may touch the object.
+    pub approach: Vec<[f64; N]>,
+    /// Straight out with the object attached; the object may touch its
+    /// support.
+    pub lift: Vec<[f64; N]>,
+}
+
+impl<const N: usize> PickPlan<N> {
+    /// The configuration in which to close the fingers.
+    pub fn grasp_configuration(&self) -> [f64; N] {
+        *self
+            .approach
+            .last()
+            .expect("an approach has at least its start")
+    }
+}
+
+/// Why one candidate did not work.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PickFailure {
+    /// The inverse kinematics found no configuration for the pre-grasp.
+    PregraspUnreachable,
+    /// The pre-grasp configuration collides or is outside the bounds.
+    PregraspInvalid,
+    /// No free path from the start to the pre-grasp configuration.
+    Path(PlanError),
+    /// The straight approach stopped after `fraction` of the way.
+    Approach { stop: CartesianStop, fraction: f64 },
+    /// The straight lift stopped after `fraction` of the way.
+    Lift { stop: CartesianStop, fraction: f64 },
+    /// The scene refused a name (object, link or support).
+    Scene(String),
+}
+
+/// No candidate worked; `attempts` holds each candidate tried and why it
+/// failed, in order. Empty when there were no candidates.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PickError {
+    pub attempts: Vec<(usize, PickFailure)>,
+}
+
+impl std::fmt::Display for PickError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.attempts.is_empty() {
+            return write!(f, "no grasp candidates");
+        }
+        write!(f, "none of {} grasp candidates works:", self.attempts.len())?;
+        for (k, why) in &self.attempts {
+            write!(f, " #{k} {why:?};")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for PickError {}
+
+/// Plans picking `object` from `start` with the first of `grasps` that
+/// works; see the [crate documentation](crate).
+///
+/// - `hand` places the tool on its link; its links may touch the object
+///   during the approach, and carry it during the lift.
+/// - `support`, if given, is the object or link the object rests on, which
+///   it may touch during the lift.
+/// - `inverse(link_pose, seed)` returns a configuration putting `hand`'s
+///   link at `link_pose` in the world, near `seed`, or `None`; with
+///   `roplat_kinematics` that is `chain_ik` or `chain_ik_solutions` on the
+///   chain to the link.
+/// - Every configuration stays within `lower..=upper`.
+///
+/// The scene is not changed: attaching the object for the lift happens on
+/// a copy. After executing the plan, attach the object in the caller's own
+/// scene with [`PlanningScene::attach`] at
+/// [`grasp_configuration`](PickPlan::grasp_configuration).
+#[allow(clippy::too_many_arguments)]
+pub fn plan_pick<const N: usize>(
+    scene: &PlanningScene<N>,
+    hand: &EndEffector,
+    object: &str,
+    support: Option<&str>,
+    grasps: &[Grasp],
+    start: [f64; N],
+    lower: [f64; N],
+    upper: [f64; N],
+    mut inverse: impl FnMut(&na::Isometry3<f64>, &[f64; N]) -> Option<[f64; N]>,
+    options: PickOptions,
+) -> Result<PickPlan<N>, PickError> {
+    let inside = |q: &[f64; N]| (0..N).all(|i| (lower[i]..=upper[i]).contains(&q[i]));
+    let mut attempts = Vec::new();
+    for (candidate, grasp) in grasps.iter().enumerate() {
+        match try_grasp(
+            scene,
+            hand,
+            object,
+            support,
+            grasp,
+            start,
+            lower,
+            upper,
+            &inside,
+            &mut inverse,
+            &options,
+        ) {
+            Ok((to_pregrasp, approach, lift)) => {
+                return Ok(PickPlan { grasp: *grasp, candidate, to_pregrasp, approach, lift });
+            }
+            Err(why) => attempts.push((candidate, why)),
+        }
+    }
+    Err(PickError { attempts })
+}
+
+type Paths<const N: usize> = (Vec<[f64; N]>, Vec<[f64; N]>, Vec<[f64; N]>);
+
+#[allow(clippy::too_many_arguments)]
+fn try_grasp<const N: usize>(
+    scene: &PlanningScene<N>,
+    hand: &EndEffector,
+    object: &str,
+    support: Option<&str>,
+    grasp: &Grasp,
+    start: [f64; N],
+    lower: [f64; N],
+    upper: [f64; N],
+    inside: &impl Fn(&[f64; N]) -> bool,
+    inverse: &mut impl FnMut(&na::Isometry3<f64>, &[f64; N]) -> Option<[f64; N]>,
+    options: &PickOptions,
+) -> Result<Paths<N>, PickFailure> {
+    let scene_error = |e: roplat_scene::SceneError| PickFailure::Scene(e.to_string());
+
+    // 1. A free path to the pre-grasp pose.
+    let pregrasp = grasp.pregrasp(options.pregrasp_distance);
+    let q_pre =
+        inverse(&hand.link_target(&pregrasp), &start).ok_or(PickFailure::PregraspUnreachable)?;
+    if !inside(&q_pre) || !scene.is_free(&q_pre) {
+        return Err(PickFailure::PregraspInvalid);
+    }
+    let to_pregrasp = plan_joint_path(
+        start,
+        q_pre,
+        lower,
+        upper,
+        |q| scene.is_free(q),
+        options.planner,
+    )
+    .map_err(PickFailure::Path)?;
+
+    // 2. Straight in; the tool may touch the object.
+    let mut approach_scene = scene.clone();
+    for link in hand.links() {
+        approach_scene.allowed_mut().allow(object, link);
+    }
+    let forward = |scene: &PlanningScene<N>, q: &[f64; N]| {
+        hand.pose(scene, q)
+            .expect("the hand's link is in the scene")
+    };
+    hand.pose(scene, &start).map_err(scene_error)?;
+    let approach = plan_cartesian_path(
+        q_pre,
+        &[grasp.pose],
+        |q| forward(&approach_scene, q),
+        |pose, seed| inverse(&hand.link_target(pose), seed),
+        |q| inside(q) && approach_scene.is_free(q),
+        options.cartesian,
+    );
+    if let Some(stop) = approach.stop {
+        return Err(PickFailure::Approach { stop, fraction: approach.fraction });
+    }
+    let q_grasp = *approach
+        .waypoints
+        .last()
+        .expect("a complete path has its start");
+
+    // 3. Straight out with the object attached; it may touch its support.
+    let mut lift_scene = approach_scene;
+    lift_scene
+        .attach(object, hand.link(), &hand.links(), &q_grasp)
+        .map_err(scene_error)?;
+    if let Some(support) = support {
+        lift_scene.allowed_mut().allow(object, support);
+    }
+    let lifted = na::Translation3::from(options.lift) * grasp.pose;
+    let lift = plan_cartesian_path(
+        q_grasp,
+        &[lifted],
+        |q| forward(&lift_scene, q),
+        |pose, seed| inverse(&hand.link_target(pose), seed),
+        |q| inside(q) && lift_scene.is_free(q),
+        options.cartesian,
+    );
+    if let Some(stop) = lift.stop {
+        return Err(PickFailure::Lift { stop, fraction: lift.fraction });
+    }
+    Ok((to_pregrasp, approach.waypoints, lift.waypoints))
+}

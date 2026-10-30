@@ -1,5 +1,5 @@
 [workspace]
-members = ["roplat_behavior", "roplat_kinematics", "roplat_control", "roplat_trajectory", "roplat_description", "roplat_frames", "roplat_safety", "roplat_scene", "roplat_world", "roplat_behavior_ffi"]
+members = ["roplat_behavior", "roplat_kinematics", "roplat_control", "roplat_trajectory", "roplat_description", "roplat_frames", "roplat_safety", "roplat_scene", "roplat_grasp", "roplat_world", "roplat_behavior_ffi"]
 resolver = "3"
 
 # The crates share one README. Each declares its own version, so an
