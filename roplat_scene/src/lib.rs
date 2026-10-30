@@ -25,14 +25,21 @@
 //! instead.
 //! Distances come from [parry3d-f64](https://parry.rs).
 //!
+//! The planners sample a motion between two configurations every few
+//! hundredths of a radian, which can step over a thin obstacle.
+//! [`PlanningScene::motion_contact`] checks a straight joint motion as a
+//! whole instead, with no step to choose; see [`motion`].
+//!
 //! The scene is plain data with no clock, registry or runtime. Its owner
 //! moves, attaches and detaches objects between queries; a query poses the
 //! robot without changing the scene.
 
 mod mesh;
+pub mod motion;
 pub mod points;
 pub mod semantics;
 
+pub use motion::{MOTION_TOLERANCE, MotionContact, REJECT_STEP};
 pub use semantics::{EndEffector, NamedPoses};
 
 use std::{

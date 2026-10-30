@@ -1,6 +1,9 @@
 //! Joint-space planning around obstacles given only by a validity check.
 
-use roplat_trajectory::{PlanError, PlannerOptions, plan_joint_path, segment_is_valid};
+use roplat_trajectory::{
+    PlanError, PlannerOptions, plan_joint_motion, plan_joint_path, segment_is_valid,
+    simplify_motion, smooth_motion,
+};
 
 /// A wall at x ∈ [0.4, 0.6] across the unit square, with a gap at y ∈ [0.8, 0.9].
 fn outside_wall(q: &[f64; 2]) -> bool {
@@ -88,4 +91,69 @@ fn plans_an_arm_around_a_disc() {
     let path =
         plan_joint_path(start, goal, lower, upper, clear, PlannerOptions::default()).unwrap();
     check(&path, start, goal, clear);
+}
+
+/// A wall 1 cm thick at x ∈ [0.495, 0.505], open above y = 0.8.
+fn crosses_thin_wall(a: &[f64; 2], b: &[f64; 2]) -> bool {
+    let (x0, x1) = (0.495, 0.505);
+    // The part of the segment with x in the wall, as fractions of it.
+    let (lo, hi) = if a[0] == b[0] {
+        if (x0..=x1).contains(&a[0]) {
+            (0.0, 1.0)
+        } else {
+            return false;
+        }
+    } else {
+        let (t0, t1) = ((x0 - a[0]) / (b[0] - a[0]), (x1 - a[0]) / (b[0] - a[0]));
+        (t0.min(t1).max(0.0), t0.max(t1).min(1.0))
+    };
+    // y is linear in t, so its lowest value on that part is at an end.
+    lo <= hi && [lo, hi].iter().any(|t| a[1] + t * (b[1] - a[1]) < 0.8)
+}
+
+fn motion_clear(a: &[f64; 2], b: &[f64; 2]) -> bool {
+    !crosses_thin_wall(a, b)
+}
+
+#[test]
+fn a_motion_check_does_not_step_over_a_thin_wall() {
+    let (start, goal) = ([0.2, 0.2], [0.75, 0.2]);
+    let (lower, upper) = ([0.0; 2], [1.0; 2]);
+    let point_free = |q: &[f64; 2]| motion_clear(q, q);
+    // Samples 0.4 apart land on both sides of the wall: one segment, through it.
+    let coarse = PlannerOptions { resolution: 0.4, ..Default::default() };
+    let sampled = plan_joint_path(start, goal, lower, upper, point_free, coarse).unwrap();
+    assert_eq!(sampled, [start, goal]);
+    assert!(crosses_thin_wall(&start, &goal));
+
+    let path = plan_joint_motion(start, goal, lower, upper, motion_clear, coarse).unwrap();
+    assert_eq!((path[0], *path.last().unwrap()), (start, goal));
+    for pair in path.windows(2) {
+        assert!(motion_clear(&pair[0], &pair[1]), "{pair:?}");
+    }
+    assert!(path.iter().any(|q| q[1] > 0.8), "{path:?}");
+    let again = plan_joint_motion(start, goal, lower, upper, motion_clear, coarse).unwrap();
+    assert_eq!(path, again);
+
+    // An end in the wall is refused as invalid.
+    assert_eq!(
+        plan_joint_motion([0.5, 0.1], goal, lower, upper, motion_clear, coarse),
+        Err(PlanError::InvalidStart)
+    );
+}
+
+#[test]
+fn simplifying_and_smoothing_by_motion_keep_segments_off_the_wall() {
+    let path = [[0.2, 0.2], [0.3, 0.9], [0.7, 0.9], [0.75, 0.2]];
+    let simple = simplify_motion(&path, motion_clear);
+    // The wall blocks the direct line, so a waypoint above it stays.
+    assert!(simple.len() >= 3, "{simple:?}");
+    for pair in simple.windows(2) {
+        assert!(motion_clear(&pair[0], &pair[1]), "{pair:?}");
+    }
+    let smooth = smooth_motion(&simple, 3, motion_clear);
+    assert_eq!((smooth[0], *smooth.last().unwrap()), (path[0], path[3]));
+    for pair in smooth.windows(2) {
+        assert!(motion_clear(&pair[0], &pair[1]), "{pair:?}");
+    }
 }
