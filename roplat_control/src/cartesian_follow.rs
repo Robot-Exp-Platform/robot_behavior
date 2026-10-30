@@ -7,7 +7,10 @@
 //! orientation by spherical interpolation, at a constant rate; a smooth motion
 //! comes from timing the waypoints well, for which [`cartesian_line`] gives a
 //! straight move with a minimum-jerk profile sampled every control period, and
-//! [`cartesian_arc`] a move along the circle through a via point.
+//! [`cartesian_arc`] a move along the circle through a via point;
+//! [`cartesian_line_within`] and [`cartesian_arc_within`] take the shortest
+//! duration that keeps the tool within [`CartesianLimits`], as Pilz's `LIN`
+//! and `CIRC` take speed and acceleration limits.
 //!
 //! Tolerances refuse rather than correct, as the joint follower's do: a
 //! measured flange pose farther from the trajectory than the path tolerance,
@@ -316,6 +319,108 @@ pub fn cartesian_arc(
     duration: Duration,
     period: Duration,
 ) -> Option<Vec<CartesianWaypoint>> {
+    let Circle { centre, axis, radius, sweep } = circle(from, via, to)?;
+    Some(minimum_jerk(duration, period, |s| {
+        let position = if s >= 1.0 {
+            to.translation.vector
+        } else {
+            centre + na::UnitQuaternion::from_axis_angle(&axis, s * sweep) * radius
+        };
+        na::Isometry3::from_parts(
+            na::Translation3::from(position),
+            turn(&from.rotation, &to.rotation, s),
+        )
+    }))
+}
+
+/// The tool's speed and acceleration limits for timing a move: linear in
+/// m/s and m/s², angular in rad/s and rad/s².
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CartesianLimits {
+    pub linear_speed: f64,
+    pub linear_acceleration: f64,
+    pub angular_speed: f64,
+    pub angular_acceleration: f64,
+}
+
+impl CartesianLimits {
+    /// The shortest duration of a minimum-jerk move that travels `length`
+    /// (m) while turning by `angle` (rad) within these limits. On the
+    /// profile `s = 10τ³ − 15τ⁴ + 6τ⁵` over a duration `T`, the speed peaks
+    /// at `1.875 L / T` and the acceleration at `(10 / √3) L / T²`, so `T`
+    /// is the largest of the four bounds they give. `None` unless the
+    /// limits are positive and the move finite.
+    pub fn minimum_jerk_duration(&self, length: f64, angle: f64) -> Option<Duration> {
+        let limits = [
+            self.linear_speed,
+            self.linear_acceleration,
+            self.angular_speed,
+            self.angular_acceleration,
+        ];
+        if !limits.iter().all(|l| *l > 0.0) || !(length.is_finite() && angle.is_finite()) {
+            return None;
+        }
+        let peak_acceleration = 10.0 / 3f64.sqrt();
+        let (length, angle) = (length.abs(), angle.abs());
+        let seconds = [
+            1.875 * length / self.linear_speed,
+            (peak_acceleration * length / self.linear_acceleration).sqrt(),
+            1.875 * angle / self.angular_speed,
+            (peak_acceleration * angle / self.angular_acceleration).sqrt(),
+        ]
+        .into_iter()
+        .fold(0.0, f64::max);
+        Duration::try_from_secs_f64(seconds).ok()
+    }
+}
+
+/// As [`cartesian_line`], lasting the shortest duration that keeps the
+/// tool within `limits` (see [`CartesianLimits::minimum_jerk_duration`]).
+/// `None` for limits that are not positive.
+pub fn cartesian_line_within(
+    from: &na::Isometry3<f64>,
+    to: &na::Isometry3<f64>,
+    limits: &CartesianLimits,
+    period: Duration,
+) -> Option<Vec<CartesianWaypoint>> {
+    let length = (to.translation.vector - from.translation.vector).norm();
+    let duration = limits.minimum_jerk_duration(length, from.rotation.angle_to(&to.rotation))?;
+    Some(cartesian_line(from, to, duration, period))
+}
+
+/// As [`cartesian_arc`], lasting the shortest duration that keeps the tool
+/// within `limits` along the arc. `None` for limits that are not positive,
+/// or where [`cartesian_arc`] gives none.
+pub fn cartesian_arc_within(
+    from: &na::Isometry3<f64>,
+    via: &na::Point3<f64>,
+    to: &na::Isometry3<f64>,
+    limits: &CartesianLimits,
+    period: Duration,
+) -> Option<Vec<CartesianWaypoint>> {
+    let arc = circle(from, via, to)?;
+    let length = arc.radius.norm() * arc.sweep;
+    let duration = limits.minimum_jerk_duration(length, from.rotation.angle_to(&to.rotation))?;
+    cartesian_arc(from, via, to, duration, period)
+}
+
+/// The circle through the three positions, swept from `from` past `via` to
+/// `to`.
+struct Circle {
+    centre: na::Vector3<f64>,
+    /// Counter-clockwise about it the arc goes.
+    axis: na::Unit<na::Vector3<f64>>,
+    /// From the centre to `from`.
+    radius: na::Vector3<f64>,
+    /// The arc's angle (rad).
+    sweep: f64,
+}
+
+fn circle(
+    from: &na::Isometry3<f64>,
+    via: &na::Point3<f64>,
+    to: &na::Isometry3<f64>,
+) -> Option<Circle> {
     let start = from.translation.vector;
     let a = via.coords - start;
     let b = to.translation.vector - start;
@@ -337,17 +442,7 @@ pub fn cartesian_arc(
     if sweep < 0.0 {
         sweep += std::f64::consts::TAU;
     }
-    Some(minimum_jerk(duration, period, |s| {
-        let position = if s >= 1.0 {
-            to.translation.vector
-        } else {
-            centre + na::UnitQuaternion::from_axis_angle(&axis, s * sweep) * radius
-        };
-        na::Isometry3::from_parts(
-            na::Translation3::from(position),
-            turn(&from.rotation, &to.rotation, s),
-        )
-    }))
+    Some(Circle { centre, axis, radius, sweep })
 }
 
 /// Waypoints every `period` over `duration`, with the pose at the
@@ -582,6 +677,86 @@ mod tests {
             assert!(step(0) < step(500) / 1e4 && step(999) < step(500) / 1e4);
             assert!(waypoints[500].pose.rotation.angle_to(&to.rotation) > 0.1);
         }
+    }
+
+    /// The largest speed and acceleration along `waypoints`, by finite
+    /// differences of position (m) and of the angle turned (rad).
+    fn peaks(waypoints: &[CartesianWaypoint], period: f64) -> [f64; 4] {
+        let speed = |a: &CartesianWaypoint, b: &CartesianWaypoint| {
+            (
+                (b.pose.translation.vector - a.pose.translation.vector).norm() / period,
+                a.pose.rotation.angle_to(&b.pose.rotation) / period,
+            )
+        };
+        let speeds: Vec<(f64, f64)> = waypoints.windows(2).map(|w| speed(&w[0], &w[1])).collect();
+        let max = |f: &dyn Fn(usize) -> f64, n: usize| (0..n).map(f).fold(0.0, f64::max);
+        [
+            max(&|k| speeds[k].0, speeds.len()),
+            max(
+                &|k| (speeds[k + 1].0 - speeds[k].0).abs() / period,
+                speeds.len() - 1,
+            ),
+            max(&|k| speeds[k].1, speeds.len()),
+            max(
+                &|k| (speeds[k + 1].1 - speeds[k].1).abs() / period,
+                speeds.len() - 1,
+            ),
+        ]
+    }
+
+    #[test]
+    fn moves_within_limits_reach_the_binding_one() {
+        let limits = CartesianLimits {
+            linear_speed: 0.25,
+            linear_acceleration: 1.0,
+            angular_speed: 0.8,
+            angular_acceleration: 4.0,
+        };
+        let from = na::Isometry3::translation(0.4, 0.0, 0.3);
+        // A long straight move is held by the linear speed, a short one by
+        // the linear acceleration, a turn in place by the angular limits.
+        let cases = [
+            (na::Isometry3::translation(0.4, 0.5, 0.3), 0),
+            (na::Isometry3::translation(0.4, 0.02, 0.3), 1),
+            (
+                na::Isometry3::from_parts(
+                    na::Translation3::new(0.4, 0.0, 0.3),
+                    na::UnitQuaternion::from_euler_angles(0.0, 0.0, 1.5),
+                ),
+                2,
+            ),
+        ];
+        for (to, binding) in cases {
+            let waypoints = cartesian_line_within(&from, &to, &limits, MS).unwrap();
+            let found = peaks(&waypoints, 1e-3);
+            let bounds = [
+                limits.linear_speed,
+                limits.linear_acceleration,
+                limits.angular_speed,
+                limits.angular_acceleration,
+            ];
+            for k in 0..4 {
+                assert!(found[k] <= bounds[k] * 1.01, "{k}: {found:?}");
+            }
+            assert!(
+                found[binding] >= bounds[binding] * 0.98,
+                "{binding}: {found:?}"
+            );
+        }
+        // Along an arc the arc length counts, not the chord.
+        let (to, _) = arc(250.0, 150.0);
+        let from = na::Isometry3::from_parts(on_circle(0.0).into(), na::UnitQuaternion::identity());
+        let slow = CartesianLimits { linear_speed: 0.05, ..limits };
+        let waypoints = cartesian_arc_within(&from, &on_circle(250.0), &to, &slow, MS).unwrap();
+        let found = peaks(&waypoints, 1e-3);
+        assert!(
+            found[0] <= 0.05 * 1.01 && found[0] >= 0.05 * 0.98,
+            "{found:?}"
+        );
+        // No limits, no move.
+        let none = CartesianLimits { linear_speed: 0.0, ..limits };
+        assert!(cartesian_line_within(&from, &to, &none, MS).is_none());
+        assert_eq!(limits.minimum_jerk_duration(0.0, 0.0), Some(Duration::ZERO));
     }
 
     #[test]
