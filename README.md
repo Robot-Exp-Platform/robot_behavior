@@ -118,7 +118,7 @@ An arm with a Denavit–Hartenberg table implements `roplat_kinematics::ArmForwa
 
 `JointTrajectoryFollower` plays timed `JointTrajectoryPoint`s on the joint-position channel. It reads time from a `roplat_msgs::Clock`, not from the cycle `Duration`, so the same follower runs on wall or simulation time; `JointTrajectoryFollower::cycle_timed` with `step_by(dt, …)` times it by the cycle durations a driver's callback reports. Path and goal tolerances refuse with a `TrackingError` rather than altering the command; with the `roplat` feature of `roplat_trajectory` the follower is a node, and `follower?` in a control domain ends the session with `Break`.
 
-`roplat_control::CartesianTrajectoryFollower` does the same for tool poses on `CartesianPoseControl`: straight-line position and spherical orientation interpolation between timed `CartesianWaypoint`s, path and goal tolerances in metres and radians against the measured flange pose, and `cartesian_line` for a straight minimum-jerk move sampled at the control period.
+`roplat_control::CartesianTrajectoryFollower` does the same for tool poses on `CartesianPoseControl`: straight-line position and spherical orientation interpolation between timed `CartesianWaypoint`s, path and goal tolerances in metres and radians against the measured flange pose, and `cartesian_line` for a straight minimum-jerk move sampled at the control period. With the `roplat` feature of `roplat_control` it is a node too, like the joint follower.
 
 ## Features and Roplat integration
 
