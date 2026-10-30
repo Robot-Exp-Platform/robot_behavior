@@ -26,6 +26,7 @@
 //! robot without changing the scene.
 
 mod mesh;
+pub mod points;
 pub mod semantics;
 
 pub use semantics::{EndEffector, NamedPoses};
@@ -330,6 +331,52 @@ impl<const N: usize> PlanningScene<N> {
         self.objects
             .push(Object { name: name.into(), part, mount: Mount::World(pose) });
         Ok(())
+    }
+
+    /// Places sensed `points` (in the frame `pose` gives in the world) as
+    /// one object: the voxels of edge `voxel` (m) that contain a point, each
+    /// a cube. Returns the number of voxels. The object moves, attaches and
+    /// is removed like any other; replace it by removing it and adding the
+    /// new reading. See [`points`] for turning a depth image into points.
+    pub fn add_points(
+        &mut self,
+        name: &str,
+        points: &[[f64; 3]],
+        voxel: f64,
+        pose: na::Isometry3<f64>,
+    ) -> Result<usize, SceneError> {
+        if !(voxel.is_finite() && voxel > 0.0) {
+            return Err(SceneError::InvalidGeometry(format!(
+                "voxel edge {voxel} must be positive"
+            )));
+        }
+        if self.model.link(name).is_some() || self.object(name).is_ok() {
+            return Err(SceneError::NameTaken(name.into()));
+        }
+        let cells = points::occupied_voxels(points, voxel);
+        if cells.is_empty() {
+            return Err(SceneError::InvalidGeometry(format!(
+                "no finite points for {name}"
+            )));
+        }
+        let half = voxel / 2.0;
+        let cubes: Vec<_> = cells
+            .iter()
+            .map(|cell| {
+                let centre = cell.map(|c| (c as f64 + 0.5) * voxel);
+                (
+                    na::Isometry3::translation(centre[0], centre[1], centre[2]),
+                    SharedShape::cuboid(half, half, half),
+                )
+            })
+            .collect();
+        let part = Part {
+            at: na::Isometry3::identity(),
+            shape: SharedShape::compound(cubes),
+        };
+        self.objects
+            .push(Object { name: name.into(), part, mount: Mount::World(pose) });
+        Ok(cells.len())
     }
 
     /// Moves an object that is in the world.

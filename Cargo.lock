@@ -1654,6 +1654,7 @@ dependencies = [
  "nalgebra",
  "parry3d-f64",
  "roplat_description",
+ "roplat_msgs",
  "roplat_trajectory",
  "thiserror 2.0.18",
 ]
