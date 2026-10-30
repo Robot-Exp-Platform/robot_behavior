@@ -25,6 +25,9 @@
 //! instead, and [`PlanningScene::decompose_link`] does the same for a link.
 //! Before sensed points join the scene,
 //! [`PlanningScene::without_robot_points`] removes those on the robot.
+//! [`occupancy::OccupancyMap`] keeps sensed obstacles current across scans,
+//! clearing the voxels rays pass through, and
+//! [`PlanningScene::set_occupancy`] puts it into the scene.
 //! Distances come from [parry3d-f64](https://parry.rs).
 //!
 //! The planners sample a motion between two configurations every few
@@ -39,6 +42,7 @@
 pub mod drawing;
 mod mesh;
 pub mod motion;
+pub mod occupancy;
 pub mod points;
 mod robot;
 pub mod semantics;
