@@ -10,7 +10,8 @@
 //!   ([`remove_statistical_outliers`]).
 //! - [`segment`]: the dominant plane by RANSAC ([`fit_plane`]), and
 //!   Euclidean clusters ([`euclidean_clusters`]).
-//! - [`fit`]: a box or an upright cylinder resting on a plane, as a
+//! - [`fit`]: a box or an upright cylinder resting on a plane, or a sphere
+//!   anywhere ([`fit_sphere`]), as a
 //!   `roplat_description` [`Geometry`](roplat_description::Geometry) and a
 //!   pose: the inputs of `roplat_grasp::grasps` and of
 //!   `PlanningScene::add_object` in `roplat_scene`.

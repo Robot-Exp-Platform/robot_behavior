@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-readme = "../README.md"
+readme = "README.md"
 description = "Python and C++ bindings of the roplat_behavior capability contracts, for driver packages used without the roplat runtime"
 keywords = ["robot", "robotics", "python", "cxx", "roplat"]
 

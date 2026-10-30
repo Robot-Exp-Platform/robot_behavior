@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-readme = "../README.md"
+readme = "README.md"
 description = "Runtime observation for roplat graphs: rate, period and latency probes, health checks, status aggregation"
 keywords = ["robot", "robotics", "diagnostics", "monitoring", "roplat"]
 

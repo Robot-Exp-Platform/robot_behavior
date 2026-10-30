@@ -2,7 +2,7 @@
 members = ["roplat_behavior", "roplat_kinematics", "roplat_control", "roplat_trajectory", "roplat_description", "roplat_frames", "roplat_safety", "roplat_scene", "roplat_grasp", "roplat_perception", "roplat_diagnostics", "roplat_world", "roplat_behavior_ffi"]
 resolver = "3"
 
-# The crates share one README. Each declares its own version, so an
+# Each crate has its own README and declares its own version, so an
 # algorithm crate can change without moving the contract crate and the
 # drivers with it.
 [workspace.package]

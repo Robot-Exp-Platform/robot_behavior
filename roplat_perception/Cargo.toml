@@ -6,8 +6,8 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-readme = "../README.md"
-description = "Point clouds for manipulation: downsampling, filtering, table and object segmentation, box and cylinder fitting, ICP"
+readme = "README.md"
+description = "Point clouds for manipulation: filtering, table and object segmentation, box, cylinder and sphere fitting, ICP, normals and region growing"
 keywords = ["robot", "robotics", "point-cloud", "perception", "roplat"]
 
 [dependencies]
