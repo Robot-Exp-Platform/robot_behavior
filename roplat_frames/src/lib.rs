@@ -11,6 +11,9 @@
 //!   [`Stamp`]. Writes and lookups do not allocate and never block.
 //! - [`calibration`] solves a camera's mount from paired arm and target poses
 //!   (hand-eye calibration), for the fixed edge it becomes.
+//! - [`target`] finds a chessboard's corners in an image and the board's
+//!   pose relative to the camera, the target pose each calibration sample
+//!   needs.
 //! - Feature `roplat` adds [`roplat::JointStateNode`], which records joint
 //!   states into a borrowed buffer.
 //! - Feature `scene` adds [`scene`]: planning-scene objects moved to their
@@ -24,6 +27,7 @@
 
 mod buffer;
 pub mod calibration;
+pub mod target;
 mod tree;
 
 #[cfg(feature = "roplat")]
