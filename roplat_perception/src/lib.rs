@@ -16,6 +16,9 @@
 //!   and each object on it.
 //! - [`registration`]: ICP ([`icp`]), for the pose of an object whose
 //!   model is known.
+//! - [`normals`]: surface normals and curvature ([`estimate_normals`]), and
+//!   smooth surfaces grown across them ([`smooth_regions`]), which separate
+//!   surfaces that touch at a crease.
 //!
 //! ```
 //! use roplat_perception::{TabletopOptions, segment_tabletop};
@@ -48,12 +51,14 @@
 pub mod cloud;
 pub mod fit;
 mod grid;
+pub mod normals;
 pub mod registration;
 pub mod segment;
 pub mod tabletop;
 
 pub use cloud::{crop_box, remove_sparse, voxel_downsample};
 pub use fit::{FittedShape, fit_box, fit_box_on, fit_cylinder_on, fit_on};
+pub use normals::{RegionOptions, SurfaceNormal, estimate_normals, smooth_regions};
 pub use registration::{IcpOptions, Registration, icp};
 pub use segment::{Plane, PlaneFit, PlaneOptions, euclidean_clusters, fit_plane};
 pub use tabletop::{Tabletop, TabletopError, TabletopObject, TabletopOptions, segment_tabletop};
