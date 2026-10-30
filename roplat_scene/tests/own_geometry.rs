@@ -1,7 +1,12 @@
 //! The robot's own geometry: a concave link keeps its hollow once
 //! decomposed, and sensed points on the robot are filtered out.
 
-use std::{f64::consts::FRAC_PI_2, fmt::Write as _, path::PathBuf};
+use std::{
+    f64::consts::FRAC_PI_2,
+    fmt::Write as _,
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
 use nalgebra::{Isometry3, Point3, Vector3};
 use roplat_description::{Geometry, RobotModel};
@@ -9,8 +14,14 @@ use roplat_scene::{CollisionCheck, PlanningScene, SceneError};
 
 /// A box open towards -x with 2 cm walls: outside x 0.73–1.07, |y| ≤ 0.12,
 /// z 0.13–0.37; hollow to x = 1.05, |y| ≤ 0.10, z 0.15–0.35. An OBJ file of
-/// 14 quads (as in `concave.rs`).
-fn pigeonhole_obj() -> PathBuf {
+/// 14 quads (as in `concave.rs`), written once: tests run in parallel and
+/// must not read it while another rewrites it.
+fn pigeonhole_obj() -> &'static Path {
+    static PATH: OnceLock<PathBuf> = OnceLock::new();
+    PATH.get_or_init(write_pigeonhole_obj)
+}
+
+fn write_pigeonhole_obj() -> PathBuf {
     let mut vertices = Vec::new();
     for (xs, half_width, zs) in [
         ([0.73, 1.07], 0.12, [0.13, 0.37]),
