@@ -1,10 +1,14 @@
-//! Picking a block off a table with a six-joint arm and a parallel gripper.
+//! Picking a block off a table with a six-joint arm and a parallel gripper,
+//! and putting it down elsewhere.
 
 use std::path::PathBuf;
 
 use nalgebra::{Isometry3, Vector3};
 use roplat_description::{Geometry, RobotModel};
-use roplat_grasp::{GraspOptions, PickFailure, PickOptions, grasps, plan_pick, plan_pick_motion};
+use roplat_grasp::{
+    GraspOptions, PickFailure, PickOptions, PlaceFailure, PlaceOptions, grasps, plan_pick,
+    plan_pick_motion, plan_place, plan_place_motion,
+};
 use roplat_kinematics::{IkSearch, chain_ik_solutions};
 use roplat_msgs::geometry::Pose;
 use roplat_scene::{CollisionCheck, EndEffector, NamedPoses, PlanningScene};
@@ -276,5 +280,115 @@ fn a_pick_checked_whole_has_every_segment_free() {
     carrying.allowed_mut().allow("block", "table");
     for pair in plan.lift.windows(2) {
         assert!(carrying.motion_is_free(&pair[0], &pair[1]), "{pair:?}");
+    }
+}
+
+#[test]
+fn places_the_picked_block_elsewhere_on_the_table() {
+    let at = Vector3::new(0.45, 0.1, 0.24);
+    let scene = scene(at);
+    let hand = hand();
+    let model = model();
+    let candidates = grasps(
+        &Geometry::Box { size: BLOCK },
+        &Isometry3::translation(at.x, at.y, at.z),
+        &GraspOptions::default(),
+    );
+    let pick = plan_pick(
+        &scene,
+        &hand,
+        "block",
+        Some("table"),
+        &candidates,
+        start(),
+        LOWER,
+        UPPER,
+        inverse(&model),
+        PickOptions::default(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+
+    // The caller's scene after the pick: the block in the hand.
+    let mut carrying = scene.clone();
+    carrying
+        .attach(
+            "block",
+            "flange",
+            &hand.links(),
+            &pick.grasp_configuration(),
+        )
+        .unwrap();
+    let lifted = *pick.lift.last().unwrap();
+
+    // Not held, nothing can be placed.
+    let target = Isometry3::translation(0.5, -0.15, 0.24);
+    let not_held = plan_place(
+        &scene,
+        &hand,
+        "block",
+        Some("table"),
+        &[target],
+        lifted,
+        LOWER,
+        UPPER,
+        inverse(&model),
+        PlaceOptions::default(),
+    )
+    .unwrap_err();
+    assert_eq!(not_held.attempts, vec![(0, PlaceFailure::NotHeld)]);
+
+    // A placement where a post stands fails; the next, free, works.
+    carrying
+        .add_object(
+            "post",
+            &Geometry::Box { size: [0.05, 0.05, 0.3] },
+            Isometry3::translation(0.5, 0.15, 0.35),
+        )
+        .unwrap();
+    let blocked = Isometry3::translation(0.5, 0.15, 0.24);
+    for whole in [false, true] {
+        let plan_with = if whole { plan_place_motion } else { plan_place };
+        let plan = plan_with(
+            &carrying,
+            &hand,
+            "block",
+            Some("table"),
+            &[blocked, target],
+            lifted,
+            LOWER,
+            UPPER,
+            inverse(&model),
+            PlaceOptions::default(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(plan.candidate, 1, "{whole}");
+        assert_eq!(plan.placement, target);
+        assert_eq!(plan.to_preplace.first(), Some(&lifted));
+        assert_eq!(plan.to_preplace.last(), plan.descent.first());
+        assert_eq!(plan.descent.last(), plan.retreat.first());
+
+        // Released where it was meant to go, with its orientation kept.
+        let release = plan.release_configuration();
+        let placed = carrying.object_pose("block", &release).unwrap();
+        assert!((placed.translation.vector - target.translation.vector).norm() < 1e-4);
+        assert!(placed.rotation.angle_to(&target.rotation) < 1e-3);
+
+        // Carried clear of everything, then the hand backs off 0.1 m along
+        // its axis from the released block.
+        for q in &plan.to_preplace {
+            assert!(
+                carrying.is_free(q),
+                "contact at {q:?}: {:?}",
+                carrying.first_contact(q)
+            );
+        }
+        let mut released = carrying.clone();
+        released.detach("block", &release).unwrap();
+        let backed = *plan.retreat.last().unwrap();
+        assert!(released.is_free(&backed));
+        let at_release = hand.pose(&released, &release).unwrap();
+        let away = hand.pose(&released, &backed).unwrap();
+        let back = at_release.inverse() * away;
+        assert!((back.translation.vector - Vector3::new(0.0, 0.0, -0.1)).norm() < 1e-4);
     }
 }

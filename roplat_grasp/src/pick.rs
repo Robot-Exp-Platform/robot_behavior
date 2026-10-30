@@ -180,7 +180,7 @@ pub fn plan_pick_motion<const N: usize>(
 
 /// How segments are checked.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Check {
+pub(crate) enum Check {
     /// At samples `resolution` apart.
     Sampled,
     /// As whole motions.
