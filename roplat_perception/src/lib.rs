@@ -5,7 +5,9 @@
 //! `[f64; 3]` points in one frame:
 //!
 //! - [`cloud`]: thinning to an even density ([`voxel_downsample`]),
-//!   cropping to a workspace box, removing isolated returns.
+//!   cropping to a workspace box, removing isolated returns by a radius
+//!   ([`remove_sparse`]) or by the cloud's own statistics
+//!   ([`remove_statistical_outliers`]).
 //! - [`segment`]: the dominant plane by RANSAC ([`fit_plane`]), and
 //!   Euclidean clusters ([`euclidean_clusters`]).
 //! - [`fit`]: a box or an upright cylinder resting on a plane, as a
@@ -56,7 +58,7 @@ pub mod registration;
 pub mod segment;
 pub mod tabletop;
 
-pub use cloud::{crop_box, remove_sparse, voxel_downsample};
+pub use cloud::{crop_box, remove_sparse, remove_statistical_outliers, voxel_downsample};
 pub use fit::{FittedShape, fit_box, fit_box_on, fit_cylinder_on, fit_on};
 pub use normals::{RegionOptions, SurfaceNormal, estimate_normals, smooth_regions};
 pub use registration::{IcpOptions, Registration, icp};
