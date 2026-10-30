@@ -36,12 +36,14 @@
 //! moves, attaches and detaches objects between queries; a query poses the
 //! robot without changing the scene.
 
+pub mod drawing;
 mod mesh;
 pub mod motion;
 pub mod points;
 mod robot;
 pub mod semantics;
 
+pub use drawing::{BodyKind, BodyMesh};
 pub use motion::{MOTION_TOLERANCE, MotionContact, REJECT_STEP};
 pub use semantics::{EndEffector, NamedPoses};
 
